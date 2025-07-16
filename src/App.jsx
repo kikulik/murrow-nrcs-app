@@ -97,15 +97,28 @@ const nameToUsername = (name) => {
 // --- AUTHENTICATION CONTEXT ---
 const AuthContext = createContext();
 
-// IMPORTANT: Replace with your actual Firebase config
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSy...-Your-Actual-Key",
-  authDomain: "your-project-id.firebaseapp.com",
-  projectId: "your-project-id",
-  storageBucket: "your-project-id.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456"
+  apiKey: "AIzaSyABPQCCJYON6b1MBJsnCGHFjLjLCK3WBOo",
+  authDomain: "murrow-82a95.firebaseapp.com",
+  databaseURL: "https://murrow-82a95-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "murrow-82a95",
+  storageBucket: "murrow-82a95.firebasestorage.app",
+  messagingSenderId: "177504964658",
+  appId: "1:177504964658:web:1ed07d9588c1675fabec2b",
+  measurementId: "G-DY9MGNYTJC"
 };
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
 const AuthProvider = ({ children }) => {
   const [authServices, setAuthServices] = useState({
