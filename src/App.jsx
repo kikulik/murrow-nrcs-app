@@ -7,44 +7,6 @@ import {
 } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-// Firebase Imports
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyABPQCCJYON6b1MBJsnCGHFjLjLCK3WBOo",
-  authDomain: "murrow-82a95.firebaseapp.com",
-  projectId: "murrow-82a95",
-  storageBucket: "murrow-82a95.firebasestorage.app",
-  messagingSenderId: "177504964658",
-  appId: "1:177504964658:web:1ed07d9588c1675fabec2b",
-  measurementId: "G-DY9MGNYTJC"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-
-// Mock Firebase for demonstration if config is not provided
-let app, auth, db;
-try {
-  // These imports would typically be from 'firebase/...'
-  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js");
-  const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js");
-  const { getFirestore, collection, doc, getDoc, setDoc, addDoc, onSnapshot, query, where, getDocs, updateDoc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (e) {
-  console.warn("Firebase not configured. Using mock data. Please provide your Firebase config.");
-}
-
 
 // --- INITIAL DATA (Used only for seeding the database) ---
 
@@ -135,55 +97,83 @@ const nameToUsername = (name) => {
 // --- AUTHENTICATION CONTEXT ---
 const AuthContext = createContext();
 
+// IMPORTANT: Replace with your actual Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSy...-Your-Actual-Key",
+  authDomain: "your-project-id.firebaseapp.com",
+  projectId: "your-project-id",
+  storageBucket: "your-project-id.appspot.com",
+  messagingSenderId: "1234567890",
+  appId: "1:1234567890:web:abcdef123456"
+};
+
 const AuthProvider = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [authServices, setAuthServices] = useState({
+    currentUser: null,
+    login: null,
+    register: null,
+    logout: null,
+    db: null,
+    loading: true,
+  });
 
   useEffect(() => {
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          setCurrentUser({ uid: user.uid, ...userDoc.data() });
-        } else {
-          // Handle case where user exists in Auth but not Firestore
-          setCurrentUser(null);
-        }
-      } else {
-        setCurrentUser(null);
+    const initialize = async () => {
+      try {
+        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js");
+        const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js");
+        const { getFirestore, doc, getDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        onAuthStateChanged(auth, async (user) => {
+          if (user) {
+            const userDoc = await getDoc(doc(db, "users", user.uid));
+            setAuthServices(prev => ({ ...prev, currentUser: userDoc.exists() ? { uid: user.uid, ...userDoc.data() } : null, loading: false }));
+          } else {
+            setAuthServices(prev => ({ ...prev, currentUser: null, loading: false }));
+          }
+        });
+
+        const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
+        const register = async (email, password, name, role) => {
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          const newUser = {
+            name, email, role,
+            username: nameToUsername(name),
+            groupId: initialGroups.find(g => g.name.toLowerCase().includes(role.toLowerCase()))?.id || null
+          };
+          await setDoc(doc(db, "users", userCredential.user.uid), newUser);
+          return userCredential;
+        };
+        const logout = () => signOut(auth);
+
+        setAuthServices(prev => ({
+          ...prev,
+          login,
+          register,
+          logout,
+          db,
+        }));
+
+      } catch (error) {
+        console.error("Firebase initialization failed", error);
+        setAuthServices(prev => ({ ...prev, loading: false, db: null }));
       }
-      setLoading(false);
-    });
-    return unsubscribe;
+    };
+
+    initialize();
   }, []);
 
-  const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
-  const register = async (email, password, name, role) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const newUser = {
-      name,
-      email,
-      role,
-      username: nameToUsername(name),
-      groupId: initialGroups.find(g => g.name.toLowerCase().includes(role.toLowerCase()))?.id || null
-    };
-    await setDoc(doc(db, "users", userCredential.user.uid), newUser);
-    return userCredential;
-  };
-  const logout = () => signOut(auth);
-
-  const value = { currentUser, login, register, logout };
-
   return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
+    <AuthContext.Provider value={authServices}>
+      {authServices.loading ? <div className="min-h-screen flex items-center justify-center">Loading...</div> : children}
     </AuthContext.Provider>
   );
 };
+
 
 const useAuth = () => {
   return useContext(AuthContext);
@@ -268,7 +258,7 @@ const AuthPage = () => {
 
 const MurrowNRCS = () => {
   // --- STATE MANAGEMENT ---
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, db } = useAuth();
   const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [stories, setStories] = useState([]);
@@ -296,23 +286,34 @@ const MurrowNRCS = () => {
   // --- DATA FETCHING FROM FIRESTORE ---
   useEffect(() => {
     if (!db) return;
-    const unsubscribers = [
-      onSnapshot(collection(db, "users"), (snapshot) => setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "groups"), (snapshot) => setGroups(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "stories"), (snapshot) => setStories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "assignments"), (snapshot) => setAssignments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "rundowns"), (snapshot) => setRundowns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "rundownTemplates"), (snapshot) => setRundownTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "messages"), (snapshot) => setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)))),
-    ];
-    return () => unsubscribers.forEach(unsub => unsub());
-  }, []);
+
+    // Dynamic import for firestore functions
+    const setupListeners = async () => {
+      const { collection, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+      const unsubscribers = [
+        onSnapshot(collection(db, "users"), (snapshot) => setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "groups"), (snapshot) => setGroups(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "stories"), (snapshot) => setStories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "assignments"), (snapshot) => setAssignments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "rundowns"), (snapshot) => setRundowns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "rundownTemplates"), (snapshot) => setRundownTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "messages"), (snapshot) => setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)))),
+      ];
+      return () => unsubscribers.forEach(unsub => unsub());
+    }
+
+    const unsubscribePromise = setupListeners();
+    return () => {
+      unsubscribePromise.then(unsub => unsub && unsub());
+    };
+  }, [db]);
 
   const userPermissions = PERMISSIONS[currentUser.role];
   const activeRundown = rundowns.find(r => r.id === activeRundownId);
 
   const setActiveRundownItems = async (items) => {
     if (!db || !activeRundownId) return;
+    const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     await updateDoc(doc(db, "rundowns", activeRundownId), { items });
   };
 
@@ -371,11 +372,13 @@ const MurrowNRCS = () => {
 
   const handleSave = async (item, type) => {
     if (!db) return;
-    const collectionName = `${type}s`; // e.g., 'story' -> 'stories'
-    if (item.id) { // Editing existing item
+    const { collection, doc, updateDoc, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+    const collectionName = `${type}s`;
+    if (item.id) {
       const docRef = doc(db, collectionName, item.id);
-      await updateDoc(docRef, item);
-    } else { // Creating new item
+      const { id, ...dataToUpdate } = item;
+      await updateDoc(docRef, dataToUpdate);
+    } else {
       await addDoc(collection(db, collectionName), item);
     }
     setModal(null);
@@ -383,6 +386,7 @@ const MurrowNRCS = () => {
 
   const handleDelete = async (id, type) => {
     if (!db) return;
+    const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     await deleteDoc(doc(db, `${type}s`, id));
     setModal(null);
   };
@@ -393,6 +397,7 @@ const MurrowNRCS = () => {
 
   const handleAddStoryToRundown = async (story, isNew, itemTypes) => {
     if (!db) return;
+    const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     let storyToAdd = story;
     if (isNew) {
       const newStory = { ...story, authorId: currentUser.uid, status: 'draft', created: new Date().toISOString(), comments: [] };
@@ -419,6 +424,7 @@ const MurrowNRCS = () => {
 
   const handleArchiveRundown = async (rundownId) => {
     if (!db) return;
+    const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     const rundownRef = doc(db, "rundowns", rundownId);
     const currentRundown = rundowns.find(r => r.id === rundownId);
     await updateDoc(rundownRef, { archived: !currentRundown.archived });
@@ -441,6 +447,7 @@ const MurrowNRCS = () => {
 
   const handleSendMessage = async (text) => {
     if (!db) return;
+    const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     const newMessage = {
       userId: currentUser.uid,
       userName: currentUser.name,
@@ -929,7 +936,7 @@ const RundownTab = ({ rundown, setRundown, stories, onAddStory, updateRundownSto
   const handleRundownChange = (e) => {
     const value = e.target.value;
     if (value === '') return;
-    setActiveRundownId(Number(value));
+    setActiveRundownId(value);
   };
 
   return (
