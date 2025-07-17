@@ -16,7 +16,9 @@
     "react": "^19.1.0",
     "react-dnd": "^16.0.1",
     "react-dnd-html5-backend": "^16.0.1",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "video.js": "^8.6.1",
+    "videojs-contrib-hls": "^5.15.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",
