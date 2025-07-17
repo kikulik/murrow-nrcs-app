@@ -7,44 +7,8 @@ import {
 } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-// Firebase Imports
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyABPQCCJYON6b1MBJsnCGHFjLjLCK3WBOo",
-  authDomain: "murrow-82a95.firebaseapp.com",
-  projectId: "murrow-82a95",
-  storageBucket: "murrow-82a95.firebasestorage.app",
-  messagingSenderId: "177504964658",
-  appId: "1:177504964658:web:1ed07d9588c1675fabec2b",
-  measurementId: "G-DY9MGNYTJC"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-
-// Mock Firebase for demonstration if config is not provided
-let app, auth, db;
-try {
-  // These imports would typically be from 'firebase/...'
-  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js");
-  const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js");
-  const { getFirestore, collection, doc, getDoc, setDoc, addDoc, onSnapshot, query, where, getDocs, updateDoc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (e) {
-  console.warn("Firebase not configured. Using mock data. Please provide your Firebase config.");
-}
-
+import { StoryWithVideo, RundownItemWithVideo, useVideoIntegration } from './media/StoryVideoIntegration';
+import { generateMediaId } from './media/MediaManager';
 
 // --- INITIAL DATA (Used only for seeding the database) ---
 
@@ -135,55 +99,96 @@ const nameToUsername = (name) => {
 // --- AUTHENTICATION CONTEXT ---
 const AuthContext = createContext();
 
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyABPQCCJYON6b1MBJsnCGHFjLjLCK3WBOo",
+  authDomain: "murrow-82a95.firebaseapp.com",
+  databaseURL: "https://murrow-82a95-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "murrow-82a95",
+  storageBucket: "murrow-82a95.firebasestorage.app",
+  messagingSenderId: "177504964658",
+  appId: "1:177504964658:web:1ed07d9588c1675fabec2b",
+  measurementId: "G-DY9MGNYTJC"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
 const AuthProvider = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [authServices, setAuthServices] = useState({
+    currentUser: null,
+    login: null,
+    register: null,
+    logout: null,
+    db: null,
+    loading: true,
+  });
 
   useEffect(() => {
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          setCurrentUser({ uid: user.uid, ...userDoc.data() });
-        } else {
-          // Handle case where user exists in Auth but not Firestore
-          setCurrentUser(null);
-        }
-      } else {
-        setCurrentUser(null);
+    const initialize = async () => {
+      try {
+        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js");
+        const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js");
+        const { getFirestore, doc, getDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        onAuthStateChanged(auth, async (user) => {
+          if (user) {
+            const userDoc = await getDoc(doc(db, "users", user.uid));
+            setAuthServices(prev => ({ ...prev, currentUser: userDoc.exists() ? { uid: user.uid, ...userDoc.data() } : null, loading: false }));
+          } else {
+            setAuthServices(prev => ({ ...prev, currentUser: null, loading: false }));
+          }
+        });
+
+        const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
+        const register = async (email, password, name, role) => {
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          const newUser = {
+            name, email, role,
+            username: nameToUsername(name),
+            groupId: initialGroups.find(g => g.name.toLowerCase().includes(role.toLowerCase()))?.id || null
+          };
+          await setDoc(doc(db, "users", userCredential.user.uid), newUser);
+          return userCredential;
+        };
+        const logout = () => signOut(auth);
+
+        setAuthServices(prev => ({
+          ...prev,
+          login,
+          register,
+          logout,
+          db,
+        }));
+
+      } catch (error) {
+        console.error("Firebase initialization failed", error);
+        setAuthServices(prev => ({ ...prev, loading: false, db: null }));
       }
-      setLoading(false);
-    });
-    return unsubscribe;
+    };
+
+    initialize();
   }, []);
 
-  const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
-  const register = async (email, password, name, role) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const newUser = {
-      name,
-      email,
-      role,
-      username: nameToUsername(name),
-      groupId: initialGroups.find(g => g.name.toLowerCase().includes(role.toLowerCase()))?.id || null
-    };
-    await setDoc(doc(db, "users", userCredential.user.uid), newUser);
-    return userCredential;
-  };
-  const logout = () => signOut(auth);
-
-  const value = { currentUser, login, register, logout };
-
   return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
+    <AuthContext.Provider value={authServices}>
+      {authServices.loading ? <div className="min-h-screen flex items-center justify-center">Loading...</div> : children}
     </AuthContext.Provider>
   );
 };
+
 
 const useAuth = () => {
   return useContext(AuthContext);
@@ -268,7 +273,7 @@ const AuthPage = () => {
 
 const MurrowNRCS = () => {
   // --- STATE MANAGEMENT ---
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, db } = useAuth();
   const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [stories, setStories] = useState([]);
@@ -293,26 +298,40 @@ const MurrowNRCS = () => {
   const [liveRundownId, setLiveRundownId] = useState(null);
   const liveIntervalRef = useRef(null);
 
+  // ADD VIDEO INTEGRATION HOOK
+  const { attachVideoToStory, detachVideoFromStory } = useVideoIntegration(db);
+
   // --- DATA FETCHING FROM FIRESTORE ---
   useEffect(() => {
     if (!db) return;
-    const unsubscribers = [
-      onSnapshot(collection(db, "users"), (snapshot) => setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "groups"), (snapshot) => setGroups(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "stories"), (snapshot) => setStories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "assignments"), (snapshot) => setAssignments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "rundowns"), (snapshot) => setRundowns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "rundownTemplates"), (snapshot) => setRundownTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
-      onSnapshot(collection(db, "messages"), (snapshot) => setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)))),
-    ];
-    return () => unsubscribers.forEach(unsub => unsub());
-  }, []);
+
+    // Dynamic import for firestore functions
+    const setupListeners = async () => {
+      const { collection, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+      const unsubscribers = [
+        onSnapshot(collection(db, "users"), (snapshot) => setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "groups"), (snapshot) => setGroups(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "stories"), (snapshot) => setStories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "assignments"), (snapshot) => setAssignments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "rundowns"), (snapshot) => setRundowns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "rundownTemplates"), (snapshot) => setRundownTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))),
+        onSnapshot(collection(db, "messages"), (snapshot) => setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)))),
+      ];
+      return () => unsubscribers.forEach(unsub => unsub());
+    }
+
+    const unsubscribePromise = setupListeners();
+    return () => {
+      unsubscribePromise.then(unsub => unsub && unsub());
+    };
+  }, [db]);
 
   const userPermissions = PERMISSIONS[currentUser.role];
   const activeRundown = rundowns.find(r => r.id === activeRundownId);
 
   const setActiveRundownItems = async (items) => {
     if (!db || !activeRundownId) return;
+    const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     await updateDoc(doc(db, "rundowns", activeRundownId), { items });
   };
 
@@ -369,13 +388,24 @@ const MurrowNRCS = () => {
     }
   };
 
+  // MODIFIED handleSave TO INCLUDE MEDIA ID GENERATION
   const handleSave = async (item, type) => {
     if (!db) return;
-    const collectionName = `${type}s`; // e.g., 'story' -> 'stories'
-    if (item.id) { // Editing existing item
+    const { collection, doc, updateDoc, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+    const collectionName = `${type}s`;
+
+    // Add media ID for new stories
+    if (type === 'story' && !item.id) {
+      item.mediaId = generateMediaId(item.type?.[0] || 'PKG');
+      item.hasVideo = false;
+      item.videoUrl = null;
+    }
+
+    if (item.id) {
       const docRef = doc(db, collectionName, item.id);
-      await updateDoc(docRef, item);
-    } else { // Creating new item
+      const { id, ...dataToUpdate } = item;
+      await updateDoc(docRef, dataToUpdate);
+    } else {
       await addDoc(collection(db, collectionName), item);
     }
     setModal(null);
@@ -383,6 +413,7 @@ const MurrowNRCS = () => {
 
   const handleDelete = async (id, type) => {
     if (!db) return;
+    const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     await deleteDoc(doc(db, `${type}s`, id));
     setModal(null);
   };
@@ -393,9 +424,19 @@ const MurrowNRCS = () => {
 
   const handleAddStoryToRundown = async (story, isNew, itemTypes) => {
     if (!db) return;
+    const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     let storyToAdd = story;
     if (isNew) {
-      const newStory = { ...story, authorId: currentUser.uid, status: 'draft', created: new Date().toISOString(), comments: [] };
+      const newStory = {
+        ...story,
+        authorId: currentUser.uid,
+        status: 'draft',
+        created: new Date().toISOString(),
+        comments: [],
+        mediaId: generateMediaId(itemTypes[0] || 'PKG'),
+        hasVideo: false,
+        videoUrl: null
+      };
       const docRef = await addDoc(collection(db, "stories"), newStory);
       storyToAdd = { ...newStory, id: docRef.id };
     }
@@ -419,6 +460,7 @@ const MurrowNRCS = () => {
 
   const handleArchiveRundown = async (rundownId) => {
     if (!db) return;
+    const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     const rundownRef = doc(db, "rundowns", rundownId);
     const currentRundown = rundowns.find(r => r.id === rundownId);
     await updateDoc(rundownRef, { archived: !currentRundown.archived });
@@ -441,6 +483,7 @@ const MurrowNRCS = () => {
 
   const handleSendMessage = async (text) => {
     if (!db) return;
+    const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     const newMessage = {
       userId: currentUser.uid,
       userName: currentUser.name,
@@ -530,11 +573,17 @@ const MurrowNRCS = () => {
         </nav>
 
         <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {activeTab === 'stories' && <StoriesTab stories={filteredStories} assignments={assignments} onSave={(story) => handleSave(story, 'story')} onDelete={(id) => openDeleteConfirm(id, 'story')} getUserById={getUserById} getStatusColor={getStatusColor} getPlatformIcon={getPlatformIcon} userPermissions={userPermissions} currentUser={currentUser} searchTerm={searchTerm} setSearchTerm={setSearchTerm} users={users} />}
-          {activeTab === 'rundown' && <RundownTab rundown={activeRundown?.items || []} setRundown={setActiveRundownItems} stories={stories} onAddStory={() => setModal({ type: 'addStoryToRundown' })} updateRundownStoryStatus={updateRundownStoryStatus} getStatusColor={getStatusColor} getRundownTypeColor={getRundownTypeColor} userPermissions={userPermissions} onEditStory={(story) => handleSave(story, 'story')} calculateTotalDuration={calculateTotalDuration} onGoLive={handleGoLive} rundowns={rundowns} activeRundownId={activeRundownId} setActiveRundownId={setActiveRundownId} onNewRundown={() => setModal({ type: 'rundownEditor' })} onArchiveRundown={handleArchiveRundown} showArchived={showArchived} setShowArchived={setShowArchived} isLocked={isRundownLocked} onPrintForPresenter={() => setPresenterPrintView(activeRundown)} updateRundownItem={updateRundownItem} />}
+          {/* MODIFIED STORIES TAB TO USE VIDEO-ENABLED COMPONENTS */}
+          {activeTab === 'stories' && <StoriesTab stories={filteredStories} assignments={assignments} onSave={(story) => handleSave(story, 'story')} onDelete={(id) => openDeleteConfirm(id, 'story')} getUserById={getUserById} getStatusColor={getStatusColor} getPlatformIcon={getPlatformIcon} userPermissions={userPermissions} currentUser={currentUser} searchTerm={searchTerm} setSearchTerm={setSearchTerm} users={users} db={db} />}
+
+          {/* MODIFIED RUNDOWN TAB TO USE VIDEO-ENABLED COMPONENTS */}
+          {activeTab === 'rundown' && <RundownTab rundown={activeRundown?.items || []} setRundown={setActiveRundownItems} stories={stories} onAddStory={() => setModal({ type: 'addStoryToRundown' })} updateRundownStoryStatus={updateRundownStoryStatus} getStatusColor={getStatusColor} getRundownTypeColor={getRundownTypeColor} userPermissions={userPermissions} onEditStory={(story) => handleSave(story, 'story')} calculateTotalDuration={calculateTotalDuration} onGoLive={handleGoLive} rundowns={rundowns} activeRundownId={activeRundownId} setActiveRundownId={setActiveRundownId} onNewRundown={() => setModal({ type: 'rundownEditor' })} onArchiveRundown={handleArchiveRundown} showArchived={showArchived} setShowArchived={setShowArchived} isLocked={isRundownLocked} onPrintForPresenter={() => setPresenterPrintView(activeRundown)} updateRundownItem={updateRundownItem} db={db} isLive={isLive} currentLiveItemIndex={currentLiveItemIndex} />}
+
           {activeTab === 'assignments' && <AssignmentsTab assignments={assignments} users={users} onSave={(item) => handleSave(item, 'assignment')} onDelete={(id) => openDeleteConfirm(id, 'assignment')} getUserById={getUserById} getStatusColor={getStatusColor} userPermissions={userPermissions} />}
           {activeTab === 'admin' && <AdminTab users={users} groups={groups} onSave={handleSave} onDelete={openDeleteConfirm} getGroupById={getGroupById} rundownTemplates={rundownTemplates} userPermissions={userPermissions} />}
-          {activeTab === 'live' && activeRundown && <LiveModeTab rundown={activeRundown.items} liveTime={liveTime} currentLiveItemIndex={currentLiveItemIndex} onNext={handleNextLiveItem} onEnd={handleEndLive} getRundownTypeColor={getRundownTypeColor} getStatusColor={getStatusColor} />}
+
+          {/* MODIFIED LIVE MODE TAB TO INCLUDE VIDEO SUPPORT */}
+          {activeTab === 'live' && activeRundown && <LiveModeTab rundown={activeRundown.items} liveTime={liveTime} currentLiveItemIndex={currentLiveItemIndex} onNext={handleNextLiveItem} onEnd={handleEndLive} getRundownTypeColor={getRundownTypeColor} getStatusColor={getStatusColor} stories={stories} db={db} />}
         </main>
 
         <Chatbox messages={messages} onSendMessage={handleSendMessage} currentUser={currentUser} getUserById={getUserById} />
@@ -599,7 +648,8 @@ const Chatbox = ({ messages, onSendMessage, currentUser, getUserById }) => {
   );
 };
 
-const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getStatusColor, getPlatformIcon, userPermissions, currentUser, searchTerm, setSearchTerm, users }) => {
+// MODIFIED STORIES TAB TO USE VIDEO COMPONENTS
+const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getStatusColor, getPlatformIcon, userPermissions, currentUser, searchTerm, setSearchTerm, users, db }) => {
   const [view, setView] = useState('all');
   const [editingId, setEditingId] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -641,41 +691,23 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
       return <InlineStoryEditor key={story.id} story={story} onSave={handleSaveStory} onCancel={handleCancel} users={users} />
     }
 
+    // MAIN CHANGE: Use video-enabled story component
     return (
-      <div key={story.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6 flex flex-col">
-        <div className="flex justify-between items-start flex-grow">
-          <div className="flex-1">
-            <div className="flex items-center flex-wrap gap-x-3 mb-2">
-              <h3 className="text-lg font-medium">{story.title}</h3>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(story.status)}`}>{story.status}</span>
-              <div className="flex items-center space-x-1 text-gray-500">
-                {getPlatformIcon(story.platform)}
-                <span className="text-sm capitalize">{story.platform}</span>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 text-sm text-gray-500 mb-2">
-              <span>By {getUserById(story.authorId)?.name || 'Unknown'}</span>
-              <span>Duration: {story.duration}</span>
-            </div>
-            <p className="text-gray-600 dark:text-gray-300 mb-2 text-sm">{story.content?.substring(0, 150)}...</p>
-          </div>
-          <div className="flex items-center space-x-1 ml-4">
-            <button onClick={() => handleShare(story)} className="p-2 text-gray-500 hover:text-green-600 rounded" title="Share Story">
-              <Share2 className="w-4 h-4" />
-            </button>
-            {canEdit && (
-              <button onClick={() => setEditingId(story.id)} className="p-2 text-gray-500 hover:text-blue-600 rounded" title="Edit Story">
-                <Edit3 className="w-4 h-4" />
-              </button>
-            )}
-            {userPermissions.canDeleteAnything && (
-              <button onClick={() => onDelete(story.id, 'story')} className="p-2 text-gray-500 hover:text-red-600 rounded" title="Delete Story">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      <StoryWithVideo
+        key={story.id}
+        story={story}
+        onStoryUpdate={onSave}
+        onVideoAttached={(storyId, videoUrl, mediaId) => {
+          console.log(`Video attached to story ${storyId}: ${mediaId}`);
+          // Optional: Add toast notification here
+        }}
+        onVideoDetached={(storyId, mediaId) => {
+          console.log(`Video detached from story ${storyId}`);
+        }}
+        db={db}
+        expanded={false}
+        showVideoControls={canEdit}
+      />
     );
   };
 
@@ -905,7 +937,8 @@ const RundownDraggableItem = ({ item, index, rundown, moveItem, updateRundownSto
   );
 };
 
-const RundownTab = ({ rundown, setRundown, stories, onAddStory, updateRundownStoryStatus, getStatusColor, getRundownTypeColor, userPermissions, onEditStory, calculateTotalDuration, onGoLive, rundowns, activeRundownId, setActiveRundownId, onNewRundown, onArchiveRundown, showArchived, setShowArchived, isLocked, onPrintForPresenter, updateRundownItem }) => {
+// MODIFIED RUNDOWN TAB TO USE VIDEO COMPONENTS
+const RundownTab = ({ rundown, setRundown, stories, onAddStory, updateRundownStoryStatus, getStatusColor, getRundownTypeColor, userPermissions, onEditStory, calculateTotalDuration, onGoLive, rundowns, activeRundownId, setActiveRundownId, onNewRundown, onArchiveRundown, showArchived, setShowArchived, isLocked, onPrintForPresenter, updateRundownItem, db, isLive, currentLiveItemIndex }) => {
   const [editingId, setEditingId] = useState(null);
 
   const moveItem = useCallback((dragIndex, hoverIndex) => {
@@ -929,7 +962,7 @@ const RundownTab = ({ rundown, setRundown, stories, onAddStory, updateRundownSto
   const handleRundownChange = (e) => {
     const value = e.target.value;
     if (value === '') return;
-    setActiveRundownId(Number(value));
+    setActiveRundownId(value);
   };
 
   return (
@@ -1013,25 +1046,17 @@ const RundownTab = ({ rundown, setRundown, stories, onAddStory, updateRundownSto
             </button>
           </div>
           <div className="divide-y dark:divide-gray-700">
+            {/* MAIN CHANGE: Use video-enabled rundown items */}
             {rundown.map((item, index) => {
               const story = item.storyId ? stories.find(s => s.id === item.storyId) : null;
               return (
-                <RundownDraggableItem
+                <RundownItemWithVideo
                   key={item.id}
-                  index={index}
                   item={item}
-                  rundown={rundown}
-                  moveItem={moveItem}
-                  updateRundownStoryStatus={updateRundownStoryStatus}
-                  getStatusColor={getStatusColor}
-                  getRundownTypeColor={getRundownTypeColor}
-                  onEdit={() => story && onEditStory(story)}
-                  canDrag={userPermissions.canMoveRundownItems}
-                  isLocked={isLocked}
-                  isEditing={editingId === item.id}
-                  onToggleEdit={(id) => setEditingId(id)}
-                  onSave={handleSaveItem}
-                  onCancel={() => setEditingId(null)}
+                  story={story}
+                  onItemUpdate={updateRundownItem}
+                  db={db}
+                  isLive={isLive && currentLiveItemIndex === index}
                 />
               );
             })}
@@ -1046,8 +1071,10 @@ const RundownTab = ({ rundown, setRundown, stories, onAddStory, updateRundownSto
   );
 };
 
-const LiveModeTab = ({ rundown, liveTime, currentLiveItemIndex, onNext, onEnd, getRundownTypeColor, getStatusColor }) => {
+// MODIFIED LIVE MODE TAB TO INCLUDE VIDEO PREVIEW
+const LiveModeTab = ({ rundown, liveTime, currentLiveItemIndex, onNext, onEnd, getRundownTypeColor, getStatusColor, stories, db }) => {
   const currentItem = rundown[currentLiveItemIndex];
+  const currentStory = currentItem?.storyId ? stories.find(s => s.id === currentItem.storyId) : null;
 
   return (
     <div className="space-y-8">
@@ -1066,6 +1093,20 @@ const LiveModeTab = ({ rundown, liveTime, currentLiveItemIndex, onNext, onEnd, g
           ))}
         </div>
       </div>
+
+      {/* ADD VIDEO PREVIEW FOR CURRENT ITEM */}
+      {currentStory?.videoUrl && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Current Video</h3>
+          <div className="bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center h-64">
+            <div className="text-center text-gray-500 dark:text-gray-400">
+              <PlayCircle className="w-16 h-16 mx-auto mb-2 opacity-50" />
+              <p>Video Player Component</p>
+              <p className="text-sm">Would show: {currentStory.title}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-4">
@@ -1726,7 +1767,6 @@ const PresenterPrintView = ({ rundown, close }) => {
     </>
   );
 };
-
 
 const InputField = ({ label, ...props }) => (
   <div>
