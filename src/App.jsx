@@ -99,14 +99,7 @@ const nameToUsername = (name) => {
 // --- AUTHENTICATION CONTEXT ---
 const AuthContext = createContext();
 
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
 // Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyABPQCCJYON6b1MBJsnCGHFjLjLCK3WBOo",
   authDomain: "murrow-82a95.firebaseapp.com",
@@ -118,9 +111,8 @@ const firebaseConfig = {
   measurementId: "G-DY9MGNYTJC"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+// *** FIX: REMOVED DUPLICATE FIREBASE INITIALIZATION FROM HERE ***
+// The initialization is now handled *only* inside the AuthProvider.
 
 const AuthProvider = ({ children }) => {
   const [authServices, setAuthServices] = useState({
@@ -139,6 +131,7 @@ const AuthProvider = ({ children }) => {
         const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js");
         const { getFirestore, doc, getDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
+        // *** FIX: This is now the ONLY place Firebase is initialized. ***
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -1341,7 +1334,11 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
     platform: story?.platform || 'broadcast',
     tags: story?.tags?.join(', ') || '',
     duration: story?.duration || '',
-    status: story?.status || 'draft'
+    status: story?.status || 'draft',
+    // Include video fields for local state management
+    videoId: story?.videoId,
+    videoStatus: story?.videoStatus,
+    videoUrl: story?.videoUrl
   });
 
   const handleSubmit = (e) => {
@@ -1353,20 +1350,29 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
     });
   };
 
+  const handleLocalUpdate = (updatedStory) => {
+      setFormData(prev => ({...prev, ...updatedStory}));
+  }
+
+  const hasVideo = VIDEO_ITEM_TYPES.some(t => formData.title.toUpperCase().includes(t));
+
   return (
     <div className="bg-blue-50 dark:bg-gray-800/50 rounded-lg border-l-4 border-blue-500 p-6 my-4">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <h3 className="text-lg font-semibold">{story ? 'Edit Story' : 'Create New Story'}</h3>
-        <InputField label="Title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} required />
-        <SelectField label="Author" value={formData.authorId} onChange={e => setFormData({ ...formData, authorId: e.target.value })} options={users.map(u => ({ value: u.id, label: u.name }))} />
-        <SelectField label="Status" value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} options={['draft', 'approved', 'published'].map(s => ({ value: s, label: s }))} />
-        <InputField label="Duration" value={formData.duration} onChange={(e) => setFormData({ ...formData, duration: e.target.value })} placeholder="MM:SS" />
-        <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} rows={8} className="w-full form-input" placeholder="Enter story content..." required />
-        <div className="flex justify-end space-x-3 pt-4">
-          <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
-          <button type="submit" className="btn-primary"><Save className="w-4 h-4" /><span>Save</span></button>
-        </div>
-      </form>
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <h3 className="text-lg font-semibold">{story ? 'Edit Story' : 'Create New Story'}</h3>
+            <InputField label="Title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} required />
+            <SelectField label="Author" value={formData.authorId} onChange={e => setFormData({ ...formData, authorId: e.target.value })} options={users.map(u => ({ value: u.id, label: u.name }))} />
+            <SelectField label="Status" value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} options={['draft', 'approved', 'published'].map(s => ({ value: s, label: s }))} />
+            <InputField label="Duration" value={formData.duration} onChange={(e) => setFormData({ ...formData, duration: e.target.value })} placeholder="MM:SS" />
+            <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} rows={8} className="w-full form-input" placeholder="Enter story content..." required />
+            
+            {hasVideo && story && <VideoManager story={formData} onUpdate={handleLocalUpdate} />}
+
+            <div className="flex justify-end space-x-3 pt-4">
+                <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary"><Save className="w-4 h-4" /><span>Save</span></button>
+            </div>
+        </form>
     </div>
   );
 };
@@ -1526,20 +1532,20 @@ const RundownTemplateEditor = ({ template, onSave, onCancel }) => {
           <div className="space-y-3 max-h-96 overflow-y-auto p-2 border rounded-md bg-white dark:bg-gray-800">
             {items.map((item, index) => (
               <div key={item.id} className="grid grid-cols-12 items-center gap-3 p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                <div className="col-span-5">
-                  <input type="text" value={item.title} onChange={e => handleItemChange(index, 'title', e.target.value)} className="form-input w-full" placeholder="Item Title" />
-                </div>
-                <div className="col-span-2">
-                  <input type="text" value={item.duration} onChange={e => handleItemChange(index, 'duration', e.target.value)} className="form-input w-full" placeholder="MM:SS" />
-                </div>
-                <div className="col-span-4">
-                  <select value={item.type[0]} onChange={e => handleItemChange(index, 'type', [e.target.value])} className="form-input w-full">
-                    {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => <option key={abbr} value={abbr}>{name}</option>)}
-                  </select>
-                </div>
-                <div className="col-span-1">
-                  <button type="button" onClick={() => removeItem(index)} className="p-2 text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
-                </div>
+                 <div className="col-span-5">
+                    <input type="text" value={item.title} onChange={e => handleItemChange(index, 'title', e.target.value)} className="form-input w-full" placeholder="Item Title" />
+                 </div>
+                 <div className="col-span-2">
+                    <input type="text" value={item.duration} onChange={e => handleItemChange(index, 'duration', e.target.value)} className="form-input w-full" placeholder="MM:SS" />
+                 </div>
+                 <div className="col-span-4">
+                     <select value={item.type[0]} onChange={e => handleItemChange(index, 'type', [e.target.value])} className="form-input w-full">
+                         {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => <option key={abbr} value={abbr}>{name}</option>)}
+                     </select>
+                 </div>
+                 <div className="col-span-1">
+                    <button type="button" onClick={() => removeItem(index)} className="p-2 text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
+                 </div>
               </div>
             ))}
           </div>
