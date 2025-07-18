@@ -1326,6 +1326,9 @@ const AdminTab = ({ users, groups, onSave, onDelete, getGroupById, rundownTempla
   );
 };
 
+// Add this line right before the 'InlineStoryEditor' function in your App.jsx
+const VIDEO_ITEM_TYPES = ['PKG', 'VO', 'SOT', 'VID'];
+
 const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
   const [formData, setFormData] = useState({
     title: story?.title || '',
@@ -1351,28 +1354,29 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
   };
 
   const handleLocalUpdate = (updatedStory) => {
-      setFormData(prev => ({...prev, ...updatedStory}));
+    setFormData(prev => ({ ...prev, ...updatedStory }));
   }
 
   const hasVideo = VIDEO_ITEM_TYPES.some(t => formData.title.toUpperCase().includes(t));
 
   return (
     <div className="bg-blue-50 dark:bg-gray-800/50 rounded-lg border-l-4 border-blue-500 p-6 my-4">
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <h3 className="text-lg font-semibold">{story ? 'Edit Story' : 'Create New Story'}</h3>
-            <InputField label="Title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} required />
-            <SelectField label="Author" value={formData.authorId} onChange={e => setFormData({ ...formData, authorId: e.target.value })} options={users.map(u => ({ value: u.id, label: u.name }))} />
-            <SelectField label="Status" value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} options={['draft', 'approved', 'published'].map(s => ({ value: s, label: s }))} />
-            <InputField label="Duration" value={formData.duration} onChange={(e) => setFormData({ ...formData, duration: e.target.value })} placeholder="MM:SS" />
-            <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} rows={8} className="w-full form-input" placeholder="Enter story content..." required />
-            
-            {hasVideo && story && <VideoManager story={formData} onUpdate={handleLocalUpdate} />}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <h3 className="text-lg font-semibold">{story ? 'Edit Story' : 'Create New Story'}</h3>
+        <InputField label="Title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} required />
+        <SelectField label="Author" value={formData.authorId} onChange={e => setFormData({ ...formData, authorId: e.target.value })} options={users.map(u => ({ value: u.id, label: u.name }))} />
+        <SelectField label="Status" value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} options={['draft', 'approved', 'published'].map(s => ({ value: s, label: s }))} />
+        <InputField label="Duration" value={formData.duration} onChange={(e) => setFormData({ ...formData, duration: e.target.value })} placeholder="MM:SS" />
+        <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} rows={8} className="w-full form-input" placeholder="Enter story content..." required />
 
-            <div className="flex justify-end space-x-3 pt-4">
-                <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary"><Save className="w-4 h-4" /><span>Save</span></button>
-            </div>
-        </form>
+        {/* FIX: This now correctly detects video keywords and shows the VideoManager during story creation. */}
+        {hasVideo && <VideoManager story={formData} onUpdate={handleLocalUpdate} />}
+
+        <div className="flex justify-end space-x-3 pt-4">
+          <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
+          <button type="submit" className="btn-primary"><Save className="w-4 h-4" /><span>Save</span></button>
+        </div>
+      </form>
     </div>
   );
 };
