@@ -1530,10 +1530,12 @@ const RundownEditor = ({ onSave, onCancel, templates }) => {
 };
 
 const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
+  const { db } = useAuth(); // Add this line to get the db instance
+
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    authorId: currentUser.uid, // Fix: Use uid instead of id
+    authorId: currentUser.uid,
     platform: 'broadcast',
     tags: '',
     duration: '01:00'
@@ -1558,7 +1560,7 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
       const storyToSave = {
         ...formData,
         tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-        authorId: currentUser.uid, // Fix: Use uid
+        authorId: currentUser.uid,
         status: 'draft',
         created: new Date().toISOString(),
         comments: []
@@ -1574,8 +1576,8 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
         storyToSave.videoStatus = 'No Media';
       }
 
-      // Save directly to Firebase like rundown does
-      await addDoc(collection(window.db || currentUser.db, "stories"), storyToSave);
+      // Fix: Use the correct db instance from useAuth
+      await addDoc(collection(db, "stories"), storyToSave);
 
       // Close modal immediately like rundown does
       onCancel();
