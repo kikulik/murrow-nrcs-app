@@ -1948,22 +1948,22 @@ const PresenterPrintView = ({ rundown, close }) => {
 };
 
 const generateRTF = (rundown) => {
-  const rtfHeader = `{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}`;
+  // Updated RTF header with Unicode support and Sylfaen font
+  const rtfHeader = `{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033{\\fonttbl{\\f0\\fnil\\fcharset0 Sylfaen;}{\\f1\\fnil\\fcharset204 Sylfaen;}}\\uc1 `;
   const rtfFooter = `}`;
 
   let rtfContent = rtfHeader;
 
-  // Add title
-  rtfContent += `\\f0\\fs28\\b ${rundown.name}\\b0\\par\\par`;
+  // Add title with Unicode support
+  rtfContent += `\\f1\\fs28\\b ${escapeRTFText(rundown.name)}\\b0\\par\\par`;
 
   rundown.items.forEach((item, index) => {
     // Add item number and title
-    rtfContent += `\\fs24\\b ${index + 1}. ${item.title} (${item.duration})\\b0\\par\\par`;
+    rtfContent += `\\fs24\\b ${index + 1}. ${escapeRTFText(item.title)} (${item.duration})\\b0\\par\\par`;
 
     // Add content or placeholder
     if (item.content) {
-      const cleanContent = item.content.replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
-      rtfContent += `\\fs20 ${cleanContent}\\par\\par`;
+      rtfContent += `\\fs20 ${escapeRTFText(item.content)}\\par\\par`;
     } else {
       rtfContent += `\\fs20\\i [No script content for this item]\\i0\\par\\par`;
     }
@@ -1976,6 +1976,21 @@ const generateRTF = (rundown) => {
 
   rtfContent += rtfFooter;
   return rtfContent;
+};
+
+// Add this helper function for proper Unicode encoding
+const escapeRTFText = (text) => {
+  if (!text) return '';
+
+  return text
+    .replace(/\\/g, '\\\\')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+    .replace(/[\u0080-\uFFFF]/g, (match) => {
+      // Convert Unicode characters to RTF Unicode escape sequences
+      const code = match.charCodeAt(0);
+      return `\\u${code}?`;
+    });
 };
 
 const downloadRTF = (rundown) => {
