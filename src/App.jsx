@@ -1010,9 +1010,13 @@ const RundownTab = ({ rundown, setRundown, stories, onAddStory, updateRundownSto
           </label>
         </div>
         <div className="flex items-center gap-4">
-          <button onClick={onPrintForPresenter} disabled={!currentRundown || rundown.length === 0} className="btn-secondary">
-            <Printer className="w-4 h-4" />
-            <span>Print for Presenter</span>
+          <button
+            onClick={() => downloadRTF({ name: currentRundown?.name || 'Rundown', items: rundown })}
+            disabled={!currentRundown || rundown.length === 0}
+            className="btn-secondary"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Export RTF</span>
           </button>
           <div className="flex items-center gap-2 text-lg">
             <Clock className="w-6 h-6" />
@@ -1937,6 +1941,50 @@ const PresenterPrintView = ({ rundown, close }) => {
       </div>
     </>
   );
+};
+
+const generateRTF = (rundown) => {
+  const rtfHeader = `{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}`;
+  const rtfFooter = `}`;
+
+  let rtfContent = rtfHeader;
+
+  // Add title
+  rtfContent += `\\f0\\fs28\\b ${rundown.name}\\b0\\par\\par`;
+
+  rundown.items.forEach((item, index) => {
+    // Add item number and title
+    rtfContent += `\\fs24\\b ${index + 1}. ${item.title} (${item.duration})\\b0\\par\\par`;
+
+    // Add content or placeholder
+    if (item.content) {
+      const cleanContent = item.content.replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+      rtfContent += `\\fs20 ${cleanContent}\\par\\par`;
+    } else {
+      rtfContent += `\\fs20\\i [No script content for this item]\\i0\\par\\par`;
+    }
+
+    // Add page break except for last item
+    if (index < rundown.items.length - 1) {
+      rtfContent += `\\page`;
+    }
+  });
+
+  rtfContent += rtfFooter;
+  return rtfContent;
+};
+
+const downloadRTF = (rundown) => {
+  const rtfContent = generateRTF(rundown);
+  const blob = new Blob([rtfContent], { type: 'application/rtf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${rundown.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.rtf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
 const InputField = ({ label, ...props }) => (
