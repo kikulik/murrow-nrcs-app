@@ -1357,6 +1357,16 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
     setFormData(prev => ({ ...prev, ...updatedStory }));
   }
 
+  const handleTypeClick = (type) => {
+    const typeTag = `[${type}]`;
+    // Toggles the video type tag in the title
+    const newTitle = formData.title.toUpperCase().includes(typeTag)
+      ? formData.title.replace(new RegExp(`\\s*\\[${type}\\]`, 'ig'), '')
+      : `${formData.title} ${typeTag}`;
+
+    setFormData(prev => ({ ...prev, title: newTitle.trim() }));
+  };
+
   const hasVideo = VIDEO_ITEM_TYPES.some(t => formData.title.toUpperCase().includes(t));
 
   return (
@@ -1364,12 +1374,30 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
       <form onSubmit={handleSubmit} className="space-y-4">
         <h3 className="text-lg font-semibold">{story ? 'Edit Story' : 'Create New Story'}</h3>
         <InputField label="Title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} required />
+        
+        {/* NEW: Buttons to add/remove video component tags to the title */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Add Video Component</label>
+          <div className="flex flex-wrap gap-2">
+              {VIDEO_ITEM_TYPES.map(type => (
+                  <button
+                      type="button"
+                      key={type}
+                      onClick={() => handleTypeClick(type)}
+                      className={`btn-secondary !px-3 !py-1 text-xs transition-colors ${formData.title.toUpperCase().includes(`[${type}]`) ? 'bg-blue-200 dark:bg-blue-800 border-blue-400' : ''}`}
+                  >
+                      {RUNDOWN_ITEM_TYPES[type] || type}
+                  </button>
+              ))}
+          </div>
+        </div>
+
         <SelectField label="Author" value={formData.authorId} onChange={e => setFormData({ ...formData, authorId: e.target.value })} options={users.map(u => ({ value: u.id, label: u.name }))} />
         <SelectField label="Status" value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} options={['draft', 'approved', 'published'].map(s => ({ value: s, label: s }))} />
         <InputField label="Duration" value={formData.duration} onChange={(e) => setFormData({ ...formData, duration: e.target.value })} placeholder="MM:SS" />
         <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} rows={8} className="w-full form-input" placeholder="Enter story content..." required />
 
-        {/* FIX: This now correctly detects video keywords and shows the VideoManager during story creation. */}
+        {/* This now correctly detects video keywords and shows the VideoManager during story creation. */}
         {hasVideo && <VideoManager story={formData} onUpdate={handleLocalUpdate} />}
 
         <div className="flex justify-end space-x-3 pt-4">
