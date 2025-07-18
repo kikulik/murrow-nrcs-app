@@ -382,24 +382,38 @@ const MurrowNRCS = () => {
   };
 
   // MODIFIED handleSave TO INCLUDE MEDIA ID GENERATION
-  const handleSave = async (item, type) => {
+    const handleSave = async (item, type) => {
     if (!db) return;
     const { collection, doc, updateDoc, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     const collectionName = `${type}s`;
 
-    // Add media ID for new stories
-    if (type === 'story' && !item.id) {
-      item.mediaId = generateMediaId(item.type?.[0] || 'PKG');
-      item.hasVideo = false;
-      item.videoUrl = null;
-    }
-
     if (item.id) {
+      // This is an update to an existing item
       const docRef = doc(db, collectionName, item.id);
       const { id, ...dataToUpdate } = item;
       await updateDoc(docRef, dataToUpdate);
     } else {
-      await addDoc(collection(db, collectionName), item);
+      // This is a new item creation
+      const itemToSave = { ...item };
+
+      if (type === 'story') {
+        // Add required default fields for a new story
+        itemToSave.created = new Date().toISOString();
+        itemToSave.comments = [];
+        
+        // Check if it's a video story based on title tags like [PKG]
+        const isVideoStory = VIDEO_ITEM_TYPES.some(t => itemToSave.title.toUpperCase().includes(`[${t}]`));
+        
+        if (isVideoStory) {
+          const videoType = VIDEO_ITEM_TYPES.find(t => itemToSave.title.toUpperCase().includes(`[${t}]`)) || 'PKG';
+          itemToSave.mediaId = generateMediaId(videoType);
+          itemToSave.hasVideo = false;
+          itemToSave.videoUrl = null;
+          itemToSave.videoStatus = 'No Media';
+        }
+      }
+      
+      await addDoc(collection(db, collectionName), itemToSave);
     }
     setModal(null);
   };
