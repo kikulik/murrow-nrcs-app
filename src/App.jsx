@@ -1341,7 +1341,7 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
     tags: story?.tags?.join(', ') || '',
     duration: story?.duration || '',
     status: story?.status || 'draft',
-    // Include video fields for local state management
+    // Keep video fields for data consistency when editing
     videoId: story?.videoId,
     videoStatus: story?.videoStatus,
     videoUrl: story?.videoUrl
@@ -1356,10 +1356,6 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
     });
   };
 
-  const handleLocalUpdate = (updatedStory) => {
-    setFormData(prev => ({ ...prev, ...updatedStory }));
-  }
-
   const handleTypeClick = (type) => {
     const typeTag = `[${type}]`;
     // Toggles the video type tag in the title
@@ -1370,15 +1366,13 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
     setFormData(prev => ({ ...prev, title: newTitle.trim() }));
   };
 
-  const hasVideo = VIDEO_ITEM_TYPES.some(t => formData.title.toUpperCase().includes(t));
-
   return (
     <div className="bg-blue-50 dark:bg-gray-800/50 rounded-lg border-l-4 border-blue-500 p-6 my-4">
       <form onSubmit={handleSubmit} className="space-y-4">
         <h3 className="text-lg font-semibold">{story ? 'Edit Story' : 'Create New Story'}</h3>
         <InputField label="Title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} required />
 
-        {/* NEW: Buttons to add/remove video component tags to the title */}
+        {/* Buttons to add/remove video component tags to the title */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Add Video Component</label>
           <div className="flex flex-wrap gap-2">
@@ -1400,8 +1394,7 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
         <InputField label="Duration" value={formData.duration} onChange={(e) => setFormData({ ...formData, duration: e.target.value })} placeholder="MM:SS" />
         <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} rows={8} className="w-full form-input" placeholder="Enter story content..." required />
 
-        {/* This now correctly detects video keywords and shows the VideoManager during story creation. */}
-        {hasVideo && <VideoManager story={formData} onUpdate={handleLocalUpdate} />}
+        {/* FIX: Removed the direct call to VideoManager to prevent the crash. The video controls will appear on the story card after it's saved. */}
 
         <div className="flex justify-end space-x-3 pt-4">
           <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
