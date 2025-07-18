@@ -768,7 +768,7 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
       {modal?.type === 'storyEditor' && (
         <StoryEditor
           onSave={(story) => {
-            onSave(story);
+            onSave(story, 'story');
             setModal(null);
           }}
           onCancel={() => setModal(null)}
