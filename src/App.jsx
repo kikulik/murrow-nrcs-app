@@ -779,7 +779,7 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
           </button>
         </div>
       </div>
-      {isCreating && <InlineStoryEditor story={null} onSave={handleSaveStory} onCancel={handleCancel} users={users} authorId={currentUser.uid} />}
+      {isCreating && <InlineStoryEditor story={null} onSave={handleSaveStory} onCancel={handleCancel} users={users} authorId={currentUser.id} />}
       {view === 'all' ? (
         <div className="grid gap-4">{stories.map(renderStoryCard)}</div>
       ) : (
@@ -1376,14 +1376,18 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
     videoUrl: story?.videoUrl
   });
 
-  // FIX: Made this function async and added await to ensure the onSave promise completes.
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await onSave({
-      ...story,
-      ...formData,
-      tags: formData.tags.split(',').map(tag => tag.trim())
-    });
+    try {
+      await onSave({
+        ...story,
+        ...formData,
+        authorId: formData.authorId || authorId, // Ensure authorId is set
+        tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
+      });
+    } catch (error) {
+      console.error('Error saving story:', error);
+    }
   };
 
   const handleTypeClick = (type) => {
