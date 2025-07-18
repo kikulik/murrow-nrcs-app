@@ -436,7 +436,7 @@ const MurrowNRCS = () => {
     if (isNew) {
       const newStory = {
         ...story,
-        authorId: currentUser.uid,
+        authorId: currentUser.id || currentUser.uid,
         status: 'draft',
         created: new Date().toISOString(),
         comments: [],
@@ -659,8 +659,8 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
   const [view, setView] = useState('all');
   const [modal, setModal] = useState(null);
 
-  const myAuthoredStories = stories.filter(story => story.authorId === currentUser.id);
-  const myAssignedTasks = assignments.filter(assignment => assignment.assigneeId === currentUser.id);
+  const myAuthoredStories = stories.filter(story => story.authorId === (currentUser.id || currentUser.uid));
+  const myAssignedTasks = assignments.filter(assignment => assignment.assigneeId === (currentUser.id || currentUser.uid));
 
   const handleShare = (story) => {
     const shareText = `Check out this story: "${story.title}"\n(Link: /stories/${story.id})`;
@@ -1536,7 +1536,7 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    authorId: currentUser.id,
+    authorId: currentUser.id || currentUser.uid,
     platform: 'broadcast',
     tags: '',
     duration: '01:00'
