@@ -1959,13 +1959,13 @@ const generateRTF = (rundown) => {
 
   rundown.items.forEach((item, index) => {
     // Add item number and title
-    rtfContent += `\\fs24\\b ${index + 1}. ${escapeRTFText(item.title)} (${item.duration})\\b0\\par\\par`;
+    rtfContent += `\\fs28\\b ${index + 1}. ${escapeRTFText(item.title)} (${item.duration})\\b0\\par\\par`;
 
     // Add content or placeholder
     if (item.content) {
-      rtfContent += `\\fs20 ${escapeRTFText(item.content)}\\par\\par`;
+      rtfContent += `\\fs28 ${escapeRTFText(item.content)}\\par\\par`;
     } else {
-      rtfContent += `\\fs20\\i [No script content for this item]\\i0\\par\\par`;
+      rtfContent += `\\fs28\\i [No script content for this item]\\i0\\par\\par`;
     }
 
     // Add page break except for last item
