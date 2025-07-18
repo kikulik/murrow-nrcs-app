@@ -400,10 +400,10 @@ const MurrowNRCS = () => {
         // Add required default fields for a new story
         itemToSave.created = new Date().toISOString();
         itemToSave.comments = [];
-        
+
         // Check if it's a video story based on title tags like [PKG]
         const isVideoStory = VIDEO_ITEM_TYPES.some(t => itemToSave.title.toUpperCase().includes(`[${t}]`));
-        
+
         if (isVideoStory) {
           const videoType = VIDEO_ITEM_TYPES.find(t => itemToSave.title.toUpperCase().includes(`[${t}]`)) || 'PKG';
           itemToSave.mediaId = generateMediaId(videoType);
@@ -412,7 +412,7 @@ const MurrowNRCS = () => {
           itemToSave.videoStatus = 'No Media';
         }
       }
-      
+
       await addDoc(collection(db, collectionName), itemToSave);
     }
     setModal(null);
@@ -679,8 +679,9 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
     document.body.removeChild(textArea);
   };
 
-  const handleSaveStory = (story) => {
-    onSave(story);
+  // FIX: Made this function async and added await to ensure the save completes before closing the form.
+  const handleSaveStory = async (story) => {
+    await onSave(story);
     setEditingId(null);
     setIsCreating(false);
   }
@@ -698,7 +699,7 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
       return <InlineStoryEditor key={story.id} story={story} onSave={handleSaveStory} onCancel={handleCancel} users={users} />
     }
 
-    // MAIN CHANGE: Use video-enabled story component
+    // Use video-enabled story component for display
     return (
       <StoryWithVideo
         key={story.id}
@@ -706,7 +707,6 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
         onStoryUpdate={onSave}
         onVideoAttached={(storyId, videoUrl, mediaId) => {
           console.log(`Video attached to story ${storyId}: ${mediaId}`);
-          // Optional: Add toast notification here
         }}
         onVideoDetached={(storyId, mediaId) => {
           console.log(`Video detached from story ${storyId}`);
