@@ -1010,6 +1010,10 @@ const RundownTab = ({ rundown, setRundown, stories, onAddStory, updateRundownSto
           </label>
         </div>
         <div className="flex items-center gap-4">
+          <button onClick={onPrintForPresenter} disabled={!currentRundown || rundown.length === 0} className="btn-secondary">
+            <Printer className="w-4 h-4" />
+            <span>Print for Presenter</span>
+          </button>
           <button
             onClick={() => downloadRTF({ name: currentRundown?.name || 'Rundown', items: rundown })}
             disabled={!currentRundown || rundown.length === 0}
