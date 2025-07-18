@@ -767,10 +767,7 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
 
       {modal?.type === 'storyEditor' && (
         <StoryEditor
-          onSave={(story) => {
-            onSave(story, 'story');
-            setModal(null);
-          }}
+          onSave={() => { }} // Not used anymore
           onCancel={() => setModal(null)}
           users={users}
           currentUser={currentUser}
@@ -1536,7 +1533,7 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    authorId: currentUser.id || currentUser.uid,
+    authorId: currentUser.uid, // Fix: Use uid instead of id
     platform: 'broadcast',
     tags: '',
     duration: '01:00'
@@ -1551,28 +1548,41 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
     );
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const storyToSave = {
-      ...formData,
-      tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-      authorId: currentUser.id,
-      status: 'draft',
-      created: new Date().toISOString(),
-      comments: []
-    };
 
-    // Add video fields if video types are selected
-    const isVideoStory = selectedTypes.some(type => VIDEO_ITEM_TYPES.includes(type));
-    if (isVideoStory) {
-      const videoType = selectedTypes.find(type => VIDEO_ITEM_TYPES.includes(type)) || 'PKG';
-      storyToSave.mediaId = generateMediaId(videoType);
-      storyToSave.hasVideo = false;
-      storyToSave.videoUrl = null;
-      storyToSave.videoStatus = 'No Media';
+    // Create story exactly like rundown does
+    try {
+      const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+      const storyToSave = {
+        ...formData,
+        tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+        authorId: currentUser.uid, // Fix: Use uid
+        status: 'draft',
+        created: new Date().toISOString(),
+        comments: []
+      };
+
+      // Add video fields if video types are selected
+      const isVideoStory = selectedTypes.some(type => VIDEO_ITEM_TYPES.includes(type));
+      if (isVideoStory) {
+        const videoType = selectedTypes.find(type => VIDEO_ITEM_TYPES.includes(type)) || 'PKG';
+        storyToSave.mediaId = generateMediaId(videoType);
+        storyToSave.hasVideo = false;
+        storyToSave.videoUrl = null;
+        storyToSave.videoStatus = 'No Media';
+      }
+
+      // Save directly to Firebase like rundown does
+      await addDoc(collection(window.db || currentUser.db, "stories"), storyToSave);
+
+      // Close modal immediately like rundown does
+      onCancel();
+
+    } catch (error) {
+      console.error('Error saving story:', error);
     }
-
-    onSave(storyToSave);
   };
 
   return (
@@ -1606,7 +1616,7 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
           label="Author"
           value={formData.authorId}
           onChange={e => setFormData({ ...formData, authorId: e.target.value })}
-          options={users.map(u => ({ value: u.id, label: u.name }))}
+          options={users.map(u => ({ value: u.uid || u.id, label: u.name }))}
         />
 
         <InputField
