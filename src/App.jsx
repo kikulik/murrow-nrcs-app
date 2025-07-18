@@ -382,7 +382,7 @@ const MurrowNRCS = () => {
   };
 
   // MODIFIED handleSave TO INCLUDE MEDIA ID GENERATION
-    const handleSave = async (item, type) => {
+  const handleSave = async (item, type) => {
     if (!db) return;
     const { collection, doc, updateDoc, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
     const collectionName = `${type}s`;
