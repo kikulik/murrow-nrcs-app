@@ -1361,9 +1361,10 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
     videoUrl: story?.videoUrl
   });
 
-  const handleSubmit = (e) => {
+  // FIX: Made this function async and added await to ensure the onSave promise completes.
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSave({
+    await onSave({
       ...story,
       ...formData,
       tags: formData.tags.split(',').map(tag => tag.trim())
@@ -1407,8 +1408,6 @@ const InlineStoryEditor = ({ story, onSave, onCancel, users, authorId }) => {
         <SelectField label="Status" value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} options={['draft', 'approved', 'published'].map(s => ({ value: s, label: s }))} />
         <InputField label="Duration" value={formData.duration} onChange={(e) => setFormData({ ...formData, duration: e.target.value })} placeholder="MM:SS" />
         <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} rows={8} className="w-full form-input" placeholder="Enter story content..." required />
-
-        {/* FIX: Removed the direct call to VideoManager to prevent the crash. The video controls will appear on the story card after it's saved. */}
 
         <div className="flex justify-end space-x-3 pt-4">
           <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
