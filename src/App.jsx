@@ -383,39 +383,54 @@ const MurrowNRCS = () => {
 
   // MODIFIED handleSave TO INCLUDE MEDIA ID GENERATION
   const handleSave = async (item, type) => {
-    if (!db) return;
-    const { collection, doc, updateDoc, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-    const collectionName = `${type}s`;
-
-    if (item.id) {
-      // This is an update to an existing item
-      const docRef = doc(db, collectionName, item.id);
-      const { id, ...dataToUpdate } = item;
-      await updateDoc(docRef, dataToUpdate);
-    } else {
-      // This is a new item creation
-      const itemToSave = { ...item };
-
-      if (type === 'story') {
-        // Add required default fields for a new story
-        itemToSave.created = new Date().toISOString();
-        itemToSave.comments = [];
-
-        // Check if it's a video story based on title tags like [PKG]
-        const isVideoStory = VIDEO_ITEM_TYPES.some(t => itemToSave.title.toUpperCase().includes(`[${t}]`));
-
-        if (isVideoStory) {
-          const videoType = VIDEO_ITEM_TYPES.find(t => itemToSave.title.toUpperCase().includes(`[${t}]`)) || 'PKG';
-          itemToSave.mediaId = generateMediaId(videoType);
-          itemToSave.hasVideo = false;
-          itemToSave.videoUrl = null;
-          itemToSave.videoStatus = 'No Media';
-        }
-      }
-
-      await addDoc(collection(db, collectionName), itemToSave);
+    if (!db) {
+      console.error("Database not available. Save operation cancelled.");
+      return;
     }
-    setModal(null);
+
+    // FIX: This function now correctly determines the collection name, especially for "story".
+    const getCollectionName = (t) => {
+      if (t === 'story') return 'stories';
+      return `${t}s`;
+    }
+    const collectionName = getCollectionName(type);
+
+    try {
+      const { collection, doc, updateDoc, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+      if (item.id) {
+        // This is an update to an existing item
+        const docRef = doc(db, collectionName, item.id);
+        const { id, ...dataToUpdate } = item;
+        await updateDoc(docRef, dataToUpdate);
+      } else {
+        // This is a new item creation
+        const itemToSave = { ...item };
+
+        if (type === 'story') {
+          // Add required default fields for a new story
+          itemToSave.created = new Date().toISOString();
+          itemToSave.comments = [];
+
+          // Check if it's a video story based on title tags like [PKG]
+          const isVideoStory = VIDEO_ITEM_TYPES.some(t => itemToSave.title.toUpperCase().includes(`[${t}]`));
+
+          if (isVideoStory) {
+            const videoType = VIDEO_ITEM_TYPES.find(t => itemToSave.title.toUpperCase().includes(`[${t}]`)) || 'PKG';
+            itemToSave.mediaId = generateMediaId(videoType);
+            itemToSave.hasVideo = false;
+            itemToSave.videoUrl = null;
+            itemToSave.videoStatus = 'No Media';
+          }
+        }
+
+        await addDoc(collection(db, collectionName), itemToSave);
+      }
+      setModal(null);
+    } catch (error) {
+      console.error(`Error saving to collection '${collectionName}':`, error);
+      // You can add a user-facing error notification here if desired
+    }
   };
 
   const handleDelete = async (id, type) => {
