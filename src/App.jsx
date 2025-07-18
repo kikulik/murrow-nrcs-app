@@ -670,14 +670,12 @@ const Chatbox = ({ messages, onSendMessage, currentUser, getUserById }) => {
   );
 };
 
-// MODIFIED STORIES TAB TO USE VIDEO COMPONENTS
 const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getStatusColor, getPlatformIcon, userPermissions, currentUser, searchTerm, setSearchTerm, users, db }) => {
   const [view, setView] = useState('all');
-  const [editingId, setEditingId] = useState(null);
-  const [isCreating, setIsCreating] = useState(false);
+  const [modal, setModal] = useState(null);
 
-  const myAuthoredStories = stories.filter(story => story.authorId === currentUser.uid);
-  const myAssignedTasks = assignments.filter(assignment => assignment.assigneeId === currentUser.uid);
+  const myAuthoredStories = stories.filter(story => story.authorId === currentUser.id);
+  const myAssignedTasks = assignments.filter(assignment => assignment.assigneeId === currentUser.id);
 
   const handleShare = (story) => {
     const shareText = `Check out this story: "${story.title}"\n(Link: /stories/${story.id})`;
@@ -694,25 +692,8 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
     document.body.removeChild(textArea);
   };
 
-  // FIX: Made this function async and added await to ensure the save completes before closing the form.
-  const handleSaveStory = async (story) => {
-    await onSave(story);
-    setEditingId(null);
-    setIsCreating(false);
-  }
-
-  const handleCancel = () => {
-    setEditingId(null);
-    setIsCreating(false);
-  }
-
   const renderStoryCard = (story) => {
-    const isEditing = editingId === story.id;
-    const canEdit = userPermissions.canChangeAnyStatus || story.authorId === currentUser.uid;
-
-    if (isEditing) {
-      return <InlineStoryEditor key={story.id} story={story} onSave={handleSaveStory} onCancel={handleCancel} users={users} />
-    }
+    const canEdit = userPermissions.canChangeAnyStatus || story.authorId === currentUser.id;
 
     // Use video-enabled story component for display
     return (
@@ -773,13 +754,13 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
               className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
             />
           </div>
-          <button onClick={() => setIsCreating(true)} className="btn-primary">
+          <button onClick={() => setModal({ type: 'storyEditor' })} className="btn-primary">
             <Plus className="w-4 h-4" />
             <span>New Story</span>
           </button>
         </div>
       </div>
-      {isCreating && <InlineStoryEditor story={null} onSave={handleSaveStory} onCancel={handleCancel} users={users} authorId={currentUser.id} />}
+
       {view === 'all' ? (
         <div className="grid gap-4">{stories.map(renderStoryCard)}</div>
       ) : (
@@ -797,6 +778,18 @@ const StoriesTab = ({ stories, assignments, onSave, onDelete, getUserById, getSt
             <p className="text-gray-500">You have no pending assignments.</p>
           )}
         </div>
+      )}
+
+      {modal?.type === 'storyEditor' && (
+        <StoryEditor
+          onSave={(story) => {
+            onSave(story);
+            setModal(null);
+          }}
+          onCancel={() => setModal(null)}
+          users={users}
+          currentUser={currentUser}
+        />
       )}
     </div>
   );
@@ -1547,6 +1540,113 @@ const RundownEditor = ({ onSave, onCancel, templates }) => {
           <button type="submit" className="btn-primary">
             <Save className="w-4 h-4" />
             <span>Create</span>
+          </button>
+        </div>
+      </form>
+    </ModalBase>
+  );
+};
+
+const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
+  const [formData, setFormData] = useState({
+    title: '',
+    content: '',
+    authorId: currentUser.id,
+    platform: 'broadcast',
+    tags: '',
+    duration: '01:00',
+    status: 'draft'
+  });
+
+  const handleTypeClick = (type) => {
+    const typeTag = `[${type}]`;
+    const newTitle = formData.title.toUpperCase().includes(typeTag)
+      ? formData.title.replace(new RegExp(`\\s*\\[${type}\\]`, 'ig'), '')
+      : `${formData.title} ${typeTag}`;
+    setFormData(prev => ({ ...prev, title: newTitle.trim() }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const storyToSave = {
+      ...formData,
+      tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+      authorId: currentUser.id
+    };
+    onSave(storyToSave);
+  };
+
+  return (
+    <ModalBase onCancel={onCancel} title="Create New Story" maxWidth="max-w-4xl">
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <InputField
+          label="Title"
+          value={formData.title}
+          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+          required
+        />
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Add Video Component</label>
+          <div className="flex flex-wrap gap-2">
+            {VIDEO_ITEM_TYPES.map(type => (
+              <button
+                type="button"
+                key={type}
+                onClick={() => handleTypeClick(type)}
+                className={`btn-secondary !px-3 !py-1 text-xs transition-colors ${formData.title.toUpperCase().includes(`[${type}]`) ? 'bg-blue-200 dark:bg-blue-800 border-blue-400' : ''}`}
+              >
+                {RUNDOWN_ITEM_TYPES[type] || type}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <SelectField
+          label="Author"
+          value={formData.authorId}
+          onChange={e => setFormData({ ...formData, authorId: e.target.value })}
+          options={users.map(u => ({ value: u.id, label: u.name }))}
+        />
+
+        <SelectField
+          label="Status"
+          value={formData.status}
+          onChange={e => setFormData({ ...formData, status: e.target.value })}
+          options={['draft', 'approved', 'published'].map(s => ({ value: s, label: s }))}
+        />
+
+        <InputField
+          label="Duration"
+          value={formData.duration}
+          onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+          placeholder="MM:SS"
+        />
+
+        <InputField
+          label="Tags (comma separated)"
+          value={formData.tags}
+          onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+          placeholder="news, breaking, local"
+        />
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
+          <textarea
+            value={formData.content}
+            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+            rows={8}
+            className="w-full form-input"
+            placeholder="Enter story content..."
+            required
+          />
+        </div>
+
+        <div className="flex justify-end space-x-3 pt-4">
+          <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
+          <button type="submit" className="btn-primary">
+            <Save className="w-4 h-4" />
+            <span>Save Story</span>
           </button>
         </div>
       </form>
