@@ -381,14 +381,12 @@ const MurrowNRCS = () => {
     }
   };
 
-  // MODIFIED handleSave TO INCLUDE MEDIA ID GENERATION
   const handleSave = async (item, type) => {
     if (!db) {
       console.error("Database not available. Save operation cancelled.");
       return;
     }
 
-    // FIX: This function now correctly determines the collection name, especially for "story".
     const getCollectionName = (t) => {
       if (t === 'story') return 'stories';
       return `${t}s`;
@@ -399,34 +397,21 @@ const MurrowNRCS = () => {
       const { collection, doc, updateDoc, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
       if (item.id) {
-        // This is an update to an existing item
         const docRef = doc(db, collectionName, item.id);
         const { id, ...dataToUpdate } = item;
         await updateDoc(docRef, dataToUpdate);
       } else {
-        // This is a new item creation
         const itemToSave = { ...item };
-
         if (type === 'story') {
-          // Add required default fields for a new story
-          itemToSave.created = new Date().toISOString();
-          itemToSave.comments = [];
-
-          // Check if it's a video story based on title tags like [PKG]
-          const isVideoStory = VIDEO_ITEM_TYPES.some(t => itemToSave.title.toUpperCase().includes(`[${t}]`));
-
-          if (isVideoStory) {
-            const videoType = VIDEO_ITEM_TYPES.find(t => itemToSave.title.toUpperCase().includes(`[${t}]`)) || 'PKG';
-            itemToSave.mediaId = generateMediaId(videoType);
-            itemToSave.hasVideo = false;
-            itemToSave.videoUrl = null;
-            itemToSave.videoStatus = 'No Media';
-          }
+          itemToSave.created = itemToSave.created || new Date().toISOString();
+          itemToSave.comments = itemToSave.comments || [];
+          itemToSave.status = itemToSave.status || 'draft';
         }
-
         await addDoc(collection(db, collectionName), itemToSave);
       }
-      setModal(null);
+
+      // Only close modal after successful save
+      console.log('Item saved successfully');
     } catch (error) {
       console.error(`Error saving to collection '${collectionName}':`, error);
       // You can add a user-facing error notification here if desired
@@ -1554,16 +1539,16 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
     authorId: currentUser.id,
     platform: 'broadcast',
     tags: '',
-    duration: '01:00',
-    status: 'draft'
+    duration: '01:00'
   });
+  const [selectedTypes, setSelectedTypes] = useState([]);
 
-  const handleTypeClick = (type) => {
-    const typeTag = `[${type}]`;
-    const newTitle = formData.title.toUpperCase().includes(typeTag)
-      ? formData.title.replace(new RegExp(`\\s*\\[${type}\\]`, 'ig'), '')
-      : `${formData.title} ${typeTag}`;
-    setFormData(prev => ({ ...prev, title: newTitle.trim() }));
+  const handleTypeChange = (type) => {
+    setSelectedTypes(prev =>
+      prev.includes(type)
+        ? prev.filter(t => t !== type)
+        : [...prev, type]
+    );
   };
 
   const handleSubmit = (e) => {
@@ -1571,8 +1556,22 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
     const storyToSave = {
       ...formData,
       tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-      authorId: currentUser.id
+      authorId: currentUser.id,
+      status: 'draft',
+      created: new Date().toISOString(),
+      comments: []
     };
+
+    // Add video fields if video types are selected
+    const isVideoStory = selectedTypes.some(type => VIDEO_ITEM_TYPES.includes(type));
+    if (isVideoStory) {
+      const videoType = selectedTypes.find(type => VIDEO_ITEM_TYPES.includes(type)) || 'PKG';
+      storyToSave.mediaId = generateMediaId(videoType);
+      storyToSave.hasVideo = false;
+      storyToSave.videoUrl = null;
+      storyToSave.videoStatus = 'No Media';
+    }
+
     onSave(storyToSave);
   };
 
@@ -1587,17 +1586,18 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
         />
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Add Video Component</label>
-          <div className="flex flex-wrap gap-2">
-            {VIDEO_ITEM_TYPES.map(type => (
-              <button
-                type="button"
-                key={type}
-                onClick={() => handleTypeClick(type)}
-                className={`btn-secondary !px-3 !py-1 text-xs transition-colors ${formData.title.toUpperCase().includes(`[${type}]`) ? 'bg-blue-200 dark:bg-blue-800 border-blue-400' : ''}`}
-              >
-                {RUNDOWN_ITEM_TYPES[type] || type}
-              </button>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Item Type(s)</label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
+              <label key={abbr} className="flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500 dark:has-[:checked]:bg-blue-900/50">
+                <input
+                  type="checkbox"
+                  checked={selectedTypes.includes(abbr)}
+                  onChange={() => handleTypeChange(abbr)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium">{name} ({abbr})</span>
+              </label>
             ))}
           </div>
         </div>
@@ -1607,13 +1607,6 @@ const StoryEditor = ({ onSave, onCancel, users, currentUser }) => {
           value={formData.authorId}
           onChange={e => setFormData({ ...formData, authorId: e.target.value })}
           options={users.map(u => ({ value: u.id, label: u.name }))}
-        />
-
-        <SelectField
-          label="Status"
-          value={formData.status}
-          onChange={e => setFormData({ ...formData, status: e.target.value })}
-          options={['draft', 'approved', 'published'].map(s => ({ value: s, label: s }))}
         />
 
         <InputField
