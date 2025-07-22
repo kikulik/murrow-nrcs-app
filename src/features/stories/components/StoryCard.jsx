@@ -1,5 +1,4 @@
 // src/features/stories/components/StoryCard.jsx
-// Individual story card component
 import React from 'react';
 import { Send, Trash2, Clock } from 'lucide-react';
 import { useAppContext } from '../../../context/AppContext';
@@ -7,14 +6,14 @@ import { getStatusColor } from '../../../utils/styleHelpers';
 import { getPlatformIcon } from '../../../utils/iconHelpers.jsx';
 import CollapsibleVideoSection from './CollapsibleVideoSection';
 
-const StoryCard = ({ story, onSendToRundown, userPermissions, currentUser }) => {
+const StoryCard = ({ story, onSendToRundown, onDelete, userPermissions, currentUser }) => {
     const { appState } = useAppContext();
 
-    const getUserById = (id) => appState.users.find(u => u.id === id);
-    const canEdit = userPermissions.canChangeAnyStatus || story.authorId === currentUser.id;
+    const getUserById = (id) => appState.users.find(u => u.id === id || u.uid === id);
+    const canEdit = userPermissions.canChangeAnyStatus || story.authorId === currentUser.id || story.authorId === currentUser.uid;
 
     const handleDelete = () => {
-        // Will be handled by modal manager
+        onDelete(story.id);
     };
 
     return (
@@ -55,7 +54,7 @@ const StoryCard = ({ story, onSendToRundown, userPermissions, currentUser }) => 
                 >
                     <Send className="w-4 h-4" />
                 </button>
-                {canEdit && (
+                {(canEdit || userPermissions.canDeleteAnything) && (
                     <button
                         onClick={handleDelete}
                         className="btn-secondary !p-2"
