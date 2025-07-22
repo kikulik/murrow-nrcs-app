@@ -1,12 +1,11 @@
 // src/features/assignments/AssignmentsTab.jsx
 import React, { useState } from 'react';
-import { Plus, Edit3, Trash2, Calendar } from 'lucide-react';
+import { Plus, Edit3, Trash2 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
 import { getStatusColor } from '../../utils/styleHelpers';
 import AssignmentEditor from './components/AssignmentEditor';
-import { doc, updateDoc, addDoc, collection } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 const AssignmentsTab = () => {
     const { currentUser, db } = useAuth();
@@ -15,11 +14,13 @@ const AssignmentsTab = () => {
     const [isCreating, setIsCreating] = useState(false);
 
     const userPermissions = getUserPermissions(currentUser.role);
-    const getUserById = (id) => appState.users.find(u => u.id === id);
+    const getUserById = (id) => appState.users.find(u => u.id === id || u.uid === id);
 
     const handleSave = async (assignment) => {
         if (!db) return;
         try {
+            const { doc, updateDoc, addDoc, collection } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
             if (assignment.id) {
                 const docRef = doc(db, "assignments", assignment.id);
                 const { id, ...dataToUpdate } = assignment;
@@ -35,10 +36,15 @@ const AssignmentsTab = () => {
         }
     };
 
+    const handleCancel = () => {
+        setEditingId(null);
+        setIsCreating(false);
+    };
+
     const handleDelete = (id) => {
         setAppState(prev => ({
             ...prev,
-            modal: { type: 'deleteConfirm', id, itemType: 'assignment' }
+            modal: { type: 'deleteConfirm', id, itemType: 'assignments' }
         }));
     };
 
