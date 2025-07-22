@@ -1,5 +1,4 @@
 // src/features/assignments/AssignmentsTab.jsx
-// Assignments management tab
 import React, { useState } from 'react';
 import { Plus, Edit3, Trash2, Calendar } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
@@ -7,9 +6,10 @@ import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
 import { getStatusColor } from '../../utils/styleHelpers';
 import AssignmentEditor from './components/AssignmentEditor';
+import { doc, updateDoc, addDoc, collection } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 const AssignmentsTab = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
     const [editingId, setEditingId] = useState(null);
     const [isCreating, setIsCreating] = useState(false);
@@ -17,15 +17,22 @@ const AssignmentsTab = () => {
     const userPermissions = getUserPermissions(currentUser.role);
     const getUserById = (id) => appState.users.find(u => u.id === id);
 
-    const handleSave = (assignment) => {
-        // Implementation for saving assignment
-        setEditingId(null);
-        setIsCreating(false);
-    };
-
-    const handleCancel = () => {
-        setEditingId(null);
-        setIsCreating(false);
+    const handleSave = async (assignment) => {
+        if (!db) return;
+        try {
+            if (assignment.id) {
+                const docRef = doc(db, "assignments", assignment.id);
+                const { id, ...dataToUpdate } = assignment;
+                await updateDoc(docRef, dataToUpdate);
+            } else {
+                await addDoc(collection(db, "assignments"), assignment);
+            }
+        } catch (error) {
+            console.error("Error saving assignment:", error);
+        } finally {
+            setEditingId(null);
+            setIsCreating(false);
+        }
     };
 
     const handleDelete = (id) => {
