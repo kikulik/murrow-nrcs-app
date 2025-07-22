@@ -1,6 +1,5 @@
 // src/features/rundown/RundownTab.jsx
-// Main rundown management tab
-import React, { useState } from 'react';
+import React from 'react';
 import { Plus, Clock, Trash2, Radio, Printer } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -8,9 +7,10 @@ import { getUserPermissions } from '../../lib/permissions';
 import { calculateTotalDuration, formatDuration } from '../../utils/helpers';
 import RundownList from './components/RundownList';
 import PrintDropdown from './components/PrintDropdown';
+import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 const RundownTab = ({ liveMode }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
     const userPermissions = getUserPermissions(currentUser.role);
 
@@ -18,6 +18,24 @@ const RundownTab = ({ liveMode }) => {
     const totalDuration = calculateTotalDuration(currentRundown?.items || []);
     const availableRundowns = appState.rundowns.filter(r => appState.showArchived || !r.archived);
     const isRundownLocked = liveMode.isLive && liveMode.liveRundownId === appState.activeRundownId;
+
+    const handleDeleteRundown = () => {
+        if (!currentRundown) return;
+        setAppState(prev => ({
+            ...prev,
+            modal: { type: 'deleteConfirm', id: currentRundown.id, itemType: 'rundowns' }
+        }));
+    };
+
+    const handleRundownItemUpdate = async (updatedItems) => {
+        if (!db || !currentRundown) return;
+        const rundownRef = doc(db, "rundowns", currentRundown.id);
+        try {
+            await updateDoc(rundownRef, { items: updatedItems });
+        } catch (error) {
+            console.error("Failed to update rundown items:", error);
+        }
+    };
 
     const handleRundownChange = (e) => {
         const value = e.target.value;
