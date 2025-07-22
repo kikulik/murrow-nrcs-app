@@ -1,8 +1,8 @@
 // src/components/modals/AddStoryToRundownModal.jsx
-// Modal for adding stories to rundowns
 import React, { useState, useEffect } from 'react';
 import { Check } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import ModalBase from '../common/ModalBase';
 import InputField from '../ui/InputField';
 import SelectField from '../ui/SelectField';
@@ -10,6 +10,7 @@ import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 
 const AddStoryToRundownModal = ({ onCancel }) => {
     const { appState } = useAppContext();
+    const { db } = useAuth();
     const [tab, setTab] = useState('existing');
     const [selectedStoryId, setSelectedStoryId] = useState('');
     const [selectedTypes, setSelectedTypes] = useState(['PKG']);
@@ -19,6 +20,7 @@ const AddStoryToRundownModal = ({ onCancel }) => {
         duration: '01:00'
     });
     const [searchTerm, setSearchTerm] = useState('');
+    const [saving, setSaving] = useState(false);
 
     const filteredStories = appState.stories.filter(story =>
         story.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -38,14 +40,70 @@ const AddStoryToRundownModal = ({ onCancel }) => {
         );
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (selectedTypes.length === 0) {
-            console.log("Please select at least one item type.");
+            alert("Please select at least one item type.");
             return;
         }
 
-        // Implementation for adding story to rundown
-        onCancel();
+        if (!appState.activeRundownId) {
+            alert("No active rundown selected.");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const { doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            const rundownRef = doc(db, "rundowns", appState.activeRundownId);
+            const rundownDoc = await getDoc(rundownRef);
+
+            if (!rundownDoc.exists()) {
+                throw new Error("Rundown not found");
+            }
+
+            const rundownData = rundownDoc.data();
+            let newRundownItem;
+
+            if (tab === 'existing' && selectedStoryId) {
+                const story = appState.stories.find(s => s.id === selectedStoryId);
+                if (!story) {
+                    throw new Error("Selected story not found");
+                }
+
+                newRundownItem = {
+                    id: Date.now(),
+                    time: "00:00:00",
+                    title: story.title,
+                    duration: story.duration || "01:00",
+                    type: selectedTypes,
+                    content: story.content,
+                    storyId: story.id,
+                    storyStatus: 'Not Ready',
+                };
+            } else {
+                newRundownItem = {
+                    id: Date.now(),
+                    time: "00:00:00",
+                    title: newStoryData.title || `New ${selectedTypes[0]} Item`,
+                    duration: newStoryData.duration,
+                    type: selectedTypes,
+                    content: newStoryData.content,
+                    storyId: null,
+                    storyStatus: null,
+                };
+            }
+
+            const updatedItems = [...(rundownData.items || []), newRundownItem];
+            await updateDoc(rundownRef, { items: updatedItems });
+
+            onCancel();
+        } catch (error) {
+            console.error("Error adding item to rundown:", error);
+            alert("Failed to add item to rundown. Please try again.");
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -78,8 +136,8 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                         <button
                             onClick={() => setTab('existing')}
                             className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${tab === 'existing'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
                                 }`}
                         >
                             From Existing Story
@@ -87,8 +145,8 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                         <button
                             onClick={() => setTab('new')}
                             className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${tab === 'new'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
                                 }`}
                         >
                             As New Blank Item
@@ -104,12 +162,16 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                         />
-                        <SelectField
-                            label="Select a Story"
-                            value={selectedStoryId}
-                            onChange={e => setSelectedStoryId(e.target.value)}
-                            options={filteredStories.map(s => ({ value: s.id, label: s.title }))}
-                        />
+                        {filteredStories.length > 0 ? (
+                            <SelectField
+                                label="Select a Story"
+                                value={selectedStoryId}
+                                onChange={e => setSelectedStoryId(e.target.value)}
+                                options={filteredStories.map(s => ({ value: s.id, label: s.title }))}
+                            />
+                        ) : (
+                            <p className="text-sm text-gray-500">No stories found matching your search.</p>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -145,10 +207,10 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     <button
                         onClick={handleSave}
                         className="btn-primary"
-                        disabled={selectedTypes.length === 0 || (tab === 'existing' && !selectedStoryId)}
+                        disabled={saving || selectedTypes.length === 0 || (tab === 'existing' && !selectedStoryId && filteredStories.length > 0)}
                     >
                         <Check className="w-4 h-4" />
-                        <span>Add to Rundown</span>
+                        <span>{saving ? 'Adding...' : 'Add to Rundown'}</span>
                     </button>
                 </div>
             </div>
