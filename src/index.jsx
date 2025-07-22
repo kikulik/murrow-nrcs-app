@@ -1,11 +1,13 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
-import AppWrapper from './App'; // Make sure this points to App.jsx
+import AppWrapper from './App';
 
-console.log("index.jsx: Script is running"); // <-- ADD THIS
+// 1. Create the root only ONCE
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<AppWrapper />); // Ensure you are rendering AppWrapper
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+// 2. Render your single top-level AppWrapper component
+root.render(
+  <React.StrictMode>
+    <AppWrapper />
+  </React.StrictMode>
+);
