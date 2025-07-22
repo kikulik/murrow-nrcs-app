@@ -1,13 +1,11 @@
 // src/features/stories/StoriesTab.jsx
-// Stories management tab
 import React, { useState } from 'react';
-import { Plus, Search, Send, Trash2, Clock } from 'lucide-react';
+import { Plus, Search, Calendar } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
-import { getStatusColor, getPlatformIcon } from '../../utils/styleHelpers';
+import { getStatusColor } from '../../utils/styleHelpers';
 import StoryCard from './components/StoryCard';
-import StoryEditor from './components/StoryEditor';
 import SendStoryToRundownModal from './components/SendStoryToRundownModal';
 
 const StoriesTab = () => {
@@ -35,6 +33,13 @@ const StoriesTab = () => {
         setAppState(prev => ({ ...prev, modal: { type: 'storyEditor' } }));
     };
 
+    const handleDeleteStory = (storyId) => {
+        setAppState(prev => ({
+            ...prev,
+            modal: { type: 'deleteConfirm', id: storyId, itemType: 'stories' }
+        }));
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -44,8 +49,8 @@ const StoriesTab = () => {
                         <button
                             onClick={() => setView('all')}
                             className={`px-3 py-1 text-sm rounded-md ${view === 'all'
-                                    ? 'bg-white dark:bg-gray-900 text-blue-600'
-                                    : 'text-gray-600 dark:text-gray-300'
+                                ? 'bg-white dark:bg-gray-900 text-blue-600'
+                                : 'text-gray-600 dark:text-gray-300'
                                 }`}
                         >
                             All Stories
@@ -53,8 +58,8 @@ const StoriesTab = () => {
                         <button
                             onClick={() => setView('mine')}
                             className={`px-3 py-1 text-sm rounded-md ${view === 'mine'
-                                    ? 'bg-white dark:bg-gray-900 text-blue-600'
-                                    : 'text-gray-600 dark:text-gray-300'
+                                ? 'bg-white dark:bg-gray-900 text-blue-600'
+                                : 'text-gray-600 dark:text-gray-300'
                                 }`}
                         >
                             My Stories
@@ -86,6 +91,7 @@ const StoriesTab = () => {
                             key={story.id}
                             story={story}
                             onSendToRundown={setSendToRundownModalStory}
+                            onDelete={handleDeleteStory}
                             userPermissions={userPermissions}
                             currentUser={currentUser}
                         />
@@ -101,6 +107,7 @@ const StoriesTab = () => {
                                     key={story.id}
                                     story={story}
                                     onSendToRundown={setSendToRundownModalStory}
+                                    onDelete={handleDeleteStory}
                                     userPermissions={userPermissions}
                                     currentUser={currentUser}
                                 />
@@ -134,9 +141,6 @@ const StoriesTab = () => {
 };
 
 const AssignmentCard = ({ assignment }) => {
-    const { appState } = useAppContext();
-    const { getStatusColor } = useStyleHelpers();
-
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
             <div className="flex items-center flex-wrap gap-x-3 mb-2">
