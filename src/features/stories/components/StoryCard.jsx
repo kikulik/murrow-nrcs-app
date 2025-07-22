@@ -3,7 +3,8 @@
 import React from 'react';
 import { Send, Trash2, Clock } from 'lucide-react';
 import { useAppContext } from '../../../context/AppContext';
-import { getStatusColor, getPlatformIcon } from '../../../utils/styleHelpers';
+import { getStatusColor } from '../../../utils/styleHelpers';
+import { getPlatformIcon } from '../../../utils/iconHelpers';
 import CollapsibleVideoSection from './CollapsibleVideoSection';
 
 const StoryCard = ({ story, onSendToRundown, userPermissions, currentUser }) => {
