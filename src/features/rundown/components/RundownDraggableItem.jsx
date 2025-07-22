@@ -1,0 +1,153 @@
+// src/features/rundown/components/RundownDraggableItem.jsx
+// Individual draggable rundown item
+import React, { useRef, useState, useEffect } from 'react';
+import { useDrag, useDrop } from 'react-dnd';
+import { Edit3, Trash2, Lock } from 'lucide-react';
+import { useAppContext } from '../../../context/AppContext';
+import { getStatusColor, getRundownTypeColor } from '../../../utils/styleHelpers';
+import { RUNDOWN_STORY_STATUSES } from '../../../lib/constants';
+import RundownItemEditor from './RundownItemEditor';
+
+const RundownDraggableItem = ({
+    item,
+    index,
+    moveItem,
+    canDrag,
+    isLocked,
+    isEditing,
+    onToggleEdit,
+    onSave,
+    onCancel,
+    onDeleteItem
+}) => {
+    const { appState } = useAppContext();
+    const ref = useRef(null);
+
+    const [{ handlerId }, drop] = useDrop({
+        accept: 'rundownItem',
+        collect(monitor) {
+            return { handlerId: monitor.getHandlerId() };
+        },
+        hover(draggedItem, monitor) {
+            if (!ref.current || isLocked || isEditing) return;
+            const dragIndex = draggedItem.index;
+            const hoverIndex = index;
+            if (dragIndex === hoverIndex) return;
+
+            const hoverBoundingRect = ref.current?.getBoundingClientRect();
+            const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
+            const clientOffset = monitor.getClientOffset();
+            const hoverClientY = clientOffset.y - hoverBoundingRect.top;
+
+            if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) return;
+            if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) return;
+
+            moveItem(dragIndex, hoverIndex);
+            draggedItem.index = hoverIndex;
+        },
+    });
+
+    const [{ isDragging }, drag] = useDrag({
+        type: 'rundownItem',
+        item: () => ({ id: item.id, index }),
+        canDrag: canDrag && !isLocked && !isEditing,
+        collect: (monitor) => ({
+            isDragging: monitor.isDragging(),
+        }),
+    });
+
+    if (canDrag && !isLocked) {
+        drag(drop(ref));
+    } else {
+        drop(ref);
+    }
+
+    const story = appState.stories?.find(s => s.id === item.storyId);
+    const author = story ? appState.users.find(u => u.id === story.authorId) : null;
+
+    if (isEditing) {
+        return (
+            <RundownItemEditor
+                item={item}
+                onSave={onSave}
+                onCancel={onCancel}
+            />
+        );
+    }
+
+    return (
+        <div
+            ref={ref}
+            data-handler-id={handlerId}
+            className={`group relative ${isDragging ? 'opacity-50' : 'opacity-100'} ${isLocked ? 'opacity-75' : ''} border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors`}
+        >
+            <div className="flex items-center justify-between px-4 py-1 min-h-[40px]">
+                <div className="flex items-center space-x-3 flex-shrink-0">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium bg-gray-100 dark:bg-gray-600 flex-shrink-0">
+                        {index + 1}
+                    </div>
+                </div>
+
+                <div className="flex-1 min-w-0 px-3">
+                    <h4 className="font-medium truncate text-sm">{item.title}</h4>
+                    {isLocked && <Lock className="w-3 h-3 text-red-500 inline ml-2" />}
+                </div>
+
+                <div className="flex items-center gap-1 flex-shrink-0 px-2">
+                    {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
+                        <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
+                            {t}
+                        </span>
+                    ))}
+                </div>
+
+                <div className="flex-shrink-0 px-2 min-w-[100px]">
+                    {item.storyId ? (
+                        <select
+                            value={item.storyStatus || 'Not Ready'}
+                            onChange={(e) => {/* Update story status */ }}
+                            disabled={isLocked}
+                            className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus)} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    ) : (
+                        <span className="text-xs text-gray-400">No Status</span>
+                    )}
+                </div>
+
+                <div className="flex-shrink-0 px-2 min-w-[60px]">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">{item.duration}</span>
+                </div>
+
+                <div className="flex-shrink-0 px-2 min-w-[80px]">
+                    {author ? (
+                        <span className="text-xs text-gray-500 truncate">{author.name}</span>
+                    ) : (
+                        <span className="text-xs text-gray-400">No Author</span>
+                    )}
+                </div>
+
+                {!isLocked && (
+                    <div className="flex items-center gap-1 flex-shrink-0 pl-2">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onToggleEdit(item.id); }}
+                            className="p-1 text-gray-400 hover:text-blue-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                            <Edit3 className="w-3 h-3" />
+                        </button>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
+                            className="p-1 text-gray-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                            <Trash2 className="w-3 h-3" />
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default RundownDraggableItem;
