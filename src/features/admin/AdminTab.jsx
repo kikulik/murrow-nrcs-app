@@ -1,43 +1,60 @@
-// src/features/assignments/AssignmentsTab.jsx
+// src/features/admin/AdminTab.jsx
 import React, { useState } from 'react';
-import { Plus, Edit3, Trash2, Calendar } from 'lucide-react';
+import { UserPlus, Plus, FilePlus, Edit3, Trash2 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
-import { getStatusColor } from '../../utils/styleHelpers';
+import UserEditor from './components/UserEditor';
+import GroupEditor from './components/GroupEditor';
+import TemplateEditor from './components/TemplateEditor';
 import { doc, updateDoc, addDoc, collection } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
-const AssignmentsTab = () => {
-    const { currentUser, db } = useAuth();
+const AdminTab = () => {
+    const { currentUser, db, register } = useAuth();
     const { appState, setAppState } = useAppContext();
-    const [editingId, setEditingId] = useState(null);
-    const [isCreating, setIsCreating] = useState(false);
+    const [editingTarget, setEditingTarget] = useState(null);
+    const [isCreating, setIsCreating] = useState(null);
 
     const userPermissions = getUserPermissions(currentUser.role);
-    const getUserById = (id) => appState.users.find(u => u.id === id);
+    const getGroupById = (id) => appState.groups.find(g => g.id === id);
 
-    const handleSave = async (assignment) => {
+    const handleSaveItem = async (item, type) => {
         if (!db) return;
+        const collectionName = type === 'user' ? 'users' : type === 'group' ? 'groups' : 'rundownTemplates';
+
         try {
-            if (assignment.id) {
-                const docRef = doc(db, "assignments", assignment.id);
-                const { id, ...dataToUpdate } = assignment;
+            if (item.id) {
+                // Editing existing item
+                const docRef = doc(db, collectionName, item.id);
+                const { id, ...dataToUpdate } = item;
                 await updateDoc(docRef, dataToUpdate);
             } else {
-                await addDoc(collection(db, "assignments"), assignment);
+                // Creating new item
+                if (type === 'user' && item.password) {
+                    // Special handling for new user registration
+                    await register(item.email, item.password, item.name, item.role);
+                } else {
+                    await addDoc(collection(db, collectionName), item);
+                }
             }
         } catch (error) {
-            console.error("Error saving assignment:", error);
+            console.error(`Error saving ${type}:`, error);
         } finally {
-            setEditingId(null);
-            setIsCreating(false);
+            setEditingTarget(null);
+            setIsCreating(null);
         }
     };
 
+    const handleCancel = () => {
+        setEditingTarget(null);
+        setIsCreating(null);
+    };
+
     const handleDelete = (id, type) => {
+        const collectionName = type === 'user' ? 'users' : type === 'group' ? 'groups' : 'rundownTemplates';
         setAppState(prev => ({
             ...prev,
-            modal: { type: 'deleteConfirm', id, itemType: type }
+            modal: { type: 'deleteConfirm', id, itemType: collectionName }
         }));
     };
 
