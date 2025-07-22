@@ -1,5 +1,4 @@
 // src/features/MurrowNRCS.jsx
-// Main application component
 import React from 'react';
 import { Tv, Bell, LogOut, FileText, PlayCircle, Calendar, Shield, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -13,24 +12,37 @@ import AdminTab from './admin/AdminTab';
 import LiveModeTab from './rundown/LiveModeTab';
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
+import { collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
 
 const MurrowNRCS = () => {
-    const { currentUser, logout } = useAuth();
+    const { currentUser, logout, db } = useAuth();
     const { appState, setAppState } = useAppContext();
     const userPermissions = getUserPermissions(currentUser.role);
 
     const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
     const liveMode = useLiveMode(activeRundown, appState.activeRundownId);
 
-    const updateAppState = (updates) => {
-        setAppState(prev => ({ ...prev, ...updates }));
+    const handleSendMessage = async (text) => {
+        if (!db || !currentUser) return;
+        try {
+            const newMessage = {
+                userId: currentUser.uid,
+                userName: currentUser.name,
+                text,
+                timestamp: new Date().toISOString()
+            };
+            await addDoc(collection(db, "messages"), newMessage);
+        } catch (error) {
+            console.error('Error sending message:', error);
+        }
     };
 
     const setActiveTab = (tab) => {
         if (liveMode.isLive && tab !== 'live') {
-            updateAppState({ activeTab: 'live' });
+            setAppState(prev => ({ ...prev, activeTab: 'live' }));
         } else {
-            updateAppState({ activeTab: tab });
+            setAppState(prev => ({ ...prev, activeTab: tab }));
         }
     };
 
@@ -75,8 +87,8 @@ const MurrowNRCS = () => {
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${appState.activeTab === tab.id
-                                            ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                                            : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                         }`}
                                 >
                                     <tab.icon className="w-4 h-4" />
@@ -98,9 +110,9 @@ const MurrowNRCS = () => {
 
             <Chatbox
                 messages={appState.messages}
-                onSendMessage={(text) => {/* Handle message sending */ }}
+                onSendMessage={handleSendMessage}
                 currentUser={currentUser}
-                getUserById={(id) => appState.users.find(u => u.id === id)}
+                getUserById={(id) => appState.users.find(u => u.uid === id)}
             />
 
             <ModalManager />
