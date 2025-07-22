@@ -1,25 +1,30 @@
 // src/features/rundown/components/RundownList.jsx
-// Rundown items list with drag and drop
 import React, { useState, useCallback } from 'react';
 import { ListPlus } from 'lucide-react';
 import RundownDraggableItem from './RundownDraggableItem';
 
-const RundownList = ({ rundown, isLocked, onAddStory, userPermissions }) => {
+const RundownList = ({ rundown, isLocked, onAddStory, userPermissions, onItemsUpdate }) => {
     const [editingId, setEditingId] = useState(null);
 
     const moveItem = useCallback((dragIndex, hoverIndex) => {
         if (isLocked) return;
-        // Implementation for moving items
-    }, [isLocked]);
+        const draggedItem = rundown.items[dragIndex];
+        const newItems = [...rundown.items];
+        newItems.splice(dragIndex, 1);
+        newItems.splice(hoverIndex, 0, draggedItem);
+        onItemsUpdate(newItems);
+    }, [isLocked, rundown.items, onItemsUpdate]);
 
     const handleSaveItem = (itemId, updatedData) => {
-        // Implementation for saving item
+        const newItems = rundown.items.map(item => (item.id === itemId ? updatedData : item));
+        onItemsUpdate(newItems);
         setEditingId(null);
     };
 
     const handleDeleteRundownItem = (itemId) => {
         if (isLocked) return;
-        // Implementation for deleting item
+        const newItems = rundown.items.filter(item => item.id !== itemId);
+        onItemsUpdate(newItems);
     };
 
     return (
