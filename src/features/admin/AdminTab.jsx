@@ -1,32 +1,38 @@
-// src/features/admin/AdminTab.jsx
-// Administration tab for managing users, groups, and templates
+// src/features/assignments/AssignmentsTab.jsx
 import React, { useState } from 'react';
-import { UserPlus, Plus, FilePlus, Edit3, Trash2 } from 'lucide-react';
+import { Plus, Edit3, Trash2, Calendar } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
-import UserEditor from './components/UserEditor';
-import GroupEditor from './components/GroupEditor';
-import TemplateEditor from './components/TemplateEditor';
+import { getStatusColor } from '../../utils/styleHelpers';
+import AssignmentEditor from './components/AssignmentEditor';
+import { doc, updateDoc, addDoc, collection } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
-const AdminTab = () => {
-    const { currentUser } = useAuth();
+const AssignmentsTab = () => {
+    const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
-    const [editingTarget, setEditingTarget] = useState(null); // { type: 'user' | 'group' | 'template', id: number }
-    const [isCreating, setIsCreating] = useState(null); // 'user' | 'group' | 'template'
+    const [editingId, setEditingId] = useState(null);
+    const [isCreating, setIsCreating] = useState(false);
 
     const userPermissions = getUserPermissions(currentUser.role);
-    const getGroupById = (id) => appState.groups.find(g => g.id === id);
+    const getUserById = (id) => appState.users.find(u => u.id === id);
 
-    const handleSaveItem = (item, type) => {
-        // Implementation for saving items
-        setEditingTarget(null);
-        setIsCreating(null);
-    };
-
-    const handleCancel = () => {
-        setEditingTarget(null);
-        setIsCreating(null);
+    const handleSave = async (assignment) => {
+        if (!db) return;
+        try {
+            if (assignment.id) {
+                const docRef = doc(db, "assignments", assignment.id);
+                const { id, ...dataToUpdate } = assignment;
+                await updateDoc(docRef, dataToUpdate);
+            } else {
+                await addDoc(collection(db, "assignments"), assignment);
+            }
+        } catch (error) {
+            console.error("Error saving assignment:", error);
+        } finally {
+            setEditingId(null);
+            setIsCreating(false);
+        }
     };
 
     const handleDelete = (id, type) => {
