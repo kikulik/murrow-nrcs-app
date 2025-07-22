@@ -6,11 +6,10 @@ import StoryEditor from '../../features/stories/components/StoryEditor';
 import RundownEditor from '../modals/RundownEditor';
 import AddStoryToRundownModal from '../modals/AddStoryToRundownModal';
 import ConfirmationDialog from './ConfirmationDialog';
-import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 const ModalManager = () => {
     const { appState, setAppState } = useAppContext();
-    const { db } = useAuth(); // Get db instance for deletions
+    const { db } = useAuth();
 
     const closeModal = () => {
         setAppState(prev => ({ ...prev, modal: null }));
@@ -19,7 +18,7 @@ const ModalManager = () => {
     const handleDelete = async (id, itemType) => {
         if (!db) return;
         try {
-            // itemType should be the collection name e.g., 'stories', 'assignments'
+            const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
             await deleteDoc(doc(db, itemType, id));
         } catch (error) {
             console.error(`Failed to delete item from ${itemType}:`, error);
