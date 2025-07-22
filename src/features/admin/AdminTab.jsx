@@ -5,7 +5,6 @@ import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
 import { getStatusColor } from '../../utils/styleHelpers';
-import AssignmentEditor from './components/AssignmentEditor';
 import { doc, updateDoc, addDoc, collection } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 const AssignmentsTab = () => {
