@@ -1,5 +1,7 @@
 // src/features/rundown/components/RundownList.jsx
 import React, { useState, useCallback } from 'react';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ListPlus } from 'lucide-react';
 import RundownDraggableItem from './RundownDraggableItem';
 
@@ -28,35 +30,37 @@ const RundownList = ({ rundown, isLocked, onAddStory, userPermissions, onItemsUp
     };
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border">
-            <div className="p-4 border-b flex justify-end">
-                <button
-                    onClick={onAddStory}
-                    disabled={isLocked}
-                    className={`btn-primary ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                    <ListPlus className="w-4 h-4" />
-                    <span>Add Item</span>
-                </button>
+        <DndProvider backend={HTML5Backend}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border">
+                <div className="p-4 border-b flex justify-end">
+                    <button
+                        onClick={onAddStory}
+                        disabled={isLocked}
+                        className={`btn-primary ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        <ListPlus className="w-4 h-4" />
+                        <span>Add Item</span>
+                    </button>
+                </div>
+                <div className="divide-y dark:divide-gray-700">
+                    {rundown.items?.map((item, index) => (
+                        <RundownDraggableItem
+                            key={item.id}
+                            item={item}
+                            index={index}
+                            moveItem={moveItem}
+                            canDrag={userPermissions.canMoveRundownItems}
+                            isLocked={isLocked}
+                            isEditing={editingId === item.id}
+                            onToggleEdit={() => setEditingId(item.id)}
+                            onSave={handleSaveItem}
+                            onCancel={() => setEditingId(null)}
+                            onDeleteItem={handleDeleteRundownItem}
+                        />
+                    ))}
+                </div>
             </div>
-            <div className="divide-y dark:divide-gray-700">
-                {rundown.items?.map((item, index) => (
-                    <RundownDraggableItem
-                        key={item.id}
-                        item={item}
-                        index={index}
-                        moveItem={moveItem}
-                        canDrag={userPermissions.canMoveRundownItems}
-                        isLocked={isLocked}
-                        isEditing={editingId === item.id}
-                        onToggleEdit={() => setEditingId(item.id)}
-                        onSave={handleSaveItem}
-                        onCancel={() => setEditingId(null)}
-                        onDeleteItem={handleDeleteRundownItem}
-                    />
-                ))}
-            </div>
-        </div>
+        </DndProvider>
     );
 };
 
