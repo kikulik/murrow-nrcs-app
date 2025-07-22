@@ -8,7 +8,7 @@ import { useLiveMode } from '../hooks/useLiveMode';
 import StoriesTab from './stories/StoriesTab';
 import RundownTab from './rundown/RundownTab';
 import AssignmentsTab from './assignments/AssignmentsTab';
-import AdminTab from './admin/AdminTab';
+import AdminTab from './admin/AdminTab.jsx';
 import LiveModeTab from './rundown/LiveModeTab';
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
