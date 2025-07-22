@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AppWrapper from './App';
+import './index.css';
 
 // 1. Create the root only ONCE
 const root = ReactDOM.createRoot(document.getElementById('root'));
