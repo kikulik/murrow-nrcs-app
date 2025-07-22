@@ -72,7 +72,7 @@ const RundownTab = ({ liveMode }) => {
                         </select>
                         {currentRundown && userPermissions.canDeleteAnything && (
                             <button
-                                onClick={() => {/* Handle delete */ }}
+                                onClick={handleDeleteRundown}
                                 disabled={isRundownLocked}
                                 className={`p-2 text-gray-500 hover:text-red-600 rounded ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 title="Delete Rundown"
@@ -125,6 +125,7 @@ const RundownTab = ({ liveMode }) => {
                     isLocked={isRundownLocked}
                     onAddStory={openAddStoryModal}
                     userPermissions={userPermissions}
+                    onItemsUpdate={handleRundownItemUpdate}
                 />
             ) : (
                 <div className="text-center py-12 text-gray-500">
