@@ -1,6 +1,6 @@
 // src/features/stories/components/StoryCard.jsx
 import React from 'react';
-import { Send, Trash2, Clock, Edit3 } from 'lucide-react';
+import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAppContext } from '../../../context/AppContext';
 import { getStatusColor } from '../../../utils/styleHelpers';
 import { getPlatformIcon } from '../../../utils/iconHelpers.jsx';
@@ -32,7 +32,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                         </span>
                     </div>
                     <div className="flex items-center space-x-2 text-sm text-gray-500 shrink-0">
-                        <Clock className="w-4 h-4" />
+                        <CustomIcon name="time" size={16} />
                         <span>{story.duration}</span>
                     </div>
                 </div>
@@ -57,7 +57,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                         className="btn-secondary !p-2"
                         title="Edit Story"
                     >
-                        <Edit3 className="w-4 h-4" />
+                        <CustomIcon name="edit" size={16} />
                     </button>
                 )}
                 <button
@@ -65,7 +65,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                     className="btn-secondary !p-2"
                     title="Send to Rundown"
                 >
-                    <Send className="w-4 h-4" />
+                    <CustomIcon name="send" size={16} />
                 </button>
                 {(canEdit || userPermissions.canDeleteAnything) && (
                     <button
@@ -73,7 +73,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                         className="btn-secondary !p-2"
                         title="Delete Story"
                     >
-                        <Trash2 className="w-4 h-4 text-red-500" />
+                        <CustomIcon name="cancel" size={16} className="text-red-500" />
                     </button>
                 )}
             </div>
