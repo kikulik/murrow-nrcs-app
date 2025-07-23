@@ -2,7 +2,7 @@
 // Individual draggable rundown item
 import React, { useRef, useState, useEffect } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
-import { Edit3, Trash2, Lock } from 'lucide-react';
+import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAppContext } from '../../../context/AppContext';
 import { getStatusColor, getRundownTypeColor } from '../../../utils/styleHelpers';
 import { RUNDOWN_STORY_STATUSES } from '../../../lib/constants';
@@ -90,7 +90,7 @@ const RundownDraggableItem = ({
 
                 <div className="flex-1 min-w-0 px-3">
                     <h4 className="font-medium truncate text-sm">{item.title}</h4>
-                    {isLocked && <Lock className="w-3 h-3 text-red-500 inline ml-2" />}
+                    {isLocked && <CustomIcon name="lock" size={12} className="text-red-500 inline ml-2" />}
                 </div>
 
                 <div className="flex items-center gap-1 flex-shrink-0 px-2">
@@ -135,13 +135,13 @@ const RundownDraggableItem = ({
                             onClick={(e) => { e.stopPropagation(); onToggleEdit(item.id); }}
                             className="p-1 text-gray-400 hover:text-blue-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                            <Edit3 className="w-3 h-3" />
+                            <CustomIcon name="edit" size={12} />
                         </button>
                         <button
                             onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
                             className="p-1 text-gray-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                            <Trash2 className="w-3 h-3" />
+                            <CustomIcon name="cancel" size={12} />
                         </button>
                     </div>
                 )}
