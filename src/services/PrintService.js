@@ -4,8 +4,6 @@ export class PrintService {
   static printForPresenter(rundown) {
     const printWindow = window.open('', '_blank');
     const currentDate = new Date().toLocaleDateString();
-    const totalDuration = rundown.items ?
-      PrintService.formatDuration(PrintService.calculateTotalDuration(rundown.items)) : '00:00';
 
     printWindow.document.write(`
             <!DOCTYPE html>
@@ -24,6 +22,7 @@ export class PrintService {
                         margin-bottom: 30px; 
                         border-bottom: 2px solid #000; 
                         padding-bottom: 15px; 
+                        font-size: 16pt;
                     }
                     .item { 
                         margin-bottom: 40px; 
@@ -39,12 +38,6 @@ export class PrintService {
                     }
                     .item-title { 
                         font-size: 18pt;
-                        font-weight: bold; 
-                        margin-bottom: 5px;
-                    }
-                    .item-meta {
-                        font-size: 12pt;
-                        color: #666;
                         margin-bottom: 10px;
                     }
                     .item-content { 
@@ -73,18 +66,12 @@ export class PrintService {
                 <div class="header">
                     <h1>${rundown.name}</h1>
                     <p>Presenter Script - ${currentDate}</p>
-                    <p>Total Duration: ${totalDuration}</p>
                 </div>
                 
                 ${rundown.items.map((item, index) => `
                     <div class="item">
                         <div class="item-header ${item.type?.includes('LV') ? 'live-item' : ''} ${item.type?.includes('BRK') ? 'break-item' : ''}">
                             <div class="item-title">${index + 1}. ${item.title}</div>
-                            <div class="item-meta">
-                                Duration: ${item.duration} | 
-                                Type: ${Array.isArray(item.type) ? item.type.join(', ') : item.type || 'N/A'} |
-                                Status: ${item.storyStatus || 'N/A'}
-                            </div>
                         </div>
                         <div class="item-content">
                             ${item.content || '[No script content available for this item]'}
@@ -105,11 +92,13 @@ export class PrintService {
     setTimeout(() => printWindow.print(), 500);
   }
 
-  static printRundownList(rundown) {
+  static printRundownList(rundown, airTime = '12:00') {
     const printWindow = window.open('', '_blank');
     const currentDate = new Date().toLocaleDateString();
     const totalDuration = rundown.items ?
       PrintService.formatDuration(PrintService.calculateTotalDuration(rundown.items)) : '00:00';
+
+    const itemsWithTime = PrintService.calculateRundownTimes(rundown.items, airTime);
 
     printWindow.document.write(`
             <!DOCTYPE html>
@@ -153,7 +142,7 @@ export class PrintService {
                 <div class="header">
                     <h1>${rundown.name}</h1>
                     <div class="meta">
-                        <p>Date: ${currentDate} | Total Duration: ${totalDuration}</p>
+                        <p>Date: ${currentDate} | Air Time: ${airTime} | Total Duration: ${totalDuration}</p>
                     </div>
                 </div>
                 
@@ -169,10 +158,10 @@ export class PrintService {
                         </tr>
                     </thead>
                     <tbody>
-                        ${rundown.items.map((item, index) => `
+                        ${itemsWithTime.map((item, index) => `
                             <tr class="${item.type?.includes('BRK') ? 'break-row' : ''} ${item.type?.includes('LV') ? 'live-row' : ''}">
                                 <td>${index + 1}</td>
-                                <td>${item.time || '00:00:00'}</td>
+                                <td>${item.calculatedTime}</td>
                                 <td>${item.title}</td>
                                 <td>${item.duration}</td>
                                 <td class="item-types">${Array.isArray(item.type) ? item.type.join(', ') : item.type || ''}</td>
@@ -195,22 +184,51 @@ export class PrintService {
     setTimeout(() => printWindow.print(), 500);
   }
 
+  static calculateRundownTimes(items, airTime) {
+    if (!Array.isArray(items)) return [];
+
+    const [hours, minutes] = airTime.split(':').map(Number);
+    let currentTimeInMinutes = hours * 60 + minutes;
+
+    return items.map(item => {
+      const itemStartTime = PrintService.minutesToTimeString(currentTimeInMinutes);
+      const durationInMinutes = PrintService.parseDuration(item.duration);
+      currentTimeInMinutes += durationInMinutes;
+
+      return {
+        ...item,
+        calculatedTime: itemStartTime
+      };
+    });
+  }
+
+  static minutesToTimeString(totalMinutes) {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  static parseDuration(durationStr) {
+    if (!durationStr || typeof durationStr !== 'string') return 0;
+    const parts = durationStr.split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 1) return parts[0];
+    return 0;
+  }
+
   static generateRTF(rundown) {
     const rtfHeader = `{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}\\uc1 `;
     const rtfFooter = `}`;
 
     let rtfContent = rtfHeader;
-    rtfContent += `\\f0\\fs32\\b ${PrintService.escapeRTFText(rundown.name)}\\b0\\par\\par`;
-    rtfContent += `\\fs24 Generated: ${new Date().toLocaleDateString()}\\par\\par`;
 
     rundown.items.forEach((item, index) => {
-      rtfContent += `\\fs28\\b ${index + 1}. ${PrintService.escapeRTFText(item.title)} (${item.duration})\\b0\\par`;
-      rtfContent += `\\fs20 Type: ${Array.isArray(item.type) ? item.type.join(', ') : item.type || 'N/A'} | Status: ${item.storyStatus || 'N/A'}\\par\\par`;
+      rtfContent += `\\f0\\fs24 ${index + 1}. ${PrintService.escapeRTFText(item.title)}\\par\\par`;
 
       if (item.content && item.content.trim()) {
         rtfContent += `\\fs24 ${PrintService.escapeRTFText(item.content)}\\par\\par`;
       } else {
-        rtfContent += `\\fs24\\i [No script content for this item]\\i0\\par\\par`;
+        rtfContent += `\\fs24 [No script content for this item]\\par\\par`;
       }
 
       if (index < rundown.items.length - 1) {
