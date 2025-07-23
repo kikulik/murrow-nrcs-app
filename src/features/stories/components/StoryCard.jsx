@@ -1,12 +1,12 @@
 // src/features/stories/components/StoryCard.jsx
 import React from 'react';
-import { Send, Trash2, Clock } from 'lucide-react';
+import { Send, Trash2, Clock, Edit3 } from 'lucide-react';
 import { useAppContext } from '../../../context/AppContext';
 import { getStatusColor } from '../../../utils/styleHelpers';
 import { getPlatformIcon } from '../../../utils/iconHelpers.jsx';
 import CollapsibleVideoSection from './CollapsibleVideoSection';
 
-const StoryCard = ({ story, onSendToRundown, onDelete, userPermissions, currentUser }) => {
+const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, currentUser }) => {
     const { appState } = useAppContext();
 
     const getUserById = (id) => appState.users.find(u => u.id === id || u.uid === id);
@@ -16,10 +16,14 @@ const StoryCard = ({ story, onSendToRundown, onDelete, userPermissions, currentU
         onDelete(story.id);
     };
 
+    const handleEdit = () => {
+        onEdit(story);
+    };
+
     return (
         <div className="relative group/storycard">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
-                <div className="flex items-start justify-between mb-3 pr-20">
+                <div className="flex items-start justify-between mb-3 pr-32">
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
                         {getPlatformIcon(story.platform)}
                         <h3 className="text-lg font-medium truncate">{story.title}</h3>
@@ -47,6 +51,15 @@ const StoryCard = ({ story, onSendToRundown, onDelete, userPermissions, currentU
             </div>
 
             <div className="absolute top-4 right-4 opacity-0 group-hover/storycard:opacity-100 transition-opacity flex gap-2">
+                {canEdit && (
+                    <button
+                        onClick={handleEdit}
+                        className="btn-secondary !p-2"
+                        title="Edit Story"
+                    >
+                        <Edit3 className="w-4 h-4" />
+                    </button>
+                )}
                 <button
                     onClick={() => onSendToRundown(story)}
                     className="btn-secondary !p-2"
@@ -67,5 +80,3 @@ const StoryCard = ({ story, onSendToRundown, onDelete, userPermissions, currentU
         </div>
     );
 };
-
-export default StoryCard;
