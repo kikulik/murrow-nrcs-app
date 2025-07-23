@@ -82,7 +82,7 @@ const RundownEditor = ({ onCancel }) => {
                         options={appState.rundownTemplates.map(t => ({ value: t.id, label: t.name }))}
                     />
                 )}
-                <div className="flex justify-end space-x-3 pt-4">
+                <div className="flex items-center justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button type="submit" className="btn-primary" disabled={saving || !name.trim()}>
                         <Save className="w-4 h-4" />
