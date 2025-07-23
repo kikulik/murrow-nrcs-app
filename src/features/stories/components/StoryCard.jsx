@@ -32,7 +32,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                         </span>
                     </div>
                     <div className="flex items-center space-x-2 text-sm text-gray-500 shrink-0">
-                        <CustomIcon name="time" size={16} />
+                        <CustomIcon name="time" size={32} />
                         <span>{story.duration}</span>
                     </div>
                 </div>
@@ -57,7 +57,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                         className="btn-secondary !p-2"
                         title="Edit Story"
                     >
-                        <CustomIcon name="edit" size={16} />
+                        <CustomIcon name="edit" size={32} />
                     </button>
                 )}
                 <button
@@ -65,7 +65,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                     className="btn-secondary !p-2"
                     title="Send to Rundown"
                 >
-                    <CustomIcon name="send" size={16} />
+                    <CustomIcon name="send" size={32} />
                 </button>
                 {(canEdit || userPermissions.canDeleteAnything) && (
                     <button
@@ -73,7 +73,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                         className="btn-secondary !p-2"
                         title="Delete Story"
                     >
-                        <CustomIcon name="cancel" size={16} className="text-red-500" />
+                        <CustomIcon name="cancel" size={32} className="text-red-500" />
                     </button>
                 )}
             </div>
