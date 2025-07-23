@@ -1,7 +1,7 @@
 // src/features/policies/UserPermissions.jsx
 // User permissions management (future implementation)
 import React from 'react';
-import { User, Lock, Key } from 'lucide-react';
+import CustomIcon from '../../components/ui/CustomIcon';
 
 const UserPermissions = ({ user, onSave, onCancel }) => {
     // This component will handle individual user permission overrides
@@ -10,7 +10,7 @@ const UserPermissions = ({ user, onSave, onCancel }) => {
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
             <div className="flex items-center gap-3 mb-6">
-                <Key className="w-6 h-6 text-green-600" />
+                <CustomIcon name="lock" size={24} className="text-green-600" />
                 <h3 className="text-lg font-semibold">User Permissions: {user?.name}</h3>
             </div>
 
