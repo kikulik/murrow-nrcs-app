@@ -1,4 +1,3 @@
-// src/features/stories/StoriesTab.jsx
 import React, { useState } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
@@ -78,13 +77,13 @@ const StoriesTab = () => {
                 </div>
                 <div className="flex items-center space-x-3">
                     <div className="relative">
-                        <CustomIcon name="search" size={32} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <CustomIcon name="search" size={32} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
                             placeholder="Search stories..."
                             value={appState.searchTerm}
                             onChange={(e) => updateSearchTerm(e.target.value)}
-                            className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                            className="pl-16 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                         />
                     </div>
                     <button onClick={() => openStoryEditor()} className="btn-primary">
@@ -156,7 +155,7 @@ const AssignmentCard = ({ assignment }) => {
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
             <div className="flex items-center flex-wrap gap-x-3 mb-2">
-                <CustomIcon name="assignments" size={36} className="text-purple-500" />
+                <CustomIcon name="assignments" size={32} className="text-purple-500" />
                 <h3 className="text-lg font-medium">{assignment.title}</h3>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(assignment.status)}`}>
                     {assignment.status}
