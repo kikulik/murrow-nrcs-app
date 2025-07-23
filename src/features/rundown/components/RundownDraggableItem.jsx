@@ -122,7 +122,7 @@ const RundownDraggableItem = ({
                     </h4>
                 </div>
 
-                <div className="col-span-2 flex gap-1 justify-center">
+                <div className="col-span-2 flex gap-1 justify-start">
                     {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
                         <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
                             {t}
@@ -130,7 +130,7 @@ const RundownDraggableItem = ({
                     ))}
                 </div>
 
-                <div className="col-span-2">
+                <div className="col-span-1">
                     <select
                         value={item.storyStatus || 'Ready for Air'}
                         onChange={(e) => handleStatusChange(e.target.value)}
@@ -146,10 +146,10 @@ const RundownDraggableItem = ({
                     <span className="text-xs text-gray-600 dark:text-gray-400">{item.duration}</span>
                 </div>
 
-                <div className="col-span-1 text-center">
+                <div className="col-span-2 text-left">
                     {author ? (
                         <span className="text-xs text-gray-500 truncate block" title={author.name}>
-                            {author.name.length > 8 ? author.name.substring(0, 8) + '...' : author.name}
+                            {author.name.length > 10 ? author.name.substring(0, 10) + '...' : author.name}
                         </span>
                     ) : (
                         <span className="text-xs text-gray-400">No Author</span>
