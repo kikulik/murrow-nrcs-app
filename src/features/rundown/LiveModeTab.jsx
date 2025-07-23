@@ -1,7 +1,7 @@
 // src/features/rundown/LiveModeTab.jsx
 // Live broadcast mode interface
 import React from 'react';
-import { SkipForward, PlayCircle } from 'lucide-react';
+import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { formatDuration } from '../../utils/helpers';
 import { getRundownTypeColor, getStatusColor } from '../../utils/styleHelpers';
@@ -45,7 +45,7 @@ const LiveModeTab = ({ liveMode }) => {
                     <h3 className="text-lg font-semibold mb-4">Current Video</h3>
                     <div className="bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center h-64">
                         <div className="text-center text-gray-500 dark:text-gray-400">
-                            <PlayCircle className="w-16 h-16 mx-auto mb-2 opacity-50" />
+                            <CustomIcon name="golive" size={64} className="mx-auto mb-2 opacity-50" />
                             <p>Video Player Component</p>
                             <p className="text-sm">Would show: {currentStory.title}</p>
                         </div>
@@ -64,7 +64,7 @@ const LiveModeTab = ({ liveMode }) => {
 
                     <div className="flex items-center justify-center gap-4">
                         <button onClick={liveMode.handleNextLiveItem} className="btn-primary text-lg px-8 py-4 w-full">
-                            Next Item <SkipForward className="w-5 h-5" />
+                            Next Item <CustomIcon name="close" size={20} />
                         </button>
                         <button
                             onClick={liveMode.handleEndLive}
@@ -84,17 +84,17 @@ const LiveModeTab = ({ liveMode }) => {
                             <div
                                 key={item.id}
                                 className={`p-3 border-b last:border-b-0 ${index === liveMode.currentLiveItemIndex ?
-                                        'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
-                                        index < liveMode.currentLiveItemIndex ? 'opacity-50' : ''
+                                    'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
+                                    index < liveMode.currentLiveItemIndex ? 'opacity-50' : ''
                                     }`}
                             >
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center space-x-3">
                                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${index === liveMode.currentLiveItemIndex ?
-                                                'bg-red-500 text-white' :
-                                                index < liveMode.currentLiveItemIndex ?
-                                                    'bg-gray-300 text-gray-600' :
-                                                    'bg-gray-100 text-gray-800'
+                                            'bg-red-500 text-white' :
+                                            index < liveMode.currentLiveItemIndex ?
+                                                'bg-gray-300 text-gray-600' :
+                                                'bg-gray-100 text-gray-800'
                                             }`}>
                                             {index + 1}
                                         </div>
