@@ -45,7 +45,7 @@ const LiveModeTab = ({ liveMode }) => {
                     <h3 className="text-lg font-semibold mb-4">Current Video</h3>
                     <div className="bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center h-64">
                         <div className="text-center text-gray-500 dark:text-gray-400">
-                            <CustomIcon name="golive" size={64} className="mx-auto mb-2 opacity-50" />
+                            <CustomIcon name="golive" size={80} className="mx-auto mb-2 opacity-50" />
                             <p>Video Player Component</p>
                             <p className="text-sm">Would show: {currentStory.title}</p>
                         </div>
@@ -64,7 +64,7 @@ const LiveModeTab = ({ liveMode }) => {
 
                     <div className="flex items-center justify-center gap-4">
                         <button onClick={liveMode.handleNextLiveItem} className="btn-primary text-lg px-8 py-4 w-full">
-                            Next Item <CustomIcon name="close" size={20} />
+                            Next Item <CustomIcon name="close" size={36} />
                         </button>
                         <button
                             onClick={liveMode.handleEndLive}
