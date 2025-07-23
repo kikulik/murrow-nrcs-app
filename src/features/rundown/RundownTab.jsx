@@ -1,6 +1,6 @@
 // src/features/rundown/RundownTab.jsx
 import React from 'react';
-import { Plus, Clock, Trash2, Radio, Printer } from 'lucide-react';
+import { Plus, Clock, Trash2, Radio, Printer, Calendar } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
@@ -18,6 +18,18 @@ const RundownTab = ({ liveMode }) => {
     const totalDuration = calculateTotalDuration(currentRundown?.items || []);
     const availableRundowns = appState.rundowns.filter(r => appState.showArchived || !r.archived);
     const isRundownLocked = liveMode.isLive && liveMode.liveRundownId === appState.activeRundownId;
+
+    const formatAirDate = (airDate) => {
+        if (!airDate) return 'No air date set';
+        const date = new Date(airDate);
+        return date.toLocaleString();
+    };
+
+    const getAirTime = (airDate) => {
+        if (!airDate) return '12:00';
+        const date = new Date(airDate);
+        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    };
 
     const handleDeleteRundown = () => {
         if (!currentRundown) return;
@@ -103,6 +115,7 @@ const RundownTab = ({ liveMode }) => {
                     <PrintDropdown
                         rundown={currentRundown}
                         disabled={!currentRundown || !currentRundown.items?.length}
+                        airTime={getAirTime(currentRundown?.airDate)}
                     />
                     <div className="flex items-center gap-2 text-lg">
                         <Clock className="w-6 h-6" />
@@ -118,6 +131,21 @@ const RundownTab = ({ liveMode }) => {
                     </button>
                 </div>
             </div>
+
+            {currentRundown && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4">
+                    <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                        <div className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4" />
+                            <span>Air Date: {formatAirDate(currentRundown.airDate)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4" />
+                            <span>Created: {new Date(currentRundown.created).toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {currentRundown && !currentRundown.archived ? (
                 <RundownList
