@@ -5,11 +5,16 @@ import CollaborativeTextEditor from '../../../components/collaboration/Collabora
 import UserPresenceIndicator from '../../../components/collaboration/UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../../lib/constants';
 import { useCollaboration } from '../../../context/CollaborationContext';
+import { calculateReadingTime, getWordCount } from '../../../utils/textDurationCalculator';
 
 const RundownItemEditor = ({ item, onSave, onCancel }) => {
     const { setEditingItem, clearEditingItem, isItemBeingEdited } = useCollaboration();
     const [formData, setFormData] = useState(item);
     const [showConflictWarning, setShowConflictWarning] = useState(false);
+    const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
+
+    const wordCount = getWordCount(formData.content);
+    const calculatedDuration = calculateReadingTime(formData.content);
 
     useEffect(() => {
         setFormData(item);
@@ -27,6 +32,16 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
             clearEditingItem();
         };
     }, [item, setEditingItem, clearEditingItem, isItemBeingEdited]);
+
+    useEffect(() => {
+        if (useCalculatedDuration) {
+            setFormData(prev => ({
+                ...prev,
+                duration: calculatedDuration
+            }));
+        }
+    }, [calculatedDuration, useCalculatedDuration]);
+
 
     const handleSave = (e) => {
         e.stopPropagation();
@@ -80,7 +95,7 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
                                 className="text-yellow-400 hover:text-yellow-600"
                             >
                                 <span className="sr-only">Dismiss</span>
-                                ×
+                                Ã—
                             </button>
                         </div>
                     </div>
@@ -94,12 +109,31 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
                     onChange={e => setFormData({ ...formData, title: e.target.value })}
                 />
 
-                <InputField
-                    label="Duration"
-                    value={formData.duration}
-                    onChange={e => setFormData({ ...formData, duration: e.target.value })}
-                    placeholder="MM:SS"
-                />
+                <div className="grid grid-cols-2 gap-4">
+                    <InputField
+                        label="Duration"
+                        value={formData.duration}
+                        onChange={e => setFormData({ ...formData, duration: e.target.value })}
+                        placeholder="MM:SS"
+                        disabled={useCalculatedDuration}
+                    />
+                    <div className="flex flex-col justify-end">
+                        <label className="flex items-center space-x-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={useCalculatedDuration}
+                                onChange={e => setUseCalculatedDuration(e.target.checked)}
+                                className="rounded"
+                            />
+                            <span>Auto-calculate from text</span>
+                        </label>
+                        {wordCount > 0 && (
+                            <p className="text-xs text-gray-500 mt-1">
+                                {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                            </p>
+                        )}
+                    </div>
+                </div>
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -110,11 +144,12 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
                             <label key={abbr} className="flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 cursor-pointer has-[:checked]:bg-blue-100 dark:has-[:checked]:bg-blue-900/50">
                                 <input
                                     type="checkbox"
-                                    checked={formData.type.includes(abbr)}
+                                    checked={Array.isArray(formData.type) && formData.type.includes(abbr)}
                                     onChange={() => {
-                                        const newTypes = formData.type.includes(abbr)
-                                            ? formData.type.filter(t => t !== abbr)
-                                            : [...formData.type, abbr];
+                                        const currentTypes = Array.isArray(formData.type) ? formData.type : [];
+                                        const newTypes = currentTypes.includes(abbr)
+                                            ? currentTypes.filter(t => t !== abbr)
+                                            : [...currentTypes, abbr];
                                         setFormData({ ...formData, type: newTypes });
                                     }}
                                     className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -140,7 +175,7 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
 
                 {/* Version info */}
                 <div className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 p-2 rounded">
-                    Version {item.version || 1} • Last modified: {item.lastModified ? new Date(item.lastModified).toLocaleString() : 'Never'}
+                    Version {item.version || 1} â€¢ Last modified: {item.lastModified ? new Date(item.lastModified).toLocaleString() : 'Never'}
                 </div>
 
                 <div className="flex justify-end space-x-2">
