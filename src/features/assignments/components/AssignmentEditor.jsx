@@ -1,5 +1,4 @@
 // src/features/assignments/components/AssignmentEditor.jsx
-// Inline assignment editor
 import React, { useState } from 'react';
 import { Save } from 'lucide-react';
 import { useAppContext } from '../../../context/AppContext';
@@ -68,7 +67,7 @@ const AssignmentEditor = ({ assignment, onSave, onCancel }) => {
                     />
                 </div>
 
-                <div className="flex justify-end space-x-3 pt-4">
+                <div className="flex items-center justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button type="submit" className="btn-primary">
                         <Save className="w-4 h-4" />
