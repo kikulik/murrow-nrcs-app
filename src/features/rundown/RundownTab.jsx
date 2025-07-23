@@ -138,18 +138,28 @@ const RundownTab = ({ liveMode }) => {
 
             {currentRundown && (
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4">
-                    <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-                        <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4" />
-                            <span>Air Date: {formatAirDate(currentRundown.airDate)}</span>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                            <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4" />
+                                <span>Air Date: {formatAirDate(currentRundown.airDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Clock className="w-4 h-4" />
+                                <span>Created: {new Date(currentRundown.created).toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span>Air Time: {getAirTime(currentRundown.airDate)}</span>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4" />
-                            <span>Created: {new Date(currentRundown.created).toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span>Air Time: {getAirTime(currentRundown.airDate)}</span>
-                        </div>
+                        <button
+                            onClick={openAddStoryModal}
+                            disabled={isRundownLocked || currentRundown.archived}
+                            className={`btn-primary ${isRundownLocked || currentRundown.archived ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            <Plus className="w-4 h-4" />
+                            <span>Add Story</span>
+                        </button>
                     </div>
                 </div>
             )}
@@ -158,7 +168,6 @@ const RundownTab = ({ liveMode }) => {
                 <RundownList
                     rundown={currentRundown}
                     isLocked={isRundownLocked}
-                    onAddStory={openAddStoryModal}
                     userPermissions={userPermissions}
                     onItemsUpdate={handleRundownItemUpdate}
                 />
