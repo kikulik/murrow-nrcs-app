@@ -1,6 +1,6 @@
 // src/features/assignments/components/AssignmentEditor.jsx
 import React, { useState } from 'react';
-import { Save } from 'lucide-react';
+import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAppContext } from '../../../context/AppContext';
 import InputField from '../../../components/ui/InputField';
 import SelectField from '../../../components/ui/SelectField';
@@ -70,7 +70,7 @@ const AssignmentEditor = ({ assignment, onSave, onCancel }) => {
                 <div className="flex items-center justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button type="submit" className="btn-primary">
-                        <Save className="w-4 h-4" />
+                        <CustomIcon name="save" size={16} />
                         <span>Save</span>
                     </button>
                 </div>
