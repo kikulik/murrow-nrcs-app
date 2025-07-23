@@ -141,7 +141,7 @@ const RundownDraggableItem = ({
                             onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
                             className="p-1 text-gray-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                            <CustomIcon name="cancel" size={28} />
+                            <CustomIcon name="delete" size={28} />
                         </button>
                     </div>
                 )}
