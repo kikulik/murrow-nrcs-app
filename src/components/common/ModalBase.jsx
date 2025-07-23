@@ -9,7 +9,7 @@ const ModalBase = ({ children, onCancel, title, maxWidth = "max-w-2xl" }) => (
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                 <h2 className="text-xl font-semibold">{title}</h2>
                 <button onClick={onCancel} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <CustomIcon name="cancel" size={32} className="text-gray-500" />
+                    <CustomIcon name="cancel" size={40} className="text-gray-500" />
                 </button>
             </div>
             <div className="overflow-y-auto">{children}</div>
