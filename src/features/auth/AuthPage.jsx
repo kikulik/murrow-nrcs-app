@@ -1,7 +1,7 @@
 // src/features/auth/AuthPage.jsx
 // Authentication page component
 import React, { useState } from 'react';
-import { Tv, LogIn } from 'lucide-react';
+import CustomIcon from '../../components/ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
 import InputField from '../../components/ui/InputField';
 import SelectField from '../../components/ui/SelectField';
@@ -36,8 +36,8 @@ const AuthPage = () => {
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col justify-center items-center p-4">
             <div className="w-full max-w-md">
                 <div className="flex items-center justify-center space-x-3 mb-8">
-                    <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-                        <Tv className="w-7 h-7 text-white" />
+                    <div className="w-16 h-16 flex items-center justify-center">
+                        <CustomIcon name="logo" size={64} />
                     </div>
                     <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Murrow NRCS</h1>
                 </div>
