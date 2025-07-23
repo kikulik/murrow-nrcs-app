@@ -93,7 +93,7 @@ const RundownTab = ({ liveMode }) => {
                                 className={`p-2 text-gray-500 hover:text-red-600 rounded ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 title="Delete Rundown"
                             >
-                                <CustomIcon name="cancel" size={32} />
+                                <CustomIcon name="delete" size={32} />
                             </button>
                         )}
                     </div>
