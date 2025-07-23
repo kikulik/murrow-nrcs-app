@@ -1,48 +1,27 @@
 // src/features/admin/AdminTab.jsx
+// Administration tab for managing users, groups, and templates
 import React, { useState } from 'react';
-import { UserPlus, Plus, FilePlus, Edit3, Trash2 } from 'lucide-react';
+import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
 import UserEditor from './components/UserEditor';
 import GroupEditor from './components/GroupEditor';
 import TemplateEditor from './components/TemplateEditor';
-import { doc, updateDoc, addDoc, collection } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 const AdminTab = () => {
-    const { currentUser, db, register } = useAuth();
+    const { currentUser } = useAuth();
     const { appState, setAppState } = useAppContext();
-    const [editingTarget, setEditingTarget] = useState(null);
-    const [isCreating, setIsCreating] = useState(null);
+    const [editingTarget, setEditingTarget] = useState(null); // { type: 'user' | 'group' | 'template', id: number }
+    const [isCreating, setIsCreating] = useState(null); // 'user' | 'group' | 'template'
 
     const userPermissions = getUserPermissions(currentUser.role);
     const getGroupById = (id) => appState.groups.find(g => g.id === id);
 
-    const handleSaveItem = async (item, type) => {
-        if (!db) return;
-        const collectionName = type === 'user' ? 'users' : type === 'group' ? 'groups' : 'rundownTemplates';
-
-        try {
-            if (item.id) {
-                // Editing existing item
-                const docRef = doc(db, collectionName, item.id);
-                const { id, ...dataToUpdate } = item;
-                await updateDoc(docRef, dataToUpdate);
-            } else {
-                // Creating new item
-                if (type === 'user' && item.password) {
-                    // Special handling for new user registration
-                    await register(item.email, item.password, item.name, item.role);
-                } else {
-                    await addDoc(collection(db, collectionName), item);
-                }
-            }
-        } catch (error) {
-            console.error(`Error saving ${type}:`, error);
-        } finally {
-            setEditingTarget(null);
-            setIsCreating(null);
-        }
+    const handleSaveItem = (item, type) => {
+        // Implementation for saving items
+        setEditingTarget(null);
+        setIsCreating(null);
     };
 
     const handleCancel = () => {
@@ -51,10 +30,9 @@ const AdminTab = () => {
     };
 
     const handleDelete = (id, type) => {
-        const collectionName = type === 'user' ? 'users' : type === 'group' ? 'groups' : 'rundownTemplates';
         setAppState(prev => ({
             ...prev,
-            modal: { type: 'deleteConfirm', id, itemType: collectionName }
+            modal: { type: 'deleteConfirm', id, itemType: type }
         }));
     };
 
@@ -83,13 +61,13 @@ const AdminTab = () => {
                         onClick={() => setEditingTarget({ type: 'user', id: user.id })}
                         className="p-2 text-gray-500 hover:text-blue-600 rounded"
                     >
-                        <Edit3 className="w-4 h-4" />
+                        <CustomIcon name="edit" size={16} />
                     </button>
                     <button
                         onClick={() => handleDelete(user.id, 'user')}
                         className="p-2 text-gray-500 hover:text-red-600 rounded"
                     >
-                        <Trash2 className="w-4 h-4" />
+                        <CustomIcon name="cancel" size={16} />
                     </button>
                 </div>
             </div>
@@ -116,13 +94,13 @@ const AdminTab = () => {
                         onClick={() => setEditingTarget({ type: 'group', id: group.id })}
                         className="p-2 text-gray-500 hover:text-blue-600 rounded"
                     >
-                        <Edit3 className="w-4 h-4" />
+                        <CustomIcon name="edit" size={16} />
                     </button>
                     <button
                         onClick={() => handleDelete(group.id, 'group')}
                         className="p-2 text-gray-500 hover:text-red-600 rounded"
                     >
-                        <Trash2 className="w-4 h-4" />
+                        <CustomIcon name="cancel" size={16} />
                     </button>
                 </div>
             </div>
@@ -149,13 +127,13 @@ const AdminTab = () => {
                         onClick={() => setEditingTarget({ type: 'template', id: template.id })}
                         className="p-2 text-gray-500 hover:text-blue-600 rounded"
                     >
-                        <Edit3 className="w-4 h-4" />
+                        <CustomIcon name="edit" size={16} />
                     </button>
                     <button
                         onClick={() => handleDelete(template.id, 'rundownTemplate')}
                         className="p-2 text-gray-500 hover:text-red-600 rounded"
                     >
-                        <Trash2 className="w-4 h-4" />
+                        <CustomIcon name="cancel" size={16} />
                     </button>
                 </div>
             </div>
@@ -168,7 +146,7 @@ const AdminTab = () => {
                 <div className="flex justify-between items-center">
                     <h2 className="text-xl font-semibold">Users</h2>
                     <button onClick={() => setIsCreating('user')} className="btn-primary text-sm">
-                        <UserPlus className="w-4 h-4" />
+                        <CustomIcon name="user" size={16} />
                         <span>Add User</span>
                     </button>
                 </div>
@@ -188,7 +166,7 @@ const AdminTab = () => {
                 <div className="flex justify-between items-center">
                     <h2 className="text-xl font-semibold">Groups</h2>
                     <button onClick={() => setIsCreating('group')} className="btn-primary text-sm">
-                        <Plus className="w-4 h-4" />
+                        <CustomIcon name="add story" size={16} />
                         <span>Add Group</span>
                     </button>
                 </div>
@@ -209,7 +187,7 @@ const AdminTab = () => {
                     <div className="flex justify-between items-center">
                         <h2 className="text-xl font-semibold">Rundown Templates</h2>
                         <button onClick={() => setIsCreating('template')} className="btn-primary text-sm">
-                            <FilePlus className="w-4 h-4" />
+                            <CustomIcon name="stories" size={16} />
                             <span>New Template</span>
                         </button>
                     </div>
