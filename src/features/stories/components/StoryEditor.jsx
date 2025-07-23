@@ -142,7 +142,7 @@ const StoryEditor = ({ story = null, onCancel }) => {
                 <div className="flex items-center justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button type="submit" className="btn-primary">
-                        <CustomIcon name="save" size={16} />
+                        <CustomIcon name="save" size={32} />
                         <span>Save Story</span>
                     </button>
                 </div>
