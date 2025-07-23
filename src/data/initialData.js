@@ -89,6 +89,8 @@ export const initialRundowns = [
         id: 1,
         name: "6 PM Newscast",
         archived: false,
+        created: "2025-07-15T12:00:00Z",
+        airDate: "2025-07-15T18:00:00Z",
         items: [
             {
                 id: 1,
@@ -122,8 +124,22 @@ export const initialRundowns = [
             },
         ]
     },
-    { id: 2, name: "11 PM Newscast", archived: false, items: [] },
-    { id: 3, name: "Morning Show", archived: true, items: [] }
+    {
+        id: 2,
+        name: "11 PM Newscast",
+        archived: false,
+        created: "2025-07-15T15:00:00Z",
+        airDate: "2025-07-15T23:00:00Z",
+        items: []
+    },
+    {
+        id: 3,
+        name: "Morning Show",
+        archived: true,
+        created: "2025-07-14T08:00:00Z",
+        airDate: "2025-07-14T09:00:00Z",
+        items: []
+    }
 ];
 
 export const initialRundownTemplates = [
