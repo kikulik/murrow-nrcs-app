@@ -1,186 +1,154 @@
-// src/features/rundown/RundownTab.jsx
-import React from 'react';
-import { Plus, Clock, Trash2, Radio, Printer, Calendar } from 'lucide-react';
-import { useAppContext } from '../../context/AppContext';
-import { useAuth } from '../../context/AuthContext';
-import { getUserPermissions } from '../../lib/permissions';
-import { calculateTotalDuration, formatDuration } from '../../utils/helpers';
-import RundownList from './components/RundownList';
-import PrintDropdown from './components/PrintDropdown';
-import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+// src/features/stories/components/StoryEditor.jsx
+import React, { useState } from 'react';
+import { Save } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
+import { useAppContext } from '../../../context/AppContext';
+import ModalBase from '../../../components/common/ModalBase';
+import InputField from '../../../components/ui/InputField';
+import SelectField from '../../../components/ui/SelectField';
+import { RUNDOWN_ITEM_TYPES, VIDEO_ITEM_TYPES } from '../../../lib/constants';
+import { generateMediaId } from '../../../media/MediaManager';
 
-const RundownTab = ({ liveMode }) => {
+const StoryEditor = ({ story = null, onCancel }) => {
     const { currentUser, db } = useAuth();
-    const { appState, setAppState } = useAppContext();
-    const userPermissions = getUserPermissions(currentUser.role);
+    const { appState } = useAppContext();
 
-    const currentRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
-    const totalDuration = calculateTotalDuration(currentRundown?.items || []);
-    const availableRundowns = appState.rundowns.filter(r => appState.showArchived || !r.archived);
-    const isRundownLocked = liveMode.isLive && liveMode.liveRundownId === appState.activeRundownId;
+    const [formData, setFormData] = useState({
+        title: story?.title || '',
+        content: story?.content || '',
+        authorId: story?.authorId || currentUser.uid,
+        platform: story?.platform || 'broadcast',
+        tags: story?.tags?.join(', ') || '',
+        duration: story?.duration || '01:00'
+    });
 
-    const formatAirDate = (airDate) => {
-        if (!airDate) return 'No air date set';
-        const date = new Date(airDate);
-        return date.toLocaleString();
+    const [selectedTypes, setSelectedTypes] = useState(
+        story?.types || []
+    );
+
+    const handleTypeChange = (type) => {
+        setSelectedTypes(prev =>
+            prev.includes(type)
+                ? prev.filter(t => t !== type)
+                : [...prev, type]
+        );
     };
 
-    const getAirTime = (airDate) => {
-        if (!airDate) return '12:00';
-        const date = new Date(airDate);
-        const hours = date.getHours();
-        const minutes = date.getMinutes();
+    const handleSubmit = async (e) => {
+        e.preventDefault();
 
-        // Convert to 24-hour format for printing
-        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-    };
-
-    const handleDeleteRundown = () => {
-        if (!currentRundown) return;
-        setAppState(prev => ({
-            ...prev,
-            modal: { type: 'deleteConfirm', id: currentRundown.id, itemType: 'rundowns' }
-        }));
-    };
-
-    const handleRundownItemUpdate = async (updatedItems) => {
-        if (!db || !currentRundown) return;
-        const rundownRef = doc(db, "rundowns", currentRundown.id);
         try {
-            await updateDoc(rundownRef, { items: updatedItems });
+            const { collection, addDoc, doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            const storyToSave = {
+                ...formData,
+                tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+                authorId: currentUser.uid,
+                status: story?.status || 'draft',
+                created: story?.created || new Date().toISOString(),
+                comments: story?.comments || []
+            };
+
+            // Add video fields if video types are selected
+            const isVideoStory = selectedTypes.some(type => VIDEO_ITEM_TYPES.includes(type));
+            if (isVideoStory) {
+                const videoType = selectedTypes.find(type => VIDEO_ITEM_TYPES.includes(type)) || 'PKG';
+                storyToSave.mediaId = story?.mediaId || generateMediaId(videoType);
+                storyToSave.hasVideo = story?.hasVideo || false;
+                storyToSave.videoUrl = story?.videoUrl || null;
+                storyToSave.videoStatus = story?.videoStatus || 'No Media';
+            }
+
+            if (story?.id) {
+                await updateDoc(doc(db, "stories", story.id), storyToSave);
+            } else {
+                await addDoc(collection(db, "stories"), storyToSave);
+            }
+
+            onCancel();
+
         } catch (error) {
-            console.error("Failed to update rundown items:", error);
+            console.error('Error saving story:', error);
         }
     };
 
-    const handleRundownChange = (e) => {
-        const value = e.target.value;
-        if (value === '') return;
-        setAppState(prev => ({ ...prev, activeRundownId: value }));
-    };
-
-    const openNewRundown = () => {
-        setAppState(prev => ({ ...prev, modal: { type: 'rundownEditor' } }));
-    };
-
-    const openAddStoryModal = () => {
-        setAppState(prev => ({ ...prev, modal: { type: 'addStoryToRundown' } }));
-    };
-
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center flex-wrap gap-4">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-xl font-semibold">Show Rundown</h2>
-                    <div className="flex items-center gap-2">
-                        <select
-                            value={appState.activeRundownId || ''}
-                            onChange={handleRundownChange}
-                            disabled={isRundownLocked}
-                            className={`bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                            <option value="">-- Select Rundown --</option>
-                            {availableRundowns.map(r => (
-                                <option key={r.id} value={r.id}>
-                                    {r.name} {r.archived ? '(Archived)' : ''}
-                                </option>
-                            ))}
-                        </select>
-                        {currentRundown && userPermissions.canDeleteAnything && (
-                            <button
-                                onClick={handleDeleteRundown}
-                                disabled={isRundownLocked}
-                                className={`p-2 text-gray-500 hover:text-red-600 rounded ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                title="Delete Rundown"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </button>
-                        )}
-                    </div>
-                    <button
-                        onClick={openNewRundown}
-                        disabled={isRundownLocked}
-                        className={`btn-secondary text-sm ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                        <Plus className="w-4 h-4" />
-                        <span>New</span>
-                    </button>
-                    <label className="flex items-center gap-2 text-sm">
-                        <input
-                            type="checkbox"
-                            checked={appState.showArchived}
-                            onChange={(e) => setAppState(prev => ({ ...prev, showArchived: e.target.checked }))}
-                            className="rounded"
-                        />
-                        Show Archived
-                    </label>
-                </div>
-                <div className="flex items-center gap-4">
-                    <PrintDropdown
-                        rundown={currentRundown}
-                        disabled={!currentRundown || !currentRundown.items?.length}
-                        airTime={getAirTime(currentRundown?.airDate)}
-                    />
-                    <div className="flex items-center gap-2 text-lg">
-                        <Clock className="w-6 h-6" />
-                        <span className="font-bold">{formatDuration(totalDuration)}</span>
-                    </div>
-                    <button
-                        onClick={liveMode.handleGoLive}
-                        disabled={!currentRundown || currentRundown.archived || !currentRundown.items?.length}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium text-sm rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-red-500 disabled:hover:to-red-600"
-                    >
-                        <Radio className="w-4 h-4" />
-                        <span>Go Live</span>
-                    </button>
-                </div>
-            </div>
-
-            {currentRundown && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-                            <div className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4" />
-                                <span>Air Date: {formatAirDate(currentRundown.airDate)}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Clock className="w-4 h-4" />
-                                <span>Created: {new Date(currentRundown.created).toLocaleString()}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span>Air Time: {getAirTime(currentRundown.airDate)}</span>
-                            </div>
-                        </div>
-                        <button
-                            onClick={openAddStoryModal}
-                            disabled={isRundownLocked || currentRundown.archived}
-                            className={`btn-primary flex items-center ${isRundownLocked || currentRundown.archived ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                            <Plus className="w-4 h-4 mr-2" />
-                            <span>Add Story</span>
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {currentRundown && !currentRundown.archived ? (
-                <RundownList
-                    rundown={currentRundown}
-                    isLocked={isRundownLocked}
-                    userPermissions={userPermissions}
-                    onItemsUpdate={handleRundownItemUpdate}
+        <ModalBase onCancel={onCancel} title={story ? "Edit Story" : "Create New Story"} maxWidth="max-w-4xl">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <InputField
+                    label="Title"
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    required
                 />
-            ) : (
-                <div className="text-center py-12 text-gray-500">
-                    {!currentRundown ?
-                        'Select a rundown to view items, or create a new one.' :
-                        'This rundown is archived. Restore it to make changes.'
-                    }
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Item Type(s)
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
+                            <label
+                                key={abbr}
+                                className="flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500 dark:has-[:checked]:bg-blue-900/50"
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={selectedTypes.includes(abbr)}
+                                    onChange={() => handleTypeChange(abbr)}
+                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium">{name} ({abbr})</span>
+                            </label>
+                        ))}
+                    </div>
                 </div>
-            )}
-        </div>
+
+                <SelectField
+                    label="Author"
+                    value={formData.authorId}
+                    onChange={e => setFormData({ ...formData, authorId: e.target.value })}
+                    options={appState.users.map(u => ({ value: u.uid || u.id, label: u.name }))}
+                />
+
+                <InputField
+                    label="Duration"
+                    value={formData.duration}
+                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                    placeholder="MM:SS"
+                />
+
+                <InputField
+                    label="Tags (comma separated)"
+                    value={formData.tags}
+                    onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                    placeholder="news, breaking, local"
+                />
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Content
+                    </label>
+                    <textarea
+                        value={formData.content}
+                        onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                        rows={8}
+                        className="w-full form-input"
+                        placeholder="Enter story content..."
+                        required
+                    />
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 pt-4">
+                    <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
+                    <button type="submit" className="btn-primary">
+                        <Save className="w-4 h-4" />
+                        <span>Save Story</span>
+                    </button>
+                </div>
+            </form>
+        </ModalBase>
     );
 };
 
-export default RundownTab;
+export default StoryEditor;
