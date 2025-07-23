@@ -41,7 +41,7 @@ export class PrintService {
                         margin-bottom: 10px;
                     }
                     .item-content { 
-                        font-size: 14pt;
+                        font-size: 20pt;
                         line-height: 1.8;
                         margin: 15px 0;
                         padding: 10px;
