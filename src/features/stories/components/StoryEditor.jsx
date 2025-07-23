@@ -1,5 +1,5 @@
 // src/features/stories/components/StoryEditor.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppContext } from '../../../context/AppContext';
@@ -8,6 +8,7 @@ import InputField from '../../../components/ui/InputField';
 import SelectField from '../../../components/ui/SelectField';
 import { RUNDOWN_ITEM_TYPES, VIDEO_ITEM_TYPES } from '../../../lib/constants';
 import { generateMediaId } from '../../../media/MediaManager';
+import { calculateReadingTime, getWordCount } from '../../../utils/textDurationCalculator';
 
 const StoryEditor = ({ story = null, onCancel }) => {
     const { currentUser, db } = useAuth();
@@ -23,8 +24,22 @@ const StoryEditor = ({ story = null, onCancel }) => {
     });
 
     const [selectedTypes, setSelectedTypes] = useState(
-        story?.types || []
+        story?.types || ['STD']
     );
+
+    const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
+
+    const calculatedDuration = calculateReadingTime(formData.content);
+    const wordCount = getWordCount(formData.content);
+
+    useEffect(() => {
+        if (useCalculatedDuration) {
+            setFormData(prev => ({
+                ...prev,
+                duration: calculatedDuration
+            }));
+        }
+    }, [calculatedDuration, useCalculatedDuration]);
 
     const handleTypeChange = (type) => {
         setSelectedTypes(prev =>
@@ -32,6 +47,11 @@ const StoryEditor = ({ story = null, onCancel }) => {
                 ? prev.filter(t => t !== type)
                 : [...prev, type]
         );
+    };
+
+    const handleContentChange = (e) => {
+        const content = e.target.value;
+        setFormData({ ...formData, content });
     };
 
     const handleSubmit = async (e) => {
@@ -111,12 +131,31 @@ const StoryEditor = ({ story = null, onCancel }) => {
                     options={appState.users.map(u => ({ value: u.uid || u.id, label: u.name }))}
                 />
 
-                <InputField
-                    label="Duration"
-                    value={formData.duration}
-                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                    placeholder="MM:SS"
-                />
+                <div className="grid grid-cols-2 gap-4">
+                    <InputField
+                        label="Duration"
+                        value={formData.duration}
+                        onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                        placeholder="MM:SS"
+                        disabled={useCalculatedDuration}
+                    />
+                    <div className="flex flex-col justify-end">
+                        <label className="flex items-center space-x-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={useCalculatedDuration}
+                                onChange={e => setUseCalculatedDuration(e.target.checked)}
+                                className="rounded"
+                            />
+                            <span>Auto-calculate from text</span>
+                        </label>
+                        {wordCount > 0 && (
+                            <p className="text-xs text-gray-500 mt-1">
+                                {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                            </p>
+                        )}
+                    </div>
+                </div>
 
                 <InputField
                     label="Tags (comma separated)"
@@ -131,7 +170,7 @@ const StoryEditor = ({ story = null, onCancel }) => {
                     </label>
                     <textarea
                         value={formData.content}
-                        onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                        onChange={handleContentChange}
                         rows={8}
                         className="w-full form-input"
                         placeholder="Enter story content..."
