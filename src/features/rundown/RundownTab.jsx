@@ -28,7 +28,11 @@ const RundownTab = ({ liveMode }) => {
     const getAirTime = (airDate) => {
         if (!airDate) return '12:00';
         const date = new Date(airDate);
-        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        const hours = date.getHours();
+        const minutes = date.getMinutes();
+        
+        // Convert to 24-hour format for printing
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     };
 
     const handleDeleteRundown = () => {
@@ -142,6 +146,9 @@ const RundownTab = ({ liveMode }) => {
                         <div className="flex items-center gap-2">
                             <Clock className="w-4 h-4" />
                             <span>Created: {new Date(currentRundown.created).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span>Air Time: {getAirTime(currentRundown.airDate)}</span>
                         </div>
                     </div>
                 </div>
