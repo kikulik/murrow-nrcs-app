@@ -1,11 +1,11 @@
 import React from 'react';
-import { Tv, Globe, MessageSquare, FileText } from 'lucide-react';
+import CustomIcon from '../components/ui/CustomIcon';
 
 export const getPlatformIcon = (platform) => {
     switch (platform) {
-        case 'broadcast': return <Tv className="w-4 h-4" />;
-        case 'web': return <Globe className="w-4 h-4" />;
-        case 'social': return <MessageSquare className="w-4 h-4" />;
-        default: return <FileText className="w-4 h-4" />;
+        case 'broadcast': return <CustomIcon name="rundown" size={16} />;
+        case 'web': return <CustomIcon name="story" size={16} />;
+        case 'social': return <CustomIcon name="chat" size={16} />;
+        default: return <CustomIcon name="stories" size={16} />;
     }
 };
