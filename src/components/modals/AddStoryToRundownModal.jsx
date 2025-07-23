@@ -7,13 +7,14 @@ import ModalBase from '../common/ModalBase';
 import InputField from '../ui/InputField';
 import SelectField from '../ui/SelectField';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
+import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
 
 const AddStoryToRundownModal = ({ onCancel }) => {
     const { appState } = useAppContext();
     const { db, currentUser } = useAuth();
     const [tab, setTab] = useState('existing');
     const [selectedStoryId, setSelectedStoryId] = useState('');
-    const [selectedTypes, setSelectedTypes] = useState(['PKG']);
+    const [selectedTypes, setSelectedTypes] = useState(['STD']);
     const [newStoryData, setNewStoryData] = useState({
         title: '',
         content: '',
@@ -22,10 +23,14 @@ const AddStoryToRundownModal = ({ onCancel }) => {
     });
     const [searchTerm, setSearchTerm] = useState('');
     const [saving, setSaving] = useState(false);
+    const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
 
     const filteredStories = appState.stories.filter(story =>
         story.title.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const calculatedDuration = calculateReadingTime(newStoryData.content);
+    const wordCount = getWordCount(newStoryData.content);
 
     useEffect(() => {
         if (tab === 'existing' && filteredStories.length > 0) {
@@ -44,10 +49,24 @@ const AddStoryToRundownModal = ({ onCancel }) => {
         }
     }, [currentUser]);
 
+    useEffect(() => {
+        if (useCalculatedDuration) {
+            setNewStoryData(prev => ({
+                ...prev,
+                duration: calculatedDuration
+            }));
+        }
+    }, [calculatedDuration, useCalculatedDuration]);
+
     const handleTypeChange = (type) => {
         setSelectedTypes(prev =>
             prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
         );
+    };
+
+    const handleContentChange = (e) => {
+        const content = e.target.value;
+        setNewStoryData({ ...newStoryData, content });
     };
 
     const handleSave = async () => {
@@ -199,19 +218,40 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                             onChange={e => setNewStoryData({ ...newStoryData, authorId: e.target.value })}
                             options={appState.users.map(u => ({ value: u.uid || u.id, label: u.name }))}
                         />
-                        <InputField
-                            label="Duration"
-                            value={newStoryData.duration}
-                            onChange={e => setNewStoryData({ ...newStoryData, duration: e.target.value })}
-                            placeholder="MM:SS"
-                        />
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <InputField
+                                label="Duration"
+                                value={newStoryData.duration}
+                                onChange={e => setNewStoryData({ ...newStoryData, duration: e.target.value })}
+                                placeholder="MM:SS"
+                                disabled={useCalculatedDuration}
+                            />
+                            <div className="flex flex-col justify-end">
+                                <label className="flex items-center space-x-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={useCalculatedDuration}
+                                        onChange={e => setUseCalculatedDuration(e.target.checked)}
+                                        className="rounded"
+                                    />
+                                    <span>Auto-calculate from text</span>
+                                </label>
+                                {wordCount > 0 && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Content
                             </label>
                             <textarea
                                 value={newStoryData.content}
-                                onChange={e => setNewStoryData({ ...newStoryData, content: e.target.value })}
+                                onChange={handleContentChange}
                                 rows={5}
                                 className="w-full form-input"
                                 placeholder="Internal notes or script..."
