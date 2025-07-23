@@ -202,7 +202,7 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     </div>
                 )}
 
-                <div className="flex justify-end space-x-3 pt-4">
+                <div className="flex items-center justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button
                         onClick={handleSave}
