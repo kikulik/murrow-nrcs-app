@@ -1,7 +1,7 @@
 // src/components/common/Chatbox.jsx
 // Team chat component
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, XCircle } from 'lucide-react';
+import CustomIcon from '../ui/CustomIcon';
 
 const Chatbox = ({ messages, onSendMessage, currentUser, getUserById }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -29,7 +29,7 @@ const Chatbox = ({ messages, onSendMessage, currentUser, getUserById }) => {
                     <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
                         <h3 className="font-semibold">Team Chat</h3>
                         <button onClick={() => setIsOpen(false)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
-                            <XCircle className="w-6 h-6 text-gray-500" />
+                            <CustomIcon name="cancel" size={24} className="text-gray-500" />
                         </button>
                     </div>
                     <div className="flex-1 p-4 overflow-y-auto space-y-4">
@@ -64,13 +64,13 @@ const Chatbox = ({ messages, onSendMessage, currentUser, getUserById }) => {
                             className="flex-1 form-input"
                         />
                         <button type="submit" className="btn-primary !px-3">
-                            <Send className="w-5 h-5" />
+                            <CustomIcon name="send" size={20} />
                         </button>
                     </form>
                 </div>
             ) : (
                 <button onClick={() => setIsOpen(true)} className="bg-blue-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700">
-                    <MessageSquare className="w-8 h-8" />
+                    <CustomIcon name="chat" size={32} />
                 </button>
             )}
         </div>
