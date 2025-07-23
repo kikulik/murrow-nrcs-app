@@ -80,3 +80,5 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
         </div>
     );
 };
+
+export default StoryCard;
