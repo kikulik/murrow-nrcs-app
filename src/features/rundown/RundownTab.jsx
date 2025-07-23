@@ -93,7 +93,7 @@ const RundownTab = ({ liveMode }) => {
                                 className={`p-2 text-gray-500 hover:text-red-600 rounded ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 title="Delete Rundown"
                             >
-                                <CustomIcon name="cancel" size={16} />
+                                <CustomIcon name="cancel" size={32} />
                             </button>
                         )}
                     </div>
@@ -102,7 +102,7 @@ const RundownTab = ({ liveMode }) => {
                         disabled={isRundownLocked}
                         className={`btn-secondary text-sm ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                        <CustomIcon name="add story" size={16} />
+                        <CustomIcon name="add story" size={32} />
                         <span>New</span>
                     </button>
                     <label className="flex items-center gap-2 text-sm">
@@ -122,7 +122,7 @@ const RundownTab = ({ liveMode }) => {
                         airTime={getAirTime(currentRundown?.airDate)}
                     />
                     <div className="flex items-center gap-2 text-lg">
-                        <CustomIcon name="time" size={24} />
+                        <CustomIcon name="time" size={40} />
                         <span className="font-bold">{formatDuration(totalDuration)}</span>
                     </div>
                     <button
@@ -130,7 +130,7 @@ const RundownTab = ({ liveMode }) => {
                         disabled={!currentRundown || currentRundown.archived || !currentRundown.items?.length}
                         className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium text-sm rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-red-500 disabled:hover:to-red-600"
                     >
-                        <CustomIcon name="golive" size={16} />
+                        <CustomIcon name="golive" size={32} />
                         <span>Go Live</span>
                     </button>
                 </div>
@@ -141,11 +141,11 @@ const RundownTab = ({ liveMode }) => {
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                             <div className="flex items-center gap-2">
-                                <CustomIcon name="assignments" size={16} />
+                                <CustomIcon name="assignments" size={32} />
                                 <span>Air Date: {formatAirDate(currentRundown.airDate)}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <CustomIcon name="time" size={16} />
+                                <CustomIcon name="time" size={32} />
                                 <span>Created: {new Date(currentRundown.created).toLocaleString()}</span>
                             </div>
                             <div className="flex items-center gap-2">
@@ -157,7 +157,7 @@ const RundownTab = ({ liveMode }) => {
                             disabled={isRundownLocked || currentRundown.archived}
                             className={`btn-primary flex items-center ${isRundownLocked || currentRundown.archived ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
-                            <CustomIcon name="add story" size={16} className="mr-2" />
+                            <CustomIcon name="add story" size={32} className="mr-2" />
                             <span>Add Story</span>
                         </button>
                     </div>
