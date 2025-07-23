@@ -1,6 +1,6 @@
 // src/components/modals/RundownEditor.jsx
 import React, { useState } from 'react';
-import { Save } from 'lucide-react';
+import CustomIcon from '../ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import ModalBase from '../common/ModalBase';
@@ -85,7 +85,7 @@ const RundownEditor = ({ onCancel }) => {
                 <div className="flex items-center justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button type="submit" className="btn-primary" disabled={saving || !name.trim()}>
-                        <Save className="w-4 h-4" />
+                        <CustomIcon name="save" size={16} />
                         <span>{saving ? 'Creating...' : 'Create'}</span>
                     </button>
                 </div>
