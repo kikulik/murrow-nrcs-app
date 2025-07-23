@@ -82,7 +82,7 @@ const AssignmentsTab = () => {
                                 onClick={() => setEditingId(assignment.id)}
                                 className="p-2 text-gray-500 hover:text-blue-600 rounded"
                             >
-                                <CustomIcon name="edit" size={24} />
+                                <CustomIcon name="edit" size={32} />
                             </button>
                         )}
                         {userPermissions.canDeleteAnything && (
@@ -90,7 +90,7 @@ const AssignmentsTab = () => {
                                 onClick={() => handleDelete(assignment.id)}
                                 className="p-2 text-gray-500 hover:text-red-600 rounded"
                             >
-                                <CustomIcon name="cancel" size={24} />
+                                <CustomIcon name="cancel" size={32} />
                             </button>
                         )}
                     </div>
@@ -104,7 +104,7 @@ const AssignmentsTab = () => {
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold">Assignments</h2>
                 <button onClick={() => setIsCreating(true)} className="btn-primary">
-                    <CustomIcon name="assignments" size={24} />
+                    <CustomIcon name="assignments" size={32} />
                     <span>New Assignment</span>
                 </button>
             </div>
