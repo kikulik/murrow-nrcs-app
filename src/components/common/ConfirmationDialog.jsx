@@ -1,7 +1,7 @@
 // src/components/common/ConfirmationDialog.jsx
 // Reusable confirmation dialog
 import React from 'react';
-import { AlertCircle } from 'lucide-react';
+import CustomIcon from '../ui/CustomIcon';
 import ModalBase from './ModalBase';
 
 const ConfirmationDialog = ({ onConfirm, onCancel, title, message }) => (
@@ -9,7 +9,7 @@ const ConfirmationDialog = ({ onConfirm, onCancel, title, message }) => (
         <div className="p-6">
             <div className="flex items-start">
                 <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                    <AlertCircle className="h-6 w-6 text-red-600" />
+                    <CustomIcon name="notification" size={24} className="text-red-600" />
                 </div>
                 <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
                     <p className="text-sm text-gray-500">{message}</p>
