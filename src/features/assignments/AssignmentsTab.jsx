@@ -1,6 +1,6 @@
 // src/features/assignments/AssignmentsTab.jsx
 import React, { useState } from 'react';
-import { Plus, Edit3, Trash2 } from 'lucide-react';
+import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
@@ -82,7 +82,7 @@ const AssignmentsTab = () => {
                                 onClick={() => setEditingId(assignment.id)}
                                 className="p-2 text-gray-500 hover:text-blue-600 rounded"
                             >
-                                <Edit3 className="w-4 h-4" />
+                                <CustomIcon name="edit" size={16} />
                             </button>
                         )}
                         {userPermissions.canDeleteAnything && (
@@ -90,7 +90,7 @@ const AssignmentsTab = () => {
                                 onClick={() => handleDelete(assignment.id)}
                                 className="p-2 text-gray-500 hover:text-red-600 rounded"
                             >
-                                <Trash2 className="w-4 h-4" />
+                                <CustomIcon name="cancel" size={16} />
                             </button>
                         )}
                     </div>
@@ -104,7 +104,7 @@ const AssignmentsTab = () => {
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold">Assignments</h2>
                 <button onClick={() => setIsCreating(true)} className="btn-primary">
-                    <Plus className="w-4 h-4" />
+                    <CustomIcon name="assignments" size={16} />
                     <span>New Assignment</span>
                 </button>
             </div>
