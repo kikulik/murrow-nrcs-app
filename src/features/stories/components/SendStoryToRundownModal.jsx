@@ -1,6 +1,6 @@
 // src/features/stories/components/SendStoryToRundownModal.jsx
 import React, { useState, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAppContext } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import ModalBase from '../../../components/common/ModalBase';
@@ -84,7 +84,7 @@ const SendStoryToRundownModal = ({ story, onCancel }) => {
                     className="btn-primary"
                     disabled={!selectedRundownId || sending || availableRundowns.length === 0}
                 >
-                    <Send className="w-4 h-4" />
+                    <CustomIcon name="send" size={16} />
                     <span>{sending ? 'Sending...' : 'Send to Rundown'}</span>
                 </button>
             </div>
