@@ -61,7 +61,7 @@ const MurrowNRCS = () => {
                     <div className="flex justify-between items-center py-3">
                         <div className="flex items-center space-x-3">
                             <div className="w-12 h-12 flex items-center justify-center">
-                                <CustomIcon name="logo" size={48} />
+                                <CustomIcon name="logo" size={64} />
                             </div>
                             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Murrow</h1>
                         </div>
@@ -69,9 +69,9 @@ const MurrowNRCS = () => {
                             <span className="text-sm hidden sm:inline">
                                 Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})
                             </span>
-                            <CustomIcon name="notification" size={20} className="text-gray-500 dark:text-gray-400 cursor-pointer" />
+                            <CustomIcon name="notification" size={36} className="text-gray-500 dark:text-gray-400 cursor-pointer" />
                             <button onClick={logout} className="btn-secondary !px-3">
-                                <CustomIcon name="logout" size={16} />
+                                <CustomIcon name="logout" size={32} />
                             </button>
                         </div>
                     </div>
@@ -91,7 +91,7 @@ const MurrowNRCS = () => {
                                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                         }`}
                                 >
-                                    <CustomIcon name={tab.icon} size={16} />
+                                    <CustomIcon name={tab.icon} size={32} />
                                     <span>{tab.label}</span>
                                 </button>
                             )
