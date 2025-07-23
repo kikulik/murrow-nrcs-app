@@ -1,80 +1,97 @@
-// src/features/rundown/components/RundownItemEditor.jsx
-// Inline editor for rundown items
-import React, { useState, useEffect } from 'react';
-import InputField from '../../../components/ui/InputField';
-import { RUNDOWN_ITEM_TYPES } from '../../../lib/constants';
+// src/components/modals/RundownEditor.jsx
+import React, { useState } from 'react';
+import CustomIcon from '../ui/CustomIcon';
+import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import ModalBase from '../common/ModalBase';
+import InputField from '../ui/InputField';
+import SelectField from '../ui/SelectField';
 
-const RundownItemEditor = ({ item, onSave, onCancel }) => {
-    const [formData, setFormData] = useState(item);
+const RundownEditor = ({ onCancel }) => {
+    const { appState, setAppState } = useAppContext();
+    const { db } = useAuth();
+    const [name, setName] = useState('');
+    const [templateId, setTemplateId] = useState('');
+    const [airDate, setAirDate] = useState(new Date().toISOString().slice(0, 16));
+    const [saving, setSaving] = useState(false);
 
-    useEffect(() => {
-        setFormData(item);
-    }, [item]);
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!name.trim() || !db) return;
 
-    const handleSave = (e) => {
-        e.stopPropagation();
-        onSave(item.id, formData);
-    };
+        setSaving(true);
+        try {
+            const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
-    const handleCancel = (e) => {
-        e.stopPropagation();
-        onCancel();
+            let items = [];
+            if (templateId) {
+                const template = appState.rundownTemplates.find(t => t.id === templateId);
+                if (template && template.items) {
+                    items = template.items.map(item => ({
+                        ...item,
+                        id: Date.now() + Math.random(),
+                        storyId: null,
+                        storyStatus: null
+                    }));
+                }
+            }
+
+            const newRundown = {
+                name: name.trim(),
+                archived: false,
+                items: items,
+                created: new Date().toISOString(),
+                airDate: airDate
+            };
+
+            const docRef = await addDoc(collection(db, "rundowns"), newRundown);
+            setAppState(prev => ({ ...prev, activeRundownId: docRef.id }));
+
+            onCancel();
+        } catch (error) {
+            console.error("Error creating rundown:", error);
+            alert("Failed to create rundown. Please try again.");
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
-        <div className="p-4 bg-blue-50 dark:bg-gray-700/50 border-l-4 border-blue-500">
-            <div className="space-y-4">
+        <ModalBase onCancel={onCancel} title="Create New Rundown">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <InputField
-                    label="Title"
-                    value={formData.title}
-                    onChange={e => setFormData({ ...formData, title: e.target.value })}
+                    label="Rundown Name"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    required
                 />
+
                 <InputField
-                    label="Duration"
-                    value={formData.duration}
-                    onChange={e => setFormData({ ...formData, duration: e.target.value })}
-                    placeholder="MM:SS"
+                    label="Air Date & Time"
+                    type="datetime-local"
+                    value={airDate}
+                    onChange={e => setAirDate(e.target.value)}
+                    required
                 />
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Item Type(s)
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {Object.keys(RUNDOWN_ITEM_TYPES).map(abbr => (
-                            <label key={abbr} className="flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 cursor-pointer has-[:checked]:bg-blue-100 dark:has-[:checked]:bg-blue-900/50">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.type.includes(abbr)}
-                                    onChange={() => {
-                                        const newTypes = formData.type.includes(abbr)
-                                            ? formData.type.filter(t => t !== abbr)
-                                            : [...formData.type, abbr];
-                                        setFormData({ ...formData, type: newTypes });
-                                    }}
-                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <span className="text-sm">{abbr}</span>
-                            </label>
-                        ))}
-                    </div>
+                {appState.rundownTemplates.length > 0 && (
+                    <SelectField
+                        label="Template (Optional)"
+                        value={templateId}
+                        onChange={e => setTemplateId(e.target.value)}
+                        options={appState.rundownTemplates.map(t => ({ value: t.id, label: t.name }))}
+                    />
+                )}
+                <div className="flex items-center justify-end space-x-3 pt-4">
+                    <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
+                    <button type="submit" className="btn-primary" disabled={saving || !name.trim()}>
+                        <CustomIcon name="save" size={32} />
+                        <span>{saving ? 'Creating...' : 'Create'}</span>
+                    </button>
                 </div>
-
-                <textarea
-                    value={formData.content}
-                    onChange={e => setFormData({ ...formData, content: e.target.value })}
-                    rows={5}
-                    className="w-full form-input"
-                    placeholder="Script or content..."
-                />
-
-                <div className="flex justify-end space-x-2">
-                    <button onClick={handleCancel} className="btn-secondary">Cancel</button>
-                    <button onClick={handleSave} className="btn-primary">Save</button>
-                </div>
-            </div>
-        </div>
+            </form>
+        </ModalBase>
     );
 };
 
-export default RundownItemEditor;
+export default RundownEditor;
