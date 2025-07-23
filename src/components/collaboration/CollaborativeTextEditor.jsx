@@ -1,0 +1,255 @@
+// src/components/collaboration/CollaborativeTextEditor.jsx
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useCollaboration } from '../../context/CollaborationContext';
+import { useAuth } from '../../context/AuthContext';
+
+const CollaborativeTextEditor = ({
+    value,
+    onChange,
+    itemId,
+    className = '',
+    placeholder = '',
+    rows = 4
+}) => {
+    const { currentUser, db } = useAuth();
+    const { setEditingItem, clearEditingItem, CollaborationManager } = useCollaboration();
+    const [localValue, setLocalValue] = useState(value || '');
+    const [pendingOperations, setPendingOperations] = useState([]);
+    const [cursorPositions, setCursorPositions] = useState(new Map());
+    const textareaRef = useRef(null);
+    const lastValueRef = useRef(value || '');
+    const operationsListener = useRef(null);
+
+    // Initialize local value when prop changes
+    useEffect(() => {
+        if (value !== lastValueRef.current) {
+            setLocalValue(value || '');
+            lastValueRef.current = value || '';
+        }
+    }, [value]);
+
+    // Set up real-time operations listener
+    useEffect(() => {
+        if (!db || !itemId) return;
+
+        const setupOperationsListener = async () => {
+            const { collection, query, where, onSnapshot, orderBy } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            const operationsQuery = query(
+                collection(db, "textOperations"),
+                where("itemId", "==", itemId),
+                orderBy("timestamp", "desc")
+            );
+
+            operationsListener.current = onSnapshot(operationsQuery, (snapshot) => {
+                const operations = [];
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (data.userId !== currentUser.uid) {
+                        operations.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    }
+                });
+
+                // Apply remote operations
+                if (operations.length > 0) {
+                    const newValue = CollaborationManager.applyTextTransform(
+                        lastValueRef.current,
+                        operations
+                    );
+                    setLocalValue(newValue);
+                    lastValueRef.current = newValue;
+                    onChange(newValue);
+                }
+            });
+        };
+
+        setupOperationsListener();
+
+        return () => {
+            if (operationsListener.current) {
+                operationsListener.current();
+            }
+        };
+    }, [db, itemId, currentUser.uid, onChange, CollaborationManager]);
+
+    // Handle focus - indicate user is editing
+    const handleFocus = useCallback(async () => {
+        await setEditingItem(itemId);
+    }, [setEditingItem, itemId]);
+
+    // Handle blur - clear editing status
+    const handleBlur = useCallback(async () => {
+        await clearEditingItem();
+    }, [clearEditingItem]);
+
+    // Handle text changes with operational transforms
+    const handleChange = useCallback(async (e) => {
+        const newValue = e.target.value;
+        const oldValue = localValue;
+
+        setLocalValue(newValue);
+
+        // Generate operations for the change
+        const operations = CollaborationManager.generateTextOperations(oldValue, newValue);
+
+        if (operations.length > 0 && db) {
+            try {
+                const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+                // Store operations in Firestore for real-time sync
+                for (const operation of operations) {
+                    await addDoc(collection(db, "textOperations"), {
+                        ...operation,
+                        itemId,
+                        userId: currentUser.uid,
+                        userName: currentUser.name,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            } catch (error) {
+                console.error('Error saving text operations:', error);
+            }
+        }
+
+        // Update parent component
+        onChange(newValue);
+        lastValueRef.current = newValue;
+    }, [localValue, db, itemId, currentUser, onChange, CollaborationManager]);
+
+    // Handle cursor position tracking
+    const handleCursorChange = useCallback(async (e) => {
+        const textarea = e.target;
+        const cursorPosition = textarea.selectionStart;
+
+        if (db && itemId) {
+            try {
+                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+                // Update cursor position in real-time
+                await setDoc(doc(db, "cursors", `${itemId}_${currentUser.uid}`), {
+                    itemId,
+                    userId: currentUser.uid,
+                    userName: currentUser.name,
+                    position: cursorPosition,
+                    timestamp: new Date().toISOString()
+                });
+            } catch (error) {
+                console.error('Error updating cursor position:', error);
+            }
+        }
+    }, [db, itemId, currentUser]);
+
+    // Listen to other users' cursor positions
+    useEffect(() => {
+        if (!db || !itemId) return;
+
+        const setupCursorListener = async () => {
+            const { collection, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            const cursorsQuery = query(
+                collection(db, "cursors"),
+                where("itemId", "==", itemId)
+            );
+
+            const unsubscribe = onSnapshot(cursorsQuery, (snapshot) => {
+                const positions = new Map();
+                const now = new Date();
+
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    const timestamp = new Date(data.timestamp);
+                    const secondsAgo = (now - timestamp) / 1000;
+
+                    // Only show cursors from last 10 seconds and not from current user
+                    if (secondsAgo < 10 && data.userId !== currentUser.uid) {
+                        positions.set(data.userId, {
+                            ...data,
+                            id: doc.id
+                        });
+                    }
+                });
+
+                setCursorPositions(positions);
+            });
+
+            return unsubscribe;
+        };
+
+        setupCursorListener();
+    }, [db, itemId, currentUser.uid]);
+
+    // Render cursor indicators
+    const renderCursorIndicators = () => {
+        const textarea = textareaRef.current;
+        if (!textarea || cursorPositions.size === 0) return null;
+
+        const indicators = [];
+        cursorPositions.forEach((cursor, userId) => {
+            // Calculate cursor position in textarea
+            const textBeforeCursor = localValue.substring(0, cursor.position);
+            const lines = textBeforeCursor.split('\n');
+            const lineNumber = lines.length;
+            const columnNumber = lines[lines.length - 1].length;
+
+            // Simple positioning - in production, use more sophisticated positioning
+            const topOffset = (lineNumber - 1) * 20; // Approximate line height
+            const leftOffset = columnNumber * 8; // Approximate character width
+
+            indicators.push(
+                <div
+                    key={userId}
+                    className="absolute pointer-events-none z-10"
+                    style={{
+                        top: topOffset + 'px',
+                        left: leftOffset + 'px',
+                        transform: 'translateX(-50%)'
+                    }}
+                >
+                    <div className="flex flex-col items-center">
+                        <div className="w-0.5 h-5 bg-blue-500 animate-pulse"></div>
+                        <div className="bg-blue-500 text-white text-xs px-1 py-0.5 rounded whitespace-nowrap">
+                            {cursor.userName}
+                        </div>
+                    </div>
+                </div>
+            );
+        });
+
+        return (
+            <div className="absolute inset-0 pointer-events-none">
+                {indicators}
+            </div>
+        );
+    };
+
+    return (
+        <div className="relative">
+            <textarea
+                ref={textareaRef}
+                value={localValue}
+                onChange={handleChange}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                onSelect={handleCursorChange}
+                onClick={handleCursorChange}
+                onKeyUp={handleCursorChange}
+                className={`w-full form-input relative z-0 ${className}`}
+                placeholder={placeholder}
+                rows={rows}
+            />
+            {renderCursorIndicators()}
+
+            {/* Show pending operations indicator */}
+            {pendingOperations.length > 0 && (
+                <div className="absolute top-2 right-2 bg-yellow-100 border border-yellow-300 rounded px-2 py-1 text-xs">
+                    Syncing changes...
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default CollaborativeTextEditor;
