@@ -1,6 +1,6 @@
 // src/features/stories/StoriesTab.jsx
 import React, { useState } from 'react';
-import { Plus, Search, Calendar } from 'lucide-react';
+import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
@@ -78,7 +78,7 @@ const StoriesTab = () => {
                 </div>
                 <div className="flex items-center space-x-3">
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <CustomIcon name="search" size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
                             placeholder="Search stories..."
@@ -88,7 +88,7 @@ const StoriesTab = () => {
                         />
                     </div>
                     <button onClick={() => openStoryEditor()} className="btn-primary">
-                        <Plus className="w-4 h-4" />
+                        <CustomIcon name="add story" size={16} />
                         <span>New Story</span>
                     </button>
                 </div>
@@ -156,7 +156,7 @@ const AssignmentCard = ({ assignment }) => {
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
             <div className="flex items-center flex-wrap gap-x-3 mb-2">
-                <Calendar className="w-5 h-5 text-purple-500" />
+                <CustomIcon name="assignments" size={20} className="text-purple-500" />
                 <h3 className="text-lg font-medium">{assignment.title}</h3>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(assignment.status)}`}>
                     {assignment.status}
