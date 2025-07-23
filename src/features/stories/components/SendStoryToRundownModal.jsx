@@ -84,7 +84,7 @@ const SendStoryToRundownModal = ({ story, onCancel }) => {
                     className="btn-primary"
                     disabled={!selectedRundownId || sending || availableRundowns.length === 0}
                 >
-                    <CustomIcon name="send" size={16} />
+                    <CustomIcon name="send" size={32} />
                     <span>{sending ? 'Sending...' : 'Send to Rundown'}</span>
                 </button>
             </div>
