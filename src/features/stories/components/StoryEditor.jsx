@@ -1,6 +1,6 @@
 // src/features/stories/components/StoryEditor.jsx
 import React, { useState } from 'react';
-import { Save } from 'lucide-react';
+import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppContext } from '../../../context/AppContext';
 import ModalBase from '../../../components/common/ModalBase';
@@ -142,7 +142,7 @@ const StoryEditor = ({ story = null, onCancel }) => {
                 <div className="flex items-center justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button type="submit" className="btn-primary">
-                        <Save className="w-4 h-4" />
+                        <CustomIcon name="save" size={16} />
                         <span>Save Story</span>
                     </button>
                 </div>
