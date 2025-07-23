@@ -73,19 +73,19 @@ const RundownDraggableItem = ({
 
         try {
             const { doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
+            
             const rundownRef = doc(db, "rundowns", appState.activeRundownId);
             const rundownDoc = await getDoc(rundownRef);
-
+            
             if (!rundownDoc.exists()) return;
-
+            
             const rundownData = rundownDoc.data();
-            const updatedItems = rundownData.items.map(rundownItem =>
-                rundownItem.id === item.id
+            const updatedItems = rundownData.items.map(rundownItem => 
+                rundownItem.id === item.id 
                     ? { ...rundownItem, storyStatus: newStatus }
                     : rundownItem
             );
-
+            
             await updateDoc(rundownRef, { items: updatedItems });
         } catch (error) {
             console.error("Error updating story status:", error);
@@ -108,19 +108,21 @@ const RundownDraggableItem = ({
             data-handler-id={handlerId}
             className={`group relative ${isDragging ? 'opacity-50' : 'opacity-100'} ${isLocked ? 'opacity-75' : ''} border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors`}
         >
-            <div className="flex items-center justify-between px-4 py-1 min-h-[40px]">
-                <div className="flex items-center space-x-3 flex-shrink-0">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium bg-gray-100 dark:bg-gray-600 flex-shrink-0">
+            <div className="grid grid-cols-12 items-center gap-2 px-4 py-1 min-h-[40px]">
+                <div className="col-span-1 flex justify-center">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium bg-gray-100 dark:bg-gray-600">
                         {index + 1}
                     </div>
                 </div>
 
-                <div className="flex-1 min-w-0 px-3">
-                    <h4 className="font-medium truncate text-sm">{item.title}</h4>
-                    {isLocked && <CustomIcon name="lock" size={20} className="text-red-500 inline ml-2" />}
+                <div className="col-span-5">
+                    <h4 className="font-medium truncate text-sm pr-2">
+                        {item.title}
+                        {isLocked && <CustomIcon name="lock" size={20} className="text-red-500 inline ml-2" />}
+                    </h4>
                 </div>
 
-                <div className="flex items-center gap-1 flex-shrink-0 px-2">
+                <div className="col-span-2 flex gap-1 justify-center">
                     {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
                         <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
                             {t}
@@ -128,7 +130,7 @@ const RundownDraggableItem = ({
                     ))}
                 </div>
 
-                <div className="flex-shrink-0 px-2 min-w-[100px]">
+                <div className="col-span-2">
                     <select
                         value={item.storyStatus || 'Ready for Air'}
                         onChange={(e) => handleStatusChange(e.target.value)}
@@ -140,29 +142,31 @@ const RundownDraggableItem = ({
                     </select>
                 </div>
 
-                <div className="flex-shrink-0 px-2 min-w-[60px]">
+                <div className="col-span-1 text-center">
                     <span className="text-xs text-gray-600 dark:text-gray-400">{item.duration}</span>
                 </div>
 
-                <div className="flex-shrink-0 px-2 min-w-[80px]">
+                <div className="col-span-1 text-center">
                     {author ? (
-                        <span className="text-xs text-gray-500 truncate">{author.name}</span>
+                        <span className="text-xs text-gray-500 truncate block" title={author.name}>
+                            {author.name.length > 8 ? author.name.substring(0, 8) + '...' : author.name}
+                        </span>
                     ) : (
                         <span className="text-xs text-gray-400">No Author</span>
                     )}
                 </div>
 
                 {!isLocked && (
-                    <div className="flex items-center gap-1 flex-shrink-0 pl-2">
+                    <div className="absolute top-1 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                             onClick={(e) => { e.stopPropagation(); onToggleEdit(item.id); }}
-                            className="p-1 text-gray-400 hover:text-blue-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="p-1 text-gray-400 hover:text-blue-600 rounded"
                         >
                             <CustomIcon name="edit" size={20} />
                         </button>
                         <button
                             onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
-                            className="p-1 text-gray-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="p-1 text-gray-400 hover:text-red-600 rounded"
                         >
                             <CustomIcon name="delete" size={20} />
                         </button>
