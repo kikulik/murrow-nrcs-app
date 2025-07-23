@@ -60,7 +60,7 @@ const MurrowNRCS = () => {
                 <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center py-3">
                         <div className="flex items-center space-x-3">
-                            <div className="w-12 h-12 flex items-center justify-center">
+                            <div className="w-16 h-16 flex items-center justify-center">
                                 <CustomIcon name="logo" size={80} />
                             </div>
                             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Murrow</h1>
