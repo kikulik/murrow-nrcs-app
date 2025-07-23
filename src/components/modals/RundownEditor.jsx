@@ -12,6 +12,7 @@ const RundownEditor = ({ onCancel }) => {
     const { db } = useAuth();
     const [name, setName] = useState('');
     const [templateId, setTemplateId] = useState('');
+    const [airDate, setAirDate] = useState(new Date().toISOString().slice(0, 16));
     const [saving, setSaving] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -39,7 +40,8 @@ const RundownEditor = ({ onCancel }) => {
                 name: name.trim(),
                 archived: false,
                 items: items,
-                created: new Date().toISOString()
+                created: new Date().toISOString(),
+                airDate: airDate
             };
 
             const docRef = await addDoc(collection(db, "rundowns"), newRundown);
@@ -63,6 +65,15 @@ const RundownEditor = ({ onCancel }) => {
                     onChange={e => setName(e.target.value)}
                     required
                 />
+
+                <InputField
+                    label="Air Date & Time"
+                    type="datetime-local"
+                    value={airDate}
+                    onChange={e => setAirDate(e.target.value)}
+                    required
+                />
+
                 {appState.rundownTemplates.length > 0 && (
                     <SelectField
                         label="Template (Optional)"
