@@ -1,6 +1,6 @@
 // src/components/modals/AddStoryToRundownModal.jsx
 import React, { useState, useEffect } from 'react';
-import { Check } from 'lucide-react';
+import CustomIcon from '../ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import ModalBase from '../common/ModalBase';
@@ -209,7 +209,7 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                         className="btn-primary"
                         disabled={saving || selectedTypes.length === 0 || (tab === 'existing' && !selectedStoryId && filteredStories.length > 0)}
                     >
-                        <Check className="w-4 h-4" />
+                        <CustomIcon name="add story" size={16} />
                         <span>{saving ? 'Adding...' : 'Add to Rundown'}</span>
                     </button>
                 </div>
