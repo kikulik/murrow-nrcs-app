@@ -46,9 +46,9 @@ const PrintDropdown = ({ rundown, disabled, airTime = '12:00' }) => {
                 disabled={disabled}
                 className={`btn-secondary flex items-center ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-                <CustomIcon name="print" size={16} className="mr-2" />
+                <CustomIcon name="print" size={32} className="mr-2" />
                 <span>Print</span>
-                <CustomIcon name="close" size={16} className="ml-1" />
+                <CustomIcon name="close" size={32} className="ml-1" />
             </button>
 
             {isOpen && (
