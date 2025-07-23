@@ -29,8 +29,14 @@ const StoriesTab = () => {
         setAppState(prev => ({ ...prev, searchTerm: term }));
     };
 
-    const openStoryEditor = () => {
-        setAppState(prev => ({ ...prev, modal: { type: 'storyEditor' } }));
+    const openStoryEditor = (story = null) => {
+        setAppState(prev => ({
+            ...prev,
+            modal: {
+                type: 'storyEditor',
+                story: story
+            }
+        }));
     };
 
     const handleDeleteStory = (storyId) => {
@@ -38,6 +44,10 @@ const StoriesTab = () => {
             ...prev,
             modal: { type: 'deleteConfirm', id: storyId, itemType: 'stories' }
         }));
+    };
+
+    const handleEditStory = (story) => {
+        openStoryEditor(story);
     };
 
     return (
@@ -77,7 +87,7 @@ const StoriesTab = () => {
                             className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                         />
                     </div>
-                    <button onClick={openStoryEditor} className="btn-primary">
+                    <button onClick={() => openStoryEditor()} className="btn-primary">
                         <Plus className="w-4 h-4" />
                         <span>New Story</span>
                     </button>
@@ -92,6 +102,7 @@ const StoriesTab = () => {
                             story={story}
                             onSendToRundown={setSendToRundownModalStory}
                             onDelete={handleDeleteStory}
+                            onEdit={handleEditStory}
                             userPermissions={userPermissions}
                             currentUser={currentUser}
                         />
@@ -108,6 +119,7 @@ const StoriesTab = () => {
                                     story={story}
                                     onSendToRundown={setSendToRundownModalStory}
                                     onDelete={handleDeleteStory}
+                                    onEdit={handleEditStory}
                                     userPermissions={userPermissions}
                                     currentUser={currentUser}
                                 />
