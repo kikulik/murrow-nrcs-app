@@ -1,6 +1,6 @@
 // src/features/MurrowNRCS.jsx
 import React from 'react';
-import { Tv, Bell, LogOut, FileText, PlayCircle, Calendar, Shield, Radio } from 'lucide-react';
+import CustomIcon from '../components/ui/CustomIcon';
 import { useAuth } from '../context/AuthContext';
 import { useAppContext } from '../context/AppContext';
 import { getUserPermissions } from '../lib/permissions';
@@ -47,11 +47,11 @@ const MurrowNRCS = () => {
     };
 
     const tabs = [
-        { id: 'stories', label: 'Stories', icon: FileText, permission: true },
-        { id: 'rundown', label: 'Rundown', icon: PlayCircle, permission: true },
-        { id: 'assignments', label: 'Assignments', icon: Calendar, permission: true },
-        { id: 'admin', label: 'Admin', icon: Shield, permission: userPermissions.canManageUsers },
-        { id: 'live', label: 'Live Mode', icon: Radio, permission: liveMode.isLive },
+        { id: 'stories', label: 'Stories', icon: 'stories', permission: true },
+        { id: 'rundown', label: 'Rundown', icon: 'rundown', permission: true },
+        { id: 'assignments', label: 'Assignments', icon: 'assignments', permission: true },
+        { id: 'admin', label: 'Admin', icon: 'admin', permission: userPermissions.canManageUsers },
+        { id: 'live', label: 'Live Mode', icon: 'golive', permission: liveMode.isLive },
     ];
 
     return (
@@ -60,8 +60,8 @@ const MurrowNRCS = () => {
                 <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center py-3">
                         <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                                <Tv className="w-5 h-5 text-white" />
+                            <div className="w-12 h-12 flex items-center justify-center">
+                                <CustomIcon name="logo" size={48} />
                             </div>
                             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Murrow</h1>
                         </div>
@@ -69,9 +69,9 @@ const MurrowNRCS = () => {
                             <span className="text-sm hidden sm:inline">
                                 Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})
                             </span>
-                            <Bell className="w-5 h-5 text-gray-500 dark:text-gray-400 cursor-pointer" />
+                            <CustomIcon name="notification" size={20} className="text-gray-500 dark:text-gray-400 cursor-pointer" />
                             <button onClick={logout} className="btn-secondary !px-3">
-                                <LogOut className="w-4 h-4" />
+                                <CustomIcon name="logout" size={16} />
                             </button>
                         </div>
                     </div>
@@ -91,7 +91,7 @@ const MurrowNRCS = () => {
                                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                         }`}
                                 >
-                                    <tab.icon className="w-4 h-4" />
+                                    <CustomIcon name={tab.icon} size={16} />
                                     <span>{tab.label}</span>
                                 </button>
                             )
