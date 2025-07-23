@@ -61,13 +61,13 @@ const AdminTab = () => {
                         onClick={() => setEditingTarget({ type: 'user', id: user.id })}
                         className="p-2 text-gray-500 hover:text-blue-600 rounded"
                     >
-                        <CustomIcon name="edit" size={16} />
+                        <CustomIcon name="edit" size={32} />
                     </button>
                     <button
                         onClick={() => handleDelete(user.id, 'user')}
                         className="p-2 text-gray-500 hover:text-red-600 rounded"
                     >
-                        <CustomIcon name="cancel" size={16} />
+                        <CustomIcon name="cancel" size={32} />
                     </button>
                 </div>
             </div>
@@ -94,13 +94,13 @@ const AdminTab = () => {
                         onClick={() => setEditingTarget({ type: 'group', id: group.id })}
                         className="p-2 text-gray-500 hover:text-blue-600 rounded"
                     >
-                        <CustomIcon name="edit" size={16} />
+                        <CustomIcon name="edit" size={32} />
                     </button>
                     <button
                         onClick={() => handleDelete(group.id, 'group')}
                         className="p-2 text-gray-500 hover:text-red-600 rounded"
                     >
-                        <CustomIcon name="cancel" size={16} />
+                        <CustomIcon name="cancel" size={32} />
                     </button>
                 </div>
             </div>
@@ -127,13 +127,13 @@ const AdminTab = () => {
                         onClick={() => setEditingTarget({ type: 'template', id: template.id })}
                         className="p-2 text-gray-500 hover:text-blue-600 rounded"
                     >
-                        <CustomIcon name="edit" size={16} />
+                        <CustomIcon name="edit" size={32} />
                     </button>
                     <button
                         onClick={() => handleDelete(template.id, 'rundownTemplate')}
                         className="p-2 text-gray-500 hover:text-red-600 rounded"
                     >
-                        <CustomIcon name="cancel" size={16} />
+                        <CustomIcon name="cancel" size={32} />
                     </button>
                 </div>
             </div>
@@ -146,7 +146,7 @@ const AdminTab = () => {
                 <div className="flex justify-between items-center">
                     <h2 className="text-xl font-semibold">Users</h2>
                     <button onClick={() => setIsCreating('user')} className="btn-primary text-sm">
-                        <CustomIcon name="user" size={16} />
+                        <CustomIcon name="user" size={32} />
                         <span>Add User</span>
                     </button>
                 </div>
@@ -166,7 +166,7 @@ const AdminTab = () => {
                 <div className="flex justify-between items-center">
                     <h2 className="text-xl font-semibold">Groups</h2>
                     <button onClick={() => setIsCreating('group')} className="btn-primary text-sm">
-                        <CustomIcon name="add story" size={16} />
+                        <CustomIcon name="add story" size={32} />
                         <span>Add Group</span>
                     </button>
                 </div>
@@ -187,7 +187,7 @@ const AdminTab = () => {
                     <div className="flex justify-between items-center">
                         <h2 className="text-xl font-semibold">Rundown Templates</h2>
                         <button onClick={() => setIsCreating('template')} className="btn-primary text-sm">
-                            <CustomIcon name="stories" size={16} />
+                            <CustomIcon name="stories" size={32} />
                             <span>New Template</span>
                         </button>
                     </div>
