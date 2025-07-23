@@ -1,10 +1,9 @@
 // src/features/rundown/components/PrintDropdown.jsx
-// Print options dropdown
 import React, { useState, useRef, useEffect } from 'react';
 import { Printer, MoreVertical, FileText, Calendar } from 'lucide-react';
 import { PrintService } from '../../../services/PrintService';
 
-const PrintDropdown = ({ rundown, disabled }) => {
+const PrintDropdown = ({ rundown, disabled, airTime = '12:00' }) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef(null);
 
@@ -28,7 +27,7 @@ const PrintDropdown = ({ rundown, disabled }) => {
 
     const handlePrintRundownList = () => {
         if (rundown) {
-            PrintService.printRundownList(rundown);
+            PrintService.printRundownList(rundown, airTime);
         }
         setIsOpen(false);
     };
@@ -83,4 +82,4 @@ const PrintDropdown = ({ rundown, disabled }) => {
     );
 };
 
-export default PrintDropdown
+export default PrintDropdown;
