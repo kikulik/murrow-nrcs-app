@@ -45,7 +45,7 @@ const SendStoryToRundownModal = ({ story, onCancel }) => {
                 time: "00:00:00",
                 title: story.title,
                 duration: story.duration || "01:00",
-                type: defaultVideoType ? [defaultVideoType] : ['PKG'],
+                type: defaultVideoType ? [defaultVideoType] : ['STD'],
                 content: story.content,
                 storyId: story.id,
                 storyStatus: 'Not Ready',
