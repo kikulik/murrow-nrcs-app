@@ -88,14 +88,14 @@ const TemplateEditor = ({ template, onSave, onCancel }) => {
                                         onClick={() => removeItem(index)}
                                         className="p-2 text-red-500 hover:text-red-700"
                                     >
-                                        <CustomIcon name="cancel" size={16} />
+                                        <CustomIcon name="cancel" size={32} />
                                     </button>
                                 </div>
                             </div>
                         ))}
                     </div>
                     <button type="button" onClick={addItem} className="btn-secondary mt-3 text-sm">
-                        <CustomIcon name="add story" size={16} />
+                        <CustomIcon name="add story" size={32} />
                         Add Item
                     </button>
                 </div>
@@ -103,7 +103,7 @@ const TemplateEditor = ({ template, onSave, onCancel }) => {
                 <div className="flex justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button type="submit" className="btn-primary">
-                        <CustomIcon name="save" size={16} />
+                        <CustomIcon name="save" size={32} />
                         <span>Save Template</span>
                     </button>
                 </div>
