@@ -1,9 +1,9 @@
 // src/features/rundown/components/RundownDraggableItem.jsx
-// Individual draggable rundown item
 import React, { useRef, useState, useEffect } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAppContext } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import { getStatusColor, getRundownTypeColor } from '../../../utils/styleHelpers';
 import { RUNDOWN_STORY_STATUSES } from '../../../lib/constants';
 import RundownItemEditor from './RundownItemEditor';
@@ -21,6 +21,7 @@ const RundownDraggableItem = ({
     onDeleteItem
 }) => {
     const { appState } = useAppContext();
+    const { db } = useAuth();
     const ref = useRef(null);
 
     const [{ handlerId }, drop] = useDrop({
@@ -63,7 +64,33 @@ const RundownDraggableItem = ({
     }
 
     const story = appState.stories?.find(s => s.id === item.storyId);
-    const author = story ? appState.users.find(u => u.id === story.authorId) : null;
+    const author = story ?
+        appState.users.find(u => u.id === story.authorId || u.uid === story.authorId) :
+        item.authorId ? appState.users.find(u => u.id === item.authorId || u.uid === item.authorId) : null;
+
+    const handleStatusChange = async (newStatus) => {
+        if (isLocked || !db || !appState.activeRundownId) return;
+
+        try {
+            const { doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            const rundownRef = doc(db, "rundowns", appState.activeRundownId);
+            const rundownDoc = await getDoc(rundownRef);
+
+            if (!rundownDoc.exists()) return;
+
+            const rundownData = rundownDoc.data();
+            const updatedItems = rundownData.items.map(rundownItem =>
+                rundownItem.id === item.id
+                    ? { ...rundownItem, storyStatus: newStatus }
+                    : rundownItem
+            );
+
+            await updateDoc(rundownRef, { items: updatedItems });
+        } catch (error) {
+            console.error("Error updating story status:", error);
+        }
+    };
 
     if (isEditing) {
         return (
@@ -90,7 +117,7 @@ const RundownDraggableItem = ({
 
                 <div className="flex-1 min-w-0 px-3">
                     <h4 className="font-medium truncate text-sm">{item.title}</h4>
-                    {isLocked && <CustomIcon name="lock" size={28} className="text-red-500 inline ml-2" />}
+                    {isLocked && <CustomIcon name="lock" size={20} className="text-red-500 inline ml-2" />}
                 </div>
 
                 <div className="flex items-center gap-1 flex-shrink-0 px-2">
@@ -102,19 +129,15 @@ const RundownDraggableItem = ({
                 </div>
 
                 <div className="flex-shrink-0 px-2 min-w-[100px]">
-                    {item.storyId ? (
-                        <select
-                            value={item.storyStatus || 'Not Ready'}
-                            onChange={(e) => {/* Update story status */ }}
-                            disabled={isLocked}
-                            className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus)} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            onClick={e => e.stopPropagation()}
-                        >
-                            {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    ) : (
-                        <span className="text-xs text-gray-400">No Status</span>
-                    )}
+                    <select
+                        value={item.storyStatus || 'Ready for Air'}
+                        onChange={(e) => handleStatusChange(e.target.value)}
+                        disabled={isLocked}
+                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
                 </div>
 
                 <div className="flex-shrink-0 px-2 min-w-[60px]">
@@ -135,13 +158,13 @@ const RundownDraggableItem = ({
                             onClick={(e) => { e.stopPropagation(); onToggleEdit(item.id); }}
                             className="p-1 text-gray-400 hover:text-blue-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                            <CustomIcon name="edit" size={28} />
+                            <CustomIcon name="edit" size={20} />
                         </button>
                         <button
                             onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
                             className="p-1 text-gray-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                            <CustomIcon name="delete" size={28} />
+                            <CustomIcon name="cancel" size={20} />
                         </button>
                     </div>
                 )}
