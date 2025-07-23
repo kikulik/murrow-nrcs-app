@@ -24,9 +24,9 @@ const CollapsibleVideoSection = ({ story, showControls }) => {
                         <div className="w-2 h-2 bg-green-500 rounded-full" title="Video attached"></div>
                     )}
                     {isExpanded ? (
-                        <CustomIcon name="close" size={16} className="text-gray-500" />
+                        <CustomIcon name="close" size={32} className="text-gray-500" />
                     ) : (
-                        <CustomIcon name="add story" size={16} className="text-gray-500" />
+                        <CustomIcon name="add story" size={32} className="text-gray-500" />
                     )}
                 </div>
             </button>
@@ -47,7 +47,7 @@ const CollapsibleVideoSection = ({ story, showControls }) => {
                                     className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                                     title="Copy to clipboard"
                                 >
-                                    <CustomIcon name="stories" size={16} />
+                                    <CustomIcon name="stories" size={32} />
                                 </button>
                             </div>
                         </div>
@@ -56,9 +56,9 @@ const CollapsibleVideoSection = ({ story, showControls }) => {
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             {story.videoUrl ? (
-                                <CustomIcon name="add story" size={20} className="text-green-500" />
+                                <CustomIcon name="add story" size={36} className="text-green-500" />
                             ) : (
-                                <CustomIcon name="notification" size={20} className="text-yellow-500" />
+                                <CustomIcon name="notification" size={36} className="text-yellow-500" />
                             )}
                             <span className="text-sm">
                                 {story.videoUrl ? 'Video file attached' : 'No video file attached'}
@@ -67,7 +67,7 @@ const CollapsibleVideoSection = ({ story, showControls }) => {
 
                         {showControls && (
                             <button className="flex items-center gap-2 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
-                                <CustomIcon name="add story" size={16} />
+                                <CustomIcon name="add story" size={32} />
                                 Upload Video
                             </button>
                         )}
