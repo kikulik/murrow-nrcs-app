@@ -20,7 +20,7 @@ const TemplateEditor = ({ template, onSave, onCancel }) => {
             id: Date.now(),
             title: 'New Item',
             duration: '01:00',
-            type: ['PKG'],
+            type: ['STD'],
             content: ''
         }]);
     };
