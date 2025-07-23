@@ -10,14 +10,15 @@ import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 
 const AddStoryToRundownModal = ({ onCancel }) => {
     const { appState } = useAppContext();
-    const { db } = useAuth();
+    const { db, currentUser } = useAuth();
     const [tab, setTab] = useState('existing');
     const [selectedStoryId, setSelectedStoryId] = useState('');
     const [selectedTypes, setSelectedTypes] = useState(['PKG']);
     const [newStoryData, setNewStoryData] = useState({
         title: '',
         content: '',
-        duration: '01:00'
+        duration: '01:00',
+        authorId: currentUser?.uid || ''
     });
     const [searchTerm, setSearchTerm] = useState('');
     const [saving, setSaving] = useState(false);
@@ -33,6 +34,15 @@ const AddStoryToRundownModal = ({ onCancel }) => {
             }
         }
     }, [searchTerm, filteredStories, tab, selectedStoryId]);
+
+    useEffect(() => {
+        if (currentUser?.uid) {
+            setNewStoryData(prev => ({
+                ...prev,
+                authorId: currentUser.uid
+            }));
+        }
+    }, [currentUser]);
 
     const handleTypeChange = (type) => {
         setSelectedTypes(prev =>
@@ -80,6 +90,7 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     content: story.content,
                     storyId: story.id,
                     storyStatus: 'Not Ready',
+                    authorId: story.authorId
                 };
             } else {
                 newRundownItem = {
@@ -90,7 +101,8 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     type: selectedTypes,
                     content: newStoryData.content,
                     storyId: null,
-                    storyStatus: null,
+                    storyStatus: 'Ready for Air',
+                    authorId: newStoryData.authorId || currentUser?.uid
                 };
             }
 
@@ -180,6 +192,12 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                             value={newStoryData.title}
                             onChange={e => setNewStoryData({ ...newStoryData, title: e.target.value })}
                             placeholder="Auto-named if left blank"
+                        />
+                        <SelectField
+                            label="Author"
+                            value={newStoryData.authorId}
+                            onChange={e => setNewStoryData({ ...newStoryData, authorId: e.target.value })}
+                            options={appState.users.map(u => ({ value: u.uid || u.id, label: u.name }))}
                         />
                         <InputField
                             label="Duration"
