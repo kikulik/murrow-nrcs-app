@@ -48,7 +48,6 @@ const PrintDropdown = ({ rundown, disabled, airTime = '12:00' }) => {
             >
                 <CustomIcon name="print" size={32} className="mr-2" />
                 <span>Print</span>
-                <CustomIcon name="close" size={32} className="ml-1" />
             </button>
 
             {isOpen && (
