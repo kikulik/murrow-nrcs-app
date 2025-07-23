@@ -1,7 +1,7 @@
 // src/features/policies/GroupPolicy.jsx
 // Group policies management (future implementation)
 import React, { useState } from 'react';
-import { Shield, Users, Settings } from 'lucide-react';
+import CustomIcon from '../../components/ui/CustomIcon';
 
 const GroupPolicy = ({ group, onSave, onCancel }) => {
     const [policies, setPolicies] = useState({
@@ -19,7 +19,7 @@ const GroupPolicy = ({ group, onSave, onCancel }) => {
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
             <div className="flex items-center gap-3 mb-6">
-                <Shield className="w-6 h-6 text-blue-600" />
+                <CustomIcon name="admin" size={24} className="text-blue-600" />
                 <h3 className="text-lg font-semibold">Group Policies: {group?.name}</h3>
             </div>
 
