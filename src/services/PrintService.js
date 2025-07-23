@@ -192,7 +192,7 @@ export class PrintService {
 
     return items.map(item => {
       const itemStartTime = PrintService.minutesToTimeString(currentTimeInMinutes);
-      const durationInMinutes = PrintService.parseDuration(item.duration);
+      const durationInMinutes = PrintService.parseDurationToMinutes(item.duration);
       currentTimeInMinutes += durationInMinutes;
 
       return {
@@ -208,7 +208,7 @@ export class PrintService {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
   }
 
-  static parseDuration(durationStr) {
+  static parseDurationToMinutes(durationStr) {
     if (!durationStr || typeof durationStr !== 'string') return 0;
     const parts = durationStr.split(':').map(Number);
     if (parts.length === 2) return parts[0] * 60 + parts[1];
