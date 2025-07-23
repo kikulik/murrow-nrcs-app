@@ -30,7 +30,7 @@ const RundownTab = ({ liveMode }) => {
         const date = new Date(airDate);
         const hours = date.getHours();
         const minutes = date.getMinutes();
-        
+
         // Convert to 24-hour format for printing
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     };
@@ -155,9 +155,9 @@ const RundownTab = ({ liveMode }) => {
                         <button
                             onClick={openAddStoryModal}
                             disabled={isRundownLocked || currentRundown.archived}
-                            className={`btn-primary ${isRundownLocked || currentRundown.archived ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`btn-primary flex items-center ${isRundownLocked || currentRundown.archived ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
-                            <Plus className="w-4 h-4" />
+                            <Plus className="w-4 h-4 mr-2" />
                             <span>Add Story</span>
                         </button>
                     </div>
