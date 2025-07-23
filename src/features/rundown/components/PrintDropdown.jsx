@@ -1,6 +1,6 @@
 // src/features/rundown/components/PrintDropdown.jsx
 import React, { useState, useRef, useEffect } from 'react';
-import { Printer, MoreVertical, FileText, Calendar } from 'lucide-react';
+import CustomIcon from '../../../components/ui/CustomIcon';
 import { PrintService } from '../../../services/PrintService';
 
 const PrintDropdown = ({ rundown, disabled, airTime = '12:00' }) => {
@@ -46,9 +46,9 @@ const PrintDropdown = ({ rundown, disabled, airTime = '12:00' }) => {
                 disabled={disabled}
                 className={`btn-secondary flex items-center ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-                <Printer className="w-4 h-4 mr-2" />
+                <CustomIcon name="print" size={16} className="mr-2" />
                 <span>Print</span>
-                <MoreVertical className="w-4 h-4 ml-1" />
+                <CustomIcon name="close" size={16} className="ml-1" />
             </button>
 
             {isOpen && (
@@ -58,21 +58,21 @@ const PrintDropdown = ({ rundown, disabled, airTime = '12:00' }) => {
                             onClick={handlePrintForPresenter}
                             className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                         >
-                            <FileText className="w-4 h-4 mr-3" />
+                            <CustomIcon name="print" size={32} className="mr-3" />
                             Print for Presenter
                         </button>
                         <button
                             onClick={handlePrintRundownList}
                             className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                         >
-                            <Calendar className="w-4 h-4 mr-3" />
+                            <CustomIcon name="print" size={32} className="mr-3" />
                             Print Rundown List
                         </button>
                         <button
                             onClick={handleExportRTF}
                             className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                         >
-                            <FileText className="w-4 h-4 mr-3" />
+                            <CustomIcon name="print" size={32} className="mr-3" />
                             Export RTF
                         </button>
                     </div>
