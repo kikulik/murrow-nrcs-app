@@ -209,7 +209,7 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                         className="btn-primary"
                         disabled={saving || selectedTypes.length === 0 || (tab === 'existing' && !selectedStoryId && filteredStories.length > 0)}
                     >
-                        <CustomIcon name="add story" size={24} />
+                        <CustomIcon name="add story" size={32} />
                         <span>{saving ? 'Adding...' : 'Add to Rundown'}</span>
                     </button>
                 </div>
