@@ -29,11 +29,11 @@ const ModalManager = () => {
 
     if (!appState.modal) return null;
 
-    const { type, ...modalProps } = appState.modal;
+    const { type, story, ...modalProps } = appState.modal;
 
     switch (type) {
         case 'storyEditor':
-            return <StoryEditor onCancel={closeModal} {...modalProps} />;
+            return <StoryEditor story={story} onCancel={closeModal} {...modalProps} />;
         case 'rundownEditor':
             return <RundownEditor onCancel={closeModal} {...modalProps} />;
         case 'addStoryToRundown':
