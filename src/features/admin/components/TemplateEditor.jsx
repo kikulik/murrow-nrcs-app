@@ -1,7 +1,7 @@
 // src/features/admin/components/TemplateEditor.jsx
 // Rundown template editor component
 import React, { useState } from 'react';
-import { Plus, Trash2, Save } from 'lucide-react';
+import CustomIcon from '../../../components/ui/CustomIcon';
 import InputField from '../../../components/ui/InputField';
 import { RUNDOWN_ITEM_TYPES } from '../../../lib/constants';
 
@@ -88,21 +88,22 @@ const TemplateEditor = ({ template, onSave, onCancel }) => {
                                         onClick={() => removeItem(index)}
                                         className="p-2 text-red-500 hover:text-red-700"
                                     >
-                                        <Trash2 className="w-4 h-4" />
+                                        <CustomIcon name="cancel" size={16} />
                                     </button>
                                 </div>
                             </div>
                         ))}
                     </div>
                     <button type="button" onClick={addItem} className="btn-secondary mt-3 text-sm">
-                        <Plus className="w-4 h-4" /> Add Item
+                        <CustomIcon name="add story" size={16} />
+                        Add Item
                     </button>
                 </div>
 
                 <div className="flex justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button type="submit" className="btn-primary">
-                        <Save className="w-4 h-4" />
+                        <CustomIcon name="save" size={16} />
                         <span>Save Template</span>
                     </button>
                 </div>
