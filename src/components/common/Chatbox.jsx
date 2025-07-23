@@ -29,7 +29,7 @@ const Chatbox = ({ messages, onSendMessage, currentUser, getUserById }) => {
                     <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
                         <h3 className="font-semibold">Team Chat</h3>
                         <button onClick={() => setIsOpen(false)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
-                            <CustomIcon name="cancel" size={24} className="text-gray-500" />
+                            <CustomIcon name="cancel" size={32} className="text-gray-500" />
                         </button>
                     </div>
                     <div className="flex-1 p-4 overflow-y-auto space-y-4">
@@ -64,13 +64,13 @@ const Chatbox = ({ messages, onSendMessage, currentUser, getUserById }) => {
                             className="flex-1 form-input"
                         />
                         <button type="submit" className="btn-primary !px-3">
-                            <CustomIcon name="send" size={20} />
+                            <CustomIcon name="send" size={28} />
                         </button>
                     </form>
                 </div>
             ) : (
                 <button onClick={() => setIsOpen(true)} className="bg-blue-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700">
-                    <CustomIcon name="chat" size={32} />
+                    <CustomIcon name="chat" size={40} />
                 </button>
             )}
         </div>
