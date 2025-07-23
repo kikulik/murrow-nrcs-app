@@ -4,7 +4,7 @@ import React from 'react';
 
 const CustomIcon = ({ name, size = 20, className = '', alt = '' }) => {
     const getIconPath = (iconName) => {
-        return `/src/assets/icons/${iconName}.png`;
+        return `/public/assets/icons/${iconName}.png`;
     };
 
     const sizeInPixels = `${size}px`;
