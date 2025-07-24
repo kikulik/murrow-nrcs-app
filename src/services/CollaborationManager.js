@@ -210,6 +210,7 @@ export class CollaborationManager {
             const lockAcquired = await this.acquireLock(itemId);
             if (!lockAcquired) {
                 this.isOwner = false;
+                return false;
             }
         }
 
@@ -226,6 +227,8 @@ export class CollaborationManager {
                 console.error('Error updating editing item:', error);
             }
         }
+
+        return this.isOwner;
     }
 
     async takeOverItem(itemId, previousUserId) {
