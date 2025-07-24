@@ -1,8 +1,6 @@
 /*
 ================================================================================
 File: murrow-nrcs-app.git/src/context/AuthContext.jsx
-Description: FIX - Rewritten to use modern Firebase v9+ modular SDK.
-This was the primary source of the error.
 ================================================================================
 */
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -31,46 +29,46 @@ const firebaseConfig = {
   measurementId: "G-DY9MGNYTJC"
 };
 
+// Initialize Firebase outside of the component to ensure it only runs once.
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
 export const AuthProvider = ({ children }) => {
-    const [authServices, setAuthServices] = useState({
-        currentUser: null,
-        db: null,
-        auth: null,
-        loading: true,
-    });
+    const [currentUser, setCurrentUser] = useState(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 try {
                     const userDocRef = doc(db, "users", user.uid);
                     const userDoc = await getDoc(userDocRef);
-                    const userData = userDoc.exists() ? { uid: user.uid, ...userDoc.data() } : null;
-                    setAuthServices({ currentUser: userData, db, auth, loading: false });
+                    if (userDoc.exists()) {
+                        setCurrentUser({ uid: user.uid, ...userDoc.data() });
+                    } else {
+                        // Handle case where user exists in Auth but not Firestore
+                        setCurrentUser(null);
+                    }
                 } catch (error) {
                     console.error('Error fetching user data:', error);
-                    setAuthServices({ currentUser: null, db, auth, loading: false });
+                    setCurrentUser(null);
                 }
             } else {
-                setAuthServices({ currentUser: null, db, auth, loading: false });
+                setCurrentUser(null);
             }
+            setLoading(false);
         });
 
         return () => unsubscribe();
     }, []);
 
     const login = (email, password) => {
-        if (!authServices.auth) throw new Error("Auth service not initialized.");
-        return signInWithEmailAndPassword(authServices.auth, email, password);
+        return signInWithEmailAndPassword(auth, email, password);
     };
 
     const register = async (email, password, name, role) => {
-        if (!authServices.auth || !authServices.db) throw new Error("Auth or DB service not initialized.");
-        const userCredential = await createUserWithEmailAndPassword(authServices.auth, email, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const newUser = {
             name,
             email,
@@ -78,17 +76,19 @@ export const AuthProvider = ({ children }) => {
             username: nameToUsername(name),
             groupId: null
         };
-        await setDoc(doc(authServices.db, "users", userCredential.user.uid), newUser);
+        await setDoc(doc(db, "users", userCredential.user.uid), newUser);
         return userCredential;
     };
 
     const logout = () => {
-        if (!authServices.auth) throw new Error("Auth service not initialized.");
-        return signOut(authServices.auth);
+        return signOut(auth);
     };
 
     const value = {
-        ...authServices,
+        currentUser,
+        db, // Pass the initialized db instance
+        auth, // Pass the initialized auth instance
+        loading,
         login,
         register,
         logout,
@@ -96,7 +96,7 @@ export const AuthProvider = ({ children }) => {
 
     return (
         <AuthContext.Provider value={value}>
-            {authServices.loading ? (
+            {loading ? (
                 <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
                     <div className="text-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
