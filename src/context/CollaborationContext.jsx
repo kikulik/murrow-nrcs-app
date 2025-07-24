@@ -310,7 +310,7 @@ export const CollaborationProvider = ({ children }) => {
 
     const isCurrentUserOwner = (itemId) => {
         const lockInfo = getItemLockInfo(itemId);
-        return lockInfo.ownedByCurrentUser;
+        return lockInfo.ownedByCurrentUser || (!lockInfo.locked && collaborationManager.current?.isOwner);
     };
 
     const value = {
