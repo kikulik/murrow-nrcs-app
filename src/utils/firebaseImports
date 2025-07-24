@@ -1,0 +1,38 @@
+// src/utils/firebaseImports.js
+// Centralized Firebase imports to avoid module loading issues
+
+let firestoreModule = null;
+let authModule = null;
+
+export const getFirestoreModule = async () => {
+  if (!firestoreModule) {
+    firestoreModule = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+  }
+  return firestoreModule;
+};
+
+export const getAuthModule = async () => {
+  if (!authModule) {
+    authModule = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js");
+  }
+  return authModule;
+};
+
+// Helper function to get all firestore functions at once
+export const getFirestoreFunctions = async () => {
+  const module = await getFirestoreModule();
+  return {
+    collection: module.collection,
+    doc: module.doc,
+    getDoc: module.getDoc,
+    setDoc: module.setDoc,
+    updateDoc: module.updateDoc,
+    deleteDoc: module.deleteDoc,
+    addDoc: module.addDoc,
+    onSnapshot: module.onSnapshot,
+    query: module.query,
+    where: module.where,
+    orderBy: module.orderBy,
+    getFirestore: module.getFirestore
+  };
+};
