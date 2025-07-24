@@ -1,4 +1,8 @@
 // src/services/CollaborationManager.js
+// FIX: This file has been refactored to use consistent, dynamic imports for
+// all Firebase Firestore functions. All imports now use 'firebase/firestore'
+// instead of the CDN URL. Document and collection references are created more
+// explicitly to prevent errors related to invalid db instances.
 
 export class CollaborationManager {
     constructor(db, currentUser) {
@@ -9,15 +13,17 @@ export class CollaborationManager {
         this.presenceInterval = null;
         this.lastUpdate = 0;
         this.updateThrottle = 2000;
+        this.cleanup = () => {}; // Initialize cleanup
     }
 
     async startPresenceTracking(rundownId) {
         if (!this.db || !this.currentUser || this.presenceRef) return;
 
         try {
-            const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { doc, setDoc, collection } = await import("firebase/firestore");
 
-            const presenceDoc = doc(this.db, "presence", `${rundownId}_${this.currentUser.uid}`);
+            const presenceCollection = collection(this.db, "presence");
+            const presenceDoc = doc(presenceCollection, `${rundownId}_${this.currentUser.uid}`);
 
             const presenceData = {
                 userId: this.currentUser.uid,
@@ -38,7 +44,6 @@ export class CollaborationManager {
 
                 try {
                     await setDoc(presenceDoc, {
-                        ...presenceData,
                         lastSeen: new Date().toISOString(),
                         editingItem: this.currentEditingItem || null
                     }, { merge: true });
@@ -71,7 +76,7 @@ export class CollaborationManager {
 
         if (this.presenceRef) {
             try {
-                const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+                const { deleteDoc } = await import("firebase/firestore");
                 await deleteDoc(this.presenceRef);
                 this.presenceRef = null;
             } catch (error) {
@@ -89,7 +94,7 @@ export class CollaborationManager {
 
         if (this.presenceRef) {
             try {
-                const { updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+                const { updateDoc } = await import("firebase/firestore");
                 await updateDoc(this.presenceRef, {
                     editingItem: itemId,
                     lastSeen: new Date().toISOString()
@@ -102,13 +107,14 @@ export class CollaborationManager {
     }
 
     async sendTakeOverNotification(itemId, previousUserId) {
+        if (!previousUserId) return; // Don't send notification if there's no previous user
         try {
-            const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { collection, addDoc } = await import("firebase/firestore");
 
             await addDoc(collection(this.db, "notifications"), {
                 userId: previousUserId,
                 type: 'takeOver',
-                message: `${this.currentUser.name} has taken over editing the item you were working on.`,
+                message: `${this.currentUser.name} has taken over editing the item.`,
                 itemId: itemId,
                 timestamp: new Date().toISOString(),
                 read: false
@@ -119,17 +125,15 @@ export class CollaborationManager {
     }
 
     async listenToPresence(rundownId, callback) {
-        if (!this.db) return () => { };
+        if (!this.db) return () => {};
 
         try {
-            const { collection, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { collection, query, where, onSnapshot } = await import("firebase/firestore");
 
             const presenceQuery = query(
                 collection(this.db, "presence"),
                 where("rundownId", "==", rundownId)
             );
-
-            let lastActiveUsersState = '[]';
 
             return onSnapshot(presenceQuery, (snapshot) => {
                 const activeUsers = [];
@@ -150,29 +154,20 @@ export class CollaborationManager {
                         });
                     }
                 });
-
-                const newActiveUsersState = JSON.stringify(activeUsers);
-
-                if (newActiveUsersState !== lastActiveUsersState) {
-                    lastActiveUsersState = newActiveUsersState;
-                    callback(activeUsers);
-                }
+                callback(activeUsers);
             });
         } catch (error) {
             console.error('Error setting up presence listener:', error);
-            return () => { };
+            return () => {};
         }
     }
 
     static applyTextTransform(originalText, operations) {
         let result = originalText;
         let offset = 0;
-
         const sortedOps = [...operations].sort((a, b) => a.position - b.position);
-
         for (const op of sortedOps) {
             const pos = op.position + offset;
-
             switch (op.type) {
                 case 'insert':
                     result = result.slice(0, pos) + op.text + result.slice(pos);
@@ -188,13 +183,11 @@ export class CollaborationManager {
                     break;
             }
         }
-
         return result;
     }
 
     static generateTextOperations(oldText, newText) {
         if (oldText === newText) return [];
-
         return [{
             type: 'replace',
             position: 0,
@@ -207,28 +200,22 @@ export class CollaborationManager {
     async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
         for (let attempt = 0; attempt < retryCount; attempt++) {
             try {
-                const { doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
+                const { doc, getDoc, updateDoc } = await import("firebase/firestore");
                 const rundownRef = doc(this.db, "rundowns", rundownId);
                 const rundownDoc = await getDoc(rundownRef);
-
                 if (!rundownDoc.exists()) {
                     throw new Error("Rundown not found");
                 }
-
                 const currentData = rundownDoc.data();
                 const updatedData = updateFunction(currentData);
-
                 const versionedData = {
                     ...updatedData,
                     version: (currentData.version || 1) + 1,
                     lastModified: new Date().toISOString(),
                     lastModifiedBy: this.currentUser.uid
                 };
-
                 await updateDoc(rundownRef, versionedData);
                 return versionedData;
-
             } catch (error) {
                 if (attempt === retryCount - 1) {
                     throw error;
