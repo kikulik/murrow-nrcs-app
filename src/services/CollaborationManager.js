@@ -5,6 +5,7 @@ export class CollaborationManager {
         this.currentUser = currentUser;
         this.presenceRef = null;
         this.presenceListeners = new Map();
+        this.currentEditingItem = null;
     }
 
     // Optimistic Locking
@@ -26,48 +27,12 @@ export class CollaborationManager {
         };
     }
 
-    // Conflict Resolution
-    static detectConflict(localItem, serverItem) {
-        if (!localItem.version || !serverItem.version) return false;
-        return localItem.version < serverItem.version;
-    }
-
-    static resolveConflict(localItem, serverItem, strategy = 'server-wins') {
-        switch (strategy) {
-            case 'server-wins':
-                return serverItem;
-            case 'client-wins':
-                return this.incrementVersion(localItem, localItem.lastModifiedBy);
-            case 'merge':
-                return this.mergeItems(localItem, serverItem);
-            default:
-                return serverItem;
-        }
-    }
-
-    static mergeItems(localItem, serverItem) {
-        // Simple merge strategy - take newer fields
-        const localTime = new Date(localItem.lastModified || 0);
-        const serverTime = new Date(serverItem.lastModified || 0);
-
-        const merged = { ...serverItem };
-
-        // Merge specific fields based on modification time
-        if (localTime > serverTime) {
-            if (localItem.title !== serverItem.title) merged.title = localItem.title;
-            if (localItem.content !== serverItem.content) merged.content = localItem.content;
-            if (localItem.duration !== serverItem.duration) merged.duration = localItem.duration;
-        }
-
-        return this.incrementVersion(merged, localItem.lastModifiedBy);
-    }
-
     // User Presence Management
     async startPresenceTracking(rundownId) {
         if (!this.db || !this.currentUser) return;
 
         try {
-            const { doc, setDoc, onSnapshot, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
             const presenceDoc = doc(this.db, "presence", `${rundownId}_${this.currentUser.uid}`);
 
@@ -140,11 +105,58 @@ export class CollaborationManager {
         }
     }
 
+    async takeOverItem(itemId, previousUserId) {
+        try {
+            // Clear the previous user's editing status
+            const { doc, updateDoc, collection, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            const presenceQuery = query(
+                collection(this.db, "presence"),
+                where("userId", "==", previousUserId),
+                where("editingItem", "==", itemId)
+            );
+
+            const presenceDocs = await getDocs(presenceQuery);
+
+            // Clear previous user's editing status
+            presenceDocs.forEach(async (presenceDoc) => {
+                await updateDoc(presenceDoc.ref, {
+                    editingItem: null,
+                    lastSeen: new Date().toISOString()
+                });
+            });
+
+            // Set current user as editor
+            await this.setEditingItem(itemId);
+
+            // Send notification to previous user
+            if (this.db) {
+                const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+                await addDoc(collection(this.db, "notifications"), {
+                    userId: previousUserId,
+                    type: 'takeOver',
+                    message: `${this.currentUser.name} has taken over editing the story you were working on.`,
+                    itemId: itemId,
+                    timestamp: new Date().toISOString(),
+                    read: false
+                });
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Error taking over item:', error);
+            return false;
+        }
+    }
+
     listenToPresence(rundownId, callback) {
         if (!this.db) return () => { };
 
-        try {
-            const { collection, query, where, onSnapshot } = import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js").then(module => {
+        const setupListener = async () => {
+            try {
+                const { collection, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
                 const presenceQuery = query(
                     collection(this.db, "presence"),
                     where("rundownId", "==", rundownId)
@@ -170,13 +182,13 @@ export class CollaborationManager {
 
                     callback(activeUsers);
                 });
-            });
+            } catch (error) {
+                console.error('Error setting up presence listener:', error);
+                return () => { };
+            }
+        };
 
-            return presenceQuery;
-        } catch (error) {
-            console.error('Error listening to presence:', error);
-            return () => { };
-        }
+        return setupListener();
     }
 
     // Operational Transforms for text editing
