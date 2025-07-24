@@ -8,7 +8,6 @@ export class CollaborationManager {
         this.presenceInterval = null;
         this.lastUpdate = 0;
         this.updateThrottle = 2000;
-        this.activeEditors = new Map();
     }
 
     static addVersionControl(item) {
@@ -33,7 +32,7 @@ export class CollaborationManager {
         if (!this.db || !this.currentUser || this.presenceRef) return;
 
         try {
-            const { doc, setDoc, onSnapshot, collection, query, where } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
             const presenceDoc = doc(this.db, "presence", `${rundownId}_${this.currentUser.uid}`);
 
@@ -43,28 +42,10 @@ export class CollaborationManager {
                 rundownId,
                 lastSeen: new Date().toISOString(),
                 isActive: true,
-                editingItem: null,
-                isActuallyEditing: false
+                editingItem: null
             };
 
             await setDoc(presenceDoc, presenceData);
-
-            const takeOverQuery = query(
-                collection(this.db, "takeOverRequests"),
-                where("targetUserId", "==", this.currentUser.uid)
-            );
-
-            const takeOverUnsubscribe = onSnapshot(takeOverQuery, (snapshot) => {
-                snapshot.docs.forEach(async (docSnapshot) => {
-                    const takeOverData = docSnapshot.data();
-                    if (takeOverData.itemId === this.currentEditingItem && takeOverData.status === 'pending') {
-                        await this.handleForcedTakeOver(takeOverData);
-
-                        const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-                        await deleteDoc(docSnapshot.ref);
-                    }
-                });
-            });
 
             this.presenceInterval = setInterval(async () => {
                 const now = Date.now();
@@ -76,14 +57,13 @@ export class CollaborationManager {
                     await setDoc(presenceDoc, {
                         ...presenceData,
                         lastSeen: new Date().toISOString(),
-                        editingItem: this.currentEditingItem || null,
-                        isActuallyEditing: this.currentEditingItem !== null
+                        editingItem: this.currentEditingItem || null
                     }, { merge: true });
                     this.lastUpdate = now;
                 } catch (error) {
                     console.error('Error updating presence:', error);
                 }
-            }, 3000);
+            }, 5000);
 
             const handleBeforeUnload = () => {
                 this.stopPresenceTracking();
@@ -92,12 +72,8 @@ export class CollaborationManager {
             window.addEventListener('beforeunload', handleBeforeUnload);
 
             this.presenceRef = presenceDoc;
-            this.takeOverUnsubscribe = takeOverUnsubscribe;
             this.cleanup = () => {
                 window.removeEventListener('beforeunload', handleBeforeUnload);
-                if (this.takeOverUnsubscribe) {
-                    this.takeOverUnsubscribe();
-                }
             };
         } catch (error) {
             console.error('Error starting presence tracking:', error);
@@ -126,7 +102,6 @@ export class CollaborationManager {
     }
 
     async setEditingItem(itemId) {
-        const previousItem = this.currentEditingItem;
         this.currentEditingItem = itemId;
 
         if (this.presenceRef) {
@@ -134,7 +109,6 @@ export class CollaborationManager {
                 const { updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
                 await updateDoc(this.presenceRef, {
                     editingItem: itemId,
-                    isActuallyEditing: itemId !== null,
                     lastSeen: new Date().toISOString()
                 });
                 this.lastUpdate = Date.now();
@@ -142,39 +116,11 @@ export class CollaborationManager {
                 console.error('Error updating editing item:', error);
             }
         }
-
-        if (itemId) {
-            this.activeEditors.set(itemId, this.currentUser.uid);
-        } else if (previousItem) {
-            this.activeEditors.delete(previousItem);
-        }
-    }
-
-    async handleForcedTakeOver(takeOverData) {
-        const event = new CustomEvent('forcedTakeOver', {
-            detail: {
-                itemId: takeOverData.itemId,
-                newUserId: takeOverData.requestingUserId,
-                newUserName: takeOverData.requestingUserName
-            }
-        });
-        window.dispatchEvent(event);
     }
 
     async takeOverItem(itemId, previousUserId) {
         try {
-            const { collection, addDoc, query, where, getDocs, doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-            const takeOverRequest = {
-                itemId: itemId,
-                requestingUserId: this.currentUser.uid,
-                requestingUserName: this.currentUser.name,
-                targetUserId: previousUserId,
-                status: 'pending',
-                timestamp: new Date().toISOString()
-            };
-
-            await addDoc(collection(this.db, "takeOverRequests"), takeOverRequest);
+            const { collection, addDoc, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
             await this.setEditingItem(itemId);
 
@@ -182,14 +128,14 @@ export class CollaborationManager {
                 collection(this.db, "presence"),
                 where("userId", "==", previousUserId)
             );
-
+            
             const presenceSnapshot = await getDocs(presenceQuery);
-
+            
             if (!presenceSnapshot.empty) {
+                const { updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
                 presenceSnapshot.forEach(async (docSnapshot) => {
                     await updateDoc(doc(this.db, "presence", docSnapshot.id), {
                         editingItem: null,
-                        isActuallyEditing: false,
                         lastSeen: new Date().toISOString()
                     });
                 });
@@ -235,11 +181,11 @@ export class CollaborationManager {
                     const lastSeen = new Date(data.lastSeen);
                     const minutesAgo = (now - lastSeen) / (1000 * 60);
 
-                    if (minutesAgo < 3 && data.userId !== this.currentUser.uid) {
+                    if (minutesAgo < 5 && data.userId !== this.currentUser.uid) {
                         activeUsers.push({
                             userId: data.userId,
                             userName: data.userName,
-                            editingItem: data.isActuallyEditing ? data.editingItem : null
+                            editingItem: data.editingItem
                         });
                     }
                 });
