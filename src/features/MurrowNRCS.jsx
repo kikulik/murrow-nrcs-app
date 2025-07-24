@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from 'react';
+/*
+================================================================================
+File: murrow-nrcs-app.git/src/features/MurrowNRCS.jsx
+Description: Main application layout after authentication.
+================================================================================
+*/
+import React from 'react';
 import CustomIcon from '../components/ui/CustomIcon';
 import { useAuth } from '../context/AuthContext';
 import { useAppContext } from '../context/AppContext';
@@ -15,7 +21,7 @@ import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
 import NotificationPanel from '../components/collaboration/NotificationPanel';
 import { ActiveUsersPanel } from '../components/collaboration/UserPresenceIndicator';
-import { collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+import { collection, addDoc } from "firebase/firestore";
 
 const MurrowNRCS = () => {
     const { currentUser, logout, db } = useAuth();
