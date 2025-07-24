@@ -1,4 +1,3 @@
-// src/features/rundown/components/RundownList.jsx
 import React, { useState, useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -39,13 +38,11 @@ const RundownList = ({
 
     const handleSelect = (itemId, isMultiSelect) => {
         if (isMultiSelect) {
-            // Multi-select with Ctrl/Cmd
             const newSelection = selectedItems.includes(itemId)
                 ? selectedItems.filter(id => id !== itemId)
                 : [...selectedItems, itemId];
             onSelectionChange(newSelection);
         } else {
-            // Single select
             const newSelection = selectedItems.includes(itemId) && selectedItems.length === 1
                 ? []
                 : [itemId];
@@ -60,7 +57,7 @@ const RundownList = ({
                     <div className="col-span-1 text-center">#</div>
                     <div className="col-span-4">Title</div>
                     <div className="col-span-1 text-center">
-                        <CustomIcon name="user" size={16} title="User Editing" />
+                        <CustomIcon name="user" size={32} title="User Editing" />
                     </div>
                     <div className="col-span-2">Type</div>
                     <div className="col-span-1 text-center">Status</div>
