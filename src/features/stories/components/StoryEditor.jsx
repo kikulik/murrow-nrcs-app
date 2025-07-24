@@ -113,7 +113,8 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
         e.preventDefault();
 
         try {
-            const { collection, addDoc, doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            // FIX: Standardized dynamic import to use 'firebase/firestore'
+            const { collection, addDoc, doc, updateDoc } = await import("firebase/firestore");
 
             const storyToSave = {
                 ...formData,
@@ -267,7 +268,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                         </label>
                         {wordCount > 0 && (
                             <p className="text-xs text-gray-500 mt-1">
-                                {wordCount} words • Est. {calculatedDuration} reading time
+                                {wordCount} words â€¢ Est. {calculatedDuration} reading time
                             </p>
                         )}
                     </div>
