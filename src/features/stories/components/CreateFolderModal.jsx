@@ -1,3 +1,4 @@
+// src/features/stories/components/CreateFolderModal.jsx
 import React, { useState } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import ModalBase from '../../../components/common/ModalBase';
@@ -23,7 +24,7 @@ const CreateFolderModal = ({ onCancel, onFolderCreated }) => {
     const [creating, setCreating] = useState(false);
 
     const existingFolders = getFoldersByDate(appState.stories);
-    const existingDateFolders = sortFoldersByDate(existingFolders.keys());
+    const existingDateFolders = sortFoldersByDate(Array.from(existingFolders.keys()));
 
     const handleCreate = async () => {
         let newFolderPath;
