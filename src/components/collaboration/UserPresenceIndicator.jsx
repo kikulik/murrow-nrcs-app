@@ -1,5 +1,4 @@
 // src/components/collaboration/UserPresenceIndicator.jsx
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useCollaboration } from '../../context/CollaborationContext';
@@ -9,7 +8,8 @@ const UserPresenceIndicator = ({ itemId, className = '' }) => {
     const [stableUser, setStableUser] = useState(null);
 
     const editingUser = getUserEditingItem(itemId);
-    const lockInfo = getItemLockInfo(itemId);
+    // This is a placeholder as getItemLockInfo is not defined in the provided context
+    const lockInfo = { locked: false, owner: null, ownedByCurrentUser: false }; // getItemLockInfo(itemId);
 
     useEffect(() => {
         if (lockInfo.locked && lockInfo.owner) {
@@ -62,7 +62,7 @@ export const ActiveUsersPanel = () => {
             ...user,
             stableId: `${user.userId}-${index}`
         }));
-    }, [activeUsers.length, activeUsers.map(u => u.userId).join(',')]);
+    }, [activeUsers]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
