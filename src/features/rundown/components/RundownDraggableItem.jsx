@@ -115,9 +115,16 @@ const RundownDraggableItem = ({
     return (
         <div ref={ref} data-handler-id={handlerId} className={itemClasses} onClick={handleClick}>
             <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 min-h-[44px] relative">
-                <div className="col-span-1 flex justify-center">{index + 1}</div>
+                <div className="col-span-1 flex justify-center">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'}`}>
+                        {index + 1}
+                    </div>
+                </div>
                 <div className="col-span-4 overflow-hidden">
-                    <h4 className="font-medium text-sm break-words">{item.title}</h4>
+                    <h4 className="font-medium text-sm break-words">
+                        {item.title}
+                        {isLocked && <CustomIcon name="lock" size={16} className="inline ml-2" />}
+                    </h4>
                 </div>
                 <div className="col-span-1 flex justify-center">
                     {isBeingEditedByOther && (
@@ -136,7 +143,7 @@ const RundownDraggableItem = ({
                         value={item.storyStatus || 'Ready for Air'}
                         onChange={(e) => handleStatusChange(e.target.value)}
                         disabled={isLocked || isBeingEditedByOther}
-                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${isLocked || isBeingEditedByOther ? 'opacity-50' : ''}`}
+                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${isLocked || isBeingEditedByOther ? 'opacity-50 cursor-not-allowed' : ''}`}
                         onClick={e => e.stopPropagation()}
                     >
                         {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -148,15 +155,15 @@ const RundownDraggableItem = ({
                 </div>
                 <div className="col-span-1 flex justify-end">
                     {!isLocked && (
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {!isBeingEditedByOther && (
                                 <button onClick={(e) => { e.stopPropagation(); handleEdit(); }} className="p-1 text-gray-400 hover:text-blue-600 rounded" title="Edit item">
-                                    <CustomIcon name="edit" size={32} />
+                                    <CustomIcon name="edit" size={16} />
                                 </button>
                             )}
                             {userPermissions.canDeleteAnything && (
-                                <button onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }} disabled={isBeingEditedByOther} className={`p-1 rounded ${isBeingEditedByOther ? 'text-gray-300' : 'text-gray-400 hover:text-red-600'}`} title="Delete item">
-                                    <CustomIcon name="delete" size={32} />
+                                <button onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }} disabled={isBeingEditedByOther} className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`} title="Delete item">
+                                    <CustomIcon name="delete" size={16} />
                                 </button>
                             )}
                         </div>
