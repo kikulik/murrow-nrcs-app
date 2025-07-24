@@ -1,4 +1,11 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+/*
+================================================================================
+File: murrow-nrcs-app.git/src/context/AuthContext.jsx
+Description: FIX - Rewritten to use modern Firebase v9+ modular SDK.
+This was the primary source of the error.
+================================================================================
+*/
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
