@@ -1,3 +1,4 @@
+// src/features/assignments/components/AssignmentEditor.jsx
 import React, { useState } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAppContext } from '../../../context/AppContext';
@@ -42,7 +43,7 @@ const AssignmentEditor = ({ assignment, onSave, onCancel }) => {
                     label="Assign To"
                     value={formData.assigneeId}
                     onChange={e => setFormData({ ...formData, assigneeId: e.target.value })}
-                    options={appState.users.map(u => ({ value: u.id, label: u.name }))}
+                    options={appState.users.map(u => ({ value: u.id || u.uid, label: u.name }))}
                 />
 
                 <InputField
