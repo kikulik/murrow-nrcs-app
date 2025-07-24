@@ -1,3 +1,5 @@
+// src/features/rundown/components/RundownDraggableItem.jsx
+
 import React, { useRef, useState, useEffect } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import CustomIcon from '../../../components/ui/CustomIcon';
@@ -23,12 +25,16 @@ const RundownDraggableItem = ({
     const {
         safeUpdateRundown,
         getUserEditingItem,
-        isItemBeingEdited,
+        getItemLockInfo,
+        isCurrentUserOwner,
         startEditingStory
     } = useCollaboration();
     const ref = useRef(null);
 
     const userPermissions = getUserPermissions(currentUser.role);
+    const lockInfo = getItemLockInfo(item.id);
+    const isOwner = isCurrentUserOwner(item.id);
+    const isBeingEditedByOther = lockInfo.locked && !lockInfo.ownedByCurrentUser;
 
     const [{ handlerId }, drop] = useDrop({
         accept: 'rundownItem',
@@ -57,7 +63,7 @@ const RundownDraggableItem = ({
     const [{ isDragging }, drag] = useDrag({
         type: 'rundownItem',
         item: () => ({ id: item.id, index }),
-        canDrag: canDrag && !isLocked && !isItemBeingEdited(item.id) && userPermissions.canMoveRundownItems,
+        canDrag: canDrag && !isLocked && !isBeingEditedByOther && userPermissions.canMoveRundownItems,
         collect: (monitor) => ({
             isDragging: monitor.isDragging(),
         }),
@@ -73,9 +79,6 @@ const RundownDraggableItem = ({
     const author = story ?
         appState.users.find(u => u.id === story.authorId || u.uid === story.authorId) :
         item.authorId ? appState.users.find(u => u.id === item.authorId || u.uid === item.authorId) : null;
-
-    const editingUser = getUserEditingItem(item.id);
-    const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
 
     const handleStatusChange = async (newStatus) => {
         if (isLocked || !appState.activeRundownId || isBeingEditedByOther) return;
@@ -118,24 +121,12 @@ const RundownDraggableItem = ({
         }
     };
 
-    const handleTakeOver = async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (editingUser && userPermissions.canTakeOverStories) {
-            const success = await startEditingStory(item.id, item);
-            if (!success) {
-                alert('Failed to take over the story. Please try again.');
-            }
-        }
-    };
-
     const itemClasses = `
         group relative cursor-pointer
         ${isDragging ? 'opacity-50' : 'opacity-100'} 
         ${isLocked ? 'opacity-75' : ''} 
         ${isSelected ? 'bg-blue-100 dark:bg-blue-800/50 border-l-4 border-blue-500' : ''}
-        ${isBeingEditedByOther ? 'bg-orange-50 dark:bg-orange-900/10' : ''}
+        ${isBeingEditedByOther ? 'bg-orange-50 dark:bg-orange-900/10 border-l-4 border-orange-500' : ''}
         border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors
     `;
 
@@ -164,22 +155,12 @@ const RundownDraggableItem = ({
                 <div className="col-span-1 flex justify-center">
                     {isBeingEditedByOther ? (
                         <div className="flex items-center justify-center">
-                            {userPermissions.canTakeOverStories ? (
-                                <button
-                                    onClick={handleTakeOver}
-                                    className="p-1 bg-orange-500 hover:bg-orange-600 rounded transition-colors"
-                                    title={`Take over from ${editingUser.userName}`}
-                                >
-                                    <CustomIcon name="lock" size={32} className="text-white" />
-                                </button>
-                            ) : (
-                                <div
-                                    className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
-                                    title={`${editingUser.userName} is editing`}
-                                >
-                                    {editingUser.userName.charAt(0)}
-                                </div>
-                            )}
+                            <div
+                                className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
+                                title={`${lockInfo.owner?.userName} is editing`}
+                            >
+                                {lockInfo.owner?.userName?.charAt(0)}
+                            </div>
                         </div>
                     ) : null}
                 </div>
@@ -200,7 +181,7 @@ const RundownDraggableItem = ({
                         className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${(isLocked || isBeingEditedByOther) ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                         onClick={e => e.stopPropagation()}
-                        title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : ''}
+                        title={isBeingEditedByOther ? `Being edited by ${lockInfo.owner?.userName}` : ''}
                     >
                         {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
@@ -239,7 +220,7 @@ const RundownDraggableItem = ({
                                     disabled={isBeingEditedByOther}
                                     className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'
                                         }`}
-                                    title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Delete item'}
+                                    title={isBeingEditedByOther ? `Being edited by ${lockInfo.owner?.userName}` : 'Delete item'}
                                 >
                                     <CustomIcon name="delete" size={32} />
                                 </button>
