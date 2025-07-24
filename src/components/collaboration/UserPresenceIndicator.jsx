@@ -1,25 +1,39 @@
 // src/components/collaboration/UserPresenceIndicator.jsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useCollaboration } from '../../context/CollaborationContext';
 
 const UserPresenceIndicator = ({ itemId, className = '' }) => {
     const { getUserEditingItem } = useCollaboration();
+    const [stableUser, setStableUser] = useState(null);
 
     const editingUser = getUserEditingItem(itemId);
 
-    if (!editingUser) return null;
+    // Stabilize user to prevent blinking
+    useEffect(() => {
+        if (editingUser && editingUser.userId) {
+            setStableUser(editingUser);
+        } else if (!editingUser) {
+            // Only clear after a delay to prevent blinking
+            const clearTimer = setTimeout(() => {
+                setStableUser(null);
+            }, 1000);
+            return () => clearTimeout(clearTimer);
+        }
+    }, [editingUser?.userId]);
+
+    if (!stableUser) return null;
 
     return (
         <div className={`flex items-center space-x-1 ${className}`}>
             <div className="relative">
                 <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
-                    {editingUser.userName.charAt(0)}
+                    {stableUser.userName.charAt(0)}
                 </div>
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
             </div>
             <span className="text-xs text-blue-600 font-medium">
-                {editingUser.userName} is editing
+                {stableUser.userName} is editing
             </span>
         </div>
     );
@@ -28,17 +42,15 @@ const UserPresenceIndicator = ({ itemId, className = '' }) => {
 export const ActiveUsersPanel = () => {
     const { activeUsers } = useCollaboration();
     const [isOpen, setIsOpen] = useState(false);
-    const [stableUsers, setStableUsers] = useState([]);
     const dropdownRef = useRef(null);
 
-    // Stabilize users list to prevent blinking
-    useEffect(() => {
-        const stabilizeTimer = setTimeout(() => {
-            setStableUsers(activeUsers);
-        }, 500); // Wait 500ms before updating to prevent rapid changes
-
-        return () => clearTimeout(stabilizeTimer);
-    }, [activeUsers]);
+    // Memoize users to prevent re-renders
+    const stableUsers = useMemo(() => {
+        return activeUsers.map((user, index) => ({
+            ...user,
+            stableId: `${user.userId}-${index}` // Create stable ID
+        }));
+    }, [activeUsers.length, activeUsers.map(u => u.userId).join(',')]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -60,9 +72,9 @@ export const ActiveUsersPanel = () => {
                 className="flex items-center space-x-2 px-3 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
                 <div className="flex -space-x-1">
-                    {stableUsers.slice(0, 3).map((user, index) => (
+                    {stableUsers.slice(0, 3).map((user) => (
                         <div
-                            key={`${user.id}-${index}`} // Stable key to prevent re-rendering
+                            key={user.stableId}
                             className="w-6 h-6 rounded-full bg-sky-500 flex items-center justify-center text-white text-xs font-bold border-2 border-white relative"
                             title={user.userName}
                         >
@@ -94,8 +106,8 @@ export const ActiveUsersPanel = () => {
                             <span className="text-sm font-medium">Active Users</span>
                         </div>
                         <div className="space-y-3 max-h-48 overflow-y-auto">
-                            {stableUsers.map((user, index) => (
-                                <div key={`${user.id}-detail-${index}`} className="flex items-center space-x-3">
+                            {stableUsers.map((user) => (
+                                <div key={user.stableId} className="flex items-center space-x-3">
                                     <div className="relative">
                                         <div className="w-8 h-8 rounded-full bg-sky-500 flex items-center justify-center text-white text-sm font-bold">
                                             {user.userName.charAt(0)}
