@@ -10,7 +10,6 @@ export const CollaborationProvider = ({ children }) => {
     const { currentUser, db } = useAuth();
     const { appState } = useAppContext();
     const [activeUsers, setActiveUsers] = useState([]);
-    const [conflictItems, setConflictItems] = useState(new Map());
     const collaborationManager = useRef(null);
     const presenceUnsubscribe = useRef(null);
 
@@ -35,11 +34,15 @@ export const CollaborationProvider = ({ children }) => {
             collaborationManager.current.startPresenceTracking(appState.activeRundownId);
 
             // Listen to other users' presence
-            const unsubscribe = collaborationManager.current.listenToPresence(
-                appState.activeRundownId,
-                setActiveUsers
-            );
-            presenceUnsubscribe.current = unsubscribe;
+            const setupListener = async () => {
+                const unsubscribe = await collaborationManager.current.listenToPresence(
+                    appState.activeRundownId,
+                    setActiveUsers
+                );
+                presenceUnsubscribe.current = unsubscribe;
+            };
+
+            setupListener();
 
             return () => {
                 if (presenceUnsubscribe.current) {
@@ -61,49 +64,17 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
+    const takeOverItem = async (itemId, previousUserId) => {
+        if (collaborationManager.current) {
+            return await collaborationManager.current.takeOverItem(itemId, previousUserId);
+        }
+        return false;
+    };
+
     const safeUpdateRundown = async (rundownId, updateFunction) => {
         if (collaborationManager.current) {
             return await collaborationManager.current.safeUpdateRundown(rundownId, updateFunction);
         }
-    };
-
-    const resolveConflict = (itemId, resolution) => {
-        setConflictItems(prev => {
-            const newMap = new Map(prev);
-            if (resolution === 'dismiss') {
-                newMap.delete(itemId);
-            } else {
-                const conflict = newMap.get(itemId);
-                if (conflict) {
-                    const resolved = CollaborationManager.resolveConflict(
-                        conflict.local,
-                        conflict.server,
-                        resolution
-                    );
-                    // Here you would apply the resolved item back to the rundown
-                    newMap.delete(itemId);
-                }
-            }
-            return newMap;
-        });
-    };
-
-    const detectConflicts = (localItems, serverItems) => {
-        const conflicts = new Map();
-
-        localItems.forEach(localItem => {
-            const serverItem = serverItems.find(si => si.id === localItem.id);
-            if (serverItem && CollaborationManager.detectConflict(localItem, serverItem)) {
-                conflicts.set(localItem.id, {
-                    local: localItem,
-                    server: serverItem,
-                    timestamp: new Date().toISOString()
-                });
-            }
-        });
-
-        setConflictItems(conflicts);
-        return conflicts;
     };
 
     const getUserEditingItem = (itemId) => {
@@ -116,12 +87,10 @@ export const CollaborationProvider = ({ children }) => {
 
     const value = {
         activeUsers,
-        conflictItems,
         setEditingItem,
         clearEditingItem,
+        takeOverItem,
         safeUpdateRundown,
-        resolveConflict,
-        detectConflicts,
         getUserEditingItem,
         isItemBeingEdited,
         CollaborationManager
