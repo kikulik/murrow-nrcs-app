@@ -15,24 +15,20 @@ import {
 import { useAppContext } from '../../../context/AppContext';
 
 const CreateFolderModal = ({ onCancel }) => {
-    const { appState } = useAppContext();
+    const { appState, setAppState } = useAppContext();
     const [folderType, setFolderType] = useState('date'); // 'date' or 'subfolder'
     const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
     const [parentFolder, setParentFolder] = useState(generateDateFolder());
     const [folderName, setFolderName] = useState('');
     const [creating, setCreating] = useState(false);
-
     // Get existing date folders
     const existingFolders = getFoldersByDate(appState.stories);
     const existingDateFolders = sortFoldersByDate(existingFolders.keys());
-
     const handleCreate = async () => {
         let newFolderPath;
-
         if (folderType === 'date') {
             // Create new date folder
-            const dateFolder = customDate;
-            newFolderPath = dateFolder;
+            newFolderPath = customDate;
         } else {
             // Create subfolder
             if (!validateFolderName(folderName)) {
@@ -45,17 +41,11 @@ const CreateFolderModal = ({ onCancel }) => {
         }
 
         setCreating(true);
-
         try {
-            // Create a placeholder story in the new folder to ensure it exists
-            // In a real implementation, you might just update the folder structure
-            // For now, we'll close the modal and let the parent component handle it
-            console.log('Creating folder:', newFolderPath);
-
-            // Simulate folder creation
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            alert(`Folder "${newFolderPath}" will be available when you create stories in it.`);
+            setAppState(prev => ({
+                ...prev,
+                createdFolders: [...new Set([...(prev.createdFolders || []), newFolderPath])]
+            }));
             onCancel();
         } catch (error) {
             console.error('Error creating folder:', error);
