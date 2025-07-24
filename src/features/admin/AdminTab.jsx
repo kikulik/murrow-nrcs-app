@@ -1,5 +1,4 @@
 // src/features/admin/AdminTab.jsx
-// Administration tab for managing users, groups, and templates
 import React, { useState } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
@@ -8,20 +7,42 @@ import { getUserPermissions } from '../../lib/permissions';
 import UserEditor from './components/UserEditor';
 import GroupEditor from './components/GroupEditor';
 import TemplateEditor from './components/TemplateEditor';
+import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
+
 
 const AdminTab = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
-    const [editingTarget, setEditingTarget] = useState(null); // { type: 'user' | 'group' | 'template', id: number }
+    const [editingTarget, setEditingTarget] = useState(null); // { type: 'user' | 'group' | 'template', id: string }
     const [isCreating, setIsCreating] = useState(null); // 'user' | 'group' | 'template'
 
     const userPermissions = getUserPermissions(currentUser.role);
     const getGroupById = (id) => appState.groups.find(g => g.id === id);
 
-    const handleSaveItem = (item, type) => {
-        // Implementation for saving items
-        setEditingTarget(null);
-        setIsCreating(null);
+    const handleSaveItem = async (item, type) => {
+        if (!db) return;
+        
+        const collectionName = {
+            user: 'users',
+            group: 'groups',
+            rundownTemplate: 'rundownTemplates'
+        }[type];
+
+        try {
+            if (item.id) {
+                const docRef = doc(db, collectionName, item.id);
+                const { id, ...dataToUpdate } = item;
+                await updateDoc(docRef, dataToUpdate);
+            } else {
+                await addDoc(collection(db, collectionName), item);
+            }
+        } catch (error) {
+            console.error(`Error saving ${type}:`, error);
+            alert(`Failed to save ${type}.`);
+        } finally {
+            setEditingTarget(null);
+            setIsCreating(null);
+        }
     };
 
     const handleCancel = () => {
@@ -30,9 +51,10 @@ const AdminTab = () => {
     };
 
     const handleDelete = (id, type) => {
+        const collectionName = `${type}s`;
         setAppState(prev => ({
             ...prev,
-            modal: { type: 'deleteConfirm', id, itemType: type }
+            modal: { type: 'deleteConfirm', id, itemType: collectionName }
         }));
     };
 
