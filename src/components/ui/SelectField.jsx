@@ -1,5 +1,4 @@
 // src/components/ui/SelectField.jsx
-// Reusable select component
 import React from 'react';
 
 const SelectField = ({ label, options, ...props }) => (
