@@ -149,7 +149,6 @@ const StoryEditTab = () => {
         const confirmed = confirm(`${takenOverBy} is currently editing this story. Do you want to take over? Their progress will be saved.`);
         if (!confirmed) return;
 
-        // Try to take over
         if (collaborationManager.current) {
             const success = await collaborationManager.current.setEditingItem(itemId);
             if (success) {
@@ -219,14 +218,6 @@ const StoryEditTab = () => {
         );
     }
 
-    if (!itemId) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <p className="text-gray-500">No story selected for editing</p>
-            </div>
-        );
-    }
-
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -248,160 +239,6 @@ const StoryEditTab = () => {
                         </div>
                     )}
                 </div>
-                <div className="flex items-center gap-4">
-                    {lastSaved && isOwner && (
-                        <span className="text-sm text-gray-500">
-                            Last saved: {lastSaved.toLocaleTimeString()}
-                        </span>
-                    )}
-                    {isSaving && (
-                        <span className="text-sm text-blue-600 flex items-center gap-1">
-                            <CustomIcon name="save" size={32} className="animate-pulse" />
-                            Saving...
-                        </span>
-                    )}
-                    {hasUnsavedChanges && !isSaving && isOwner && (
-                        <span className="text-sm text-orange-600">Unsaved changes</span>
-                    )}
-                    {isReadOnly && (
-                        <span className="text-sm text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                            Read Only
-                        </span>
-                    )}
-                    <button onClick={handleClose} className="btn-secondary">
-                        <CustomIcon name="cancel" size={40} />
-                        <span>Close</span>
-                    </button>
-                </div>
-            </div>
-
-            {!isOwner && isTakenOver && (
-                <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
-                    <div className="flex items-center space-x-2">
-                        <CustomIcon name="lock" size={40} className="text-orange-600" />
-                        <div>
-                            <h4 className="font-medium text-orange-800 dark:text-orange-200">Story is Being Edited</h4>
-                            <p className="text-sm text-orange-700 dark:text-orange-300">
-                                {takenOverBy} is currently editing this story. You can view the content but cannot make changes unless you take over.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6 ${isReadOnly ? 'opacity-75' : ''}`}>
-                <div className="space-y-6">
-                    <InputField
-                        label="Title"
-                        value={formData.title}
-                        onChange={(e) => handleFormChange('title', e.target.value)}
-                        disabled={isReadOnly}
-                    />
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <InputField
-                            label="Duration"
-                            value={formData.duration}
-                            onChange={(e) => handleFormChange('duration', e.target.value)}
-                            placeholder="MM:SS"
-                            disabled={useCalculatedDuration || isReadOnly}
-                        />
-                        <div className="flex flex-col justify-end">
-                            <label className="flex items-center space-x-2 text-sm">
-                                <input
-                                    type="checkbox"
-                                    checked={useCalculatedDuration}
-                                    onChange={(e) => setUseCalculatedDuration(e.target.checked)}
-                                    disabled={isReadOnly}
-                                    className="rounded"
-                                />
-                                <span>Auto-calculate from text</span>
-                            </label>
-                            {wordCount > 0 && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                    {wordCount} words • Est. {calculatedDuration} reading time
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Item Type(s)
-                        </label>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
-                                <label
-                                    key={abbr}
-                                    className={`flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500 dark:has-[:checked]:bg-blue-900/50 ${isReadOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.type.includes(abbr)}
-                                        onChange={() => handleTypeChange(abbr)}
-                                        disabled={isReadOnly}
-                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span className="text-sm font-medium">{abbr}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Content
-                        </label>
-                        {isReadOnly ? (
-                            <div className="min-h-[300px] p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md">
-                                <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300">
-                                    {realTimeContent || 'No content available'}
-                                </div>
-                            </div>
-                        ) : (
-                            <CollaborativeTextEditor
-                                value={formData.content}
-                                onChange={(content) => handleFormChange('content', content)}
-                                itemId={itemId}
-                                placeholder="Enter story content..."
-                                rows={12}
-                                className="min-h-[300px]"
-                            />
-                        )}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-4 border-t">
-                        <div className="text-xs text-gray-500">
-                            {isOwner ? 'Auto-save every 5 seconds' : 'Real-time updates every 5 seconds'} • Version {appState.editingStoryData?.version || 1}
-                        </div>
-                        {isOwner && (
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={autoSave}
-                                    disabled={!hasUnsavedChanges || isSaving}
-                                    className="btn-secondary"
-                                >
-                                    <CustomIcon name="save" size={32} />
-                                    <span>Save Draft</span>
-                                </button>
-                                <button
-                                    onClick={handleSave}
-                                    disabled={isSaving}
-                                    className="btn-primary"
-                                >
-                                    <CustomIcon name="save" size={40} />
-                                    <span>{isSaving ? 'Saving...' : 'Save & Update'}</span>
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export default StoryEditTab;
                 <div className="flex items-center gap-4">
                     {lastSaved && isOwner && (
                         <span className="text-sm text-gray-500">
