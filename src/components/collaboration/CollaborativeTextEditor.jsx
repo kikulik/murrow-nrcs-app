@@ -1,4 +1,5 @@
 // src/components/collaboration/CollaborativeTextEditor.jsx
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useCollaboration } from '../../context/CollaborationContext';
 import { useAuth } from '../../context/AuthContext';
@@ -12,7 +13,14 @@ const CollaborativeTextEditor = ({
     rows = 4
 }) => {
     const { currentUser, db } = useAuth();
-    const { setEditingItem, clearEditingItem, CollaborationManager } = useCollaboration();
+    const { 
+        setEditingItem, 
+        clearEditingItem, 
+        CollaborationManager,
+        getItemLockInfo,
+        isCurrentUserOwner
+    } = useCollaboration();
+    
     const [localValue, setLocalValue] = useState(value || '');
     const [pendingOperations, setPendingOperations] = useState([]);
     const [cursorPositions, setCursorPositions] = useState(new Map());
@@ -20,7 +28,10 @@ const CollaborativeTextEditor = ({
     const lastValueRef = useRef(value || '');
     const operationsListener = useRef(null);
 
-    // Initialize local value when prop changes
+    const lockInfo = getItemLockInfo(itemId);
+    const isOwner = isCurrentUserOwner(itemId);
+    const isReadOnly = !isOwner && lockInfo.locked;
+
     useEffect(() => {
         if (value !== lastValueRef.current) {
             setLocalValue(value || '');
@@ -28,9 +39,8 @@ const CollaborativeTextEditor = ({
         }
     }, [value]);
 
-    // Set up real-time operations listener
     useEffect(() => {
-        if (!db || !itemId) return;
+        if (!db || !itemId || !isOwner) return;
 
         const setupOperationsListener = async () => {
             const { collection, query, where, onSnapshot, orderBy } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
@@ -53,8 +63,7 @@ const CollaborativeTextEditor = ({
                     }
                 });
 
-                // Apply remote operations
-                if (operations.length > 0) {
+                if (operations.length > 0 && isOwner) {
                     const newValue = CollaborationManager.applyTextTransform(
                         lastValueRef.current,
                         operations
@@ -73,33 +82,34 @@ const CollaborativeTextEditor = ({
                 operationsListener.current();
             }
         };
-    }, [db, itemId, currentUser.uid, onChange, CollaborationManager]);
+    }, [db, itemId, currentUser.uid, onChange, CollaborationManager, isOwner]);
 
-    // Handle focus - indicate user is editing
     const handleFocus = useCallback(async () => {
-        await setEditingItem(itemId);
-    }, [setEditingItem, itemId]);
+        if (isOwner) {
+            await setEditingItem(itemId);
+        }
+    }, [setEditingItem, itemId, isOwner]);
 
-    // Handle blur - clear editing status
     const handleBlur = useCallback(async () => {
-        await clearEditingItem();
-    }, [clearEditingItem]);
+        if (isOwner) {
+            await clearEditingItem();
+        }
+    }, [clearEditingItem, isOwner]);
 
-    // Handle text changes with operational transforms
     const handleChange = useCallback(async (e) => {
+        if (!isOwner) return;
+
         const newValue = e.target.value;
         const oldValue = localValue;
 
         setLocalValue(newValue);
 
-        // Generate operations for the change
         const operations = CollaborationManager.generateTextOperations(oldValue, newValue);
 
         if (operations.length > 0 && db) {
             try {
                 const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
-                // Store operations in Firestore for real-time sync
                 for (const operation of operations) {
                     await addDoc(collection(db, "textOperations"), {
                         ...operation,
@@ -114,13 +124,13 @@ const CollaborativeTextEditor = ({
             }
         }
 
-        // Update parent component
         onChange(newValue);
         lastValueRef.current = newValue;
-    }, [localValue, db, itemId, currentUser, onChange, CollaborationManager]);
+    }, [localValue, db, itemId, currentUser, onChange, CollaborationManager, isOwner]);
 
-    // Handle cursor position tracking
     const handleCursorChange = useCallback(async (e) => {
+        if (!isOwner) return;
+
         const textarea = e.target;
         const cursorPosition = textarea.selectionStart;
 
@@ -128,7 +138,6 @@ const CollaborativeTextEditor = ({
             try {
                 const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
-                // Update cursor position in real-time
                 await setDoc(doc(db, "cursors", `${itemId}_${currentUser.uid}`), {
                     itemId,
                     userId: currentUser.uid,
@@ -140,11 +149,10 @@ const CollaborativeTextEditor = ({
                 console.error('Error updating cursor position:', error);
             }
         }
-    }, [db, itemId, currentUser]);
+    }, [db, itemId, currentUser, isOwner]);
 
-    // Listen to other users' cursor positions
     useEffect(() => {
-        if (!db || !itemId) return;
+        if (!db || !itemId || !isOwner) return;
 
         const setupCursorListener = async () => {
             const { collection, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
@@ -163,7 +171,6 @@ const CollaborativeTextEditor = ({
                     const timestamp = new Date(data.timestamp);
                     const secondsAgo = (now - timestamp) / 1000;
 
-                    // Only show cursors from last 10 seconds and not from current user
                     if (secondsAgo < 10 && data.userId !== currentUser.uid) {
                         positions.set(data.userId, {
                             ...data,
@@ -179,24 +186,23 @@ const CollaborativeTextEditor = ({
         };
 
         setupCursorListener();
-    }, [db, itemId, currentUser.uid]);
+    }, [db, itemId, currentUser.uid, isOwner]);
 
-    // Render cursor indicators
     const renderCursorIndicators = () => {
+        if (!isOwner) return null;
+        
         const textarea = textareaRef.current;
         if (!textarea || cursorPositions.size === 0) return null;
 
         const indicators = [];
         cursorPositions.forEach((cursor, userId) => {
-            // Calculate cursor position in textarea
             const textBeforeCursor = localValue.substring(0, cursor.position);
             const lines = textBeforeCursor.split('\n');
             const lineNumber = lines.length;
             const columnNumber = lines[lines.length - 1].length;
 
-            // Simple positioning - in production, use more sophisticated positioning
-            const topOffset = (lineNumber - 1) * 20; // Approximate line height
-            const leftOffset = columnNumber * 8; // Approximate character width
+            const topOffset = (lineNumber - 1) * 20;
+            const leftOffset = columnNumber * 8;
 
             indicators.push(
                 <div
@@ -225,27 +231,36 @@ const CollaborativeTextEditor = ({
         );
     };
 
+    const textareaProps = {
+        ref: textareaRef,
+        value: localValue,
+        onChange: handleChange,
+        onFocus: handleFocus,
+        onBlur: handleBlur,
+        onSelect: handleCursorChange,
+        onClick: handleCursorChange,
+        onKeyUp: handleCursorChange,
+        className: `w-full form-input relative z-0 ${className} ${isReadOnly ? 'bg-gray-50 dark:bg-gray-700 cursor-not-allowed' : ''}`,
+        placeholder: isReadOnly ? 'Read-only: Another user is editing' : placeholder,
+        rows: rows,
+        disabled: isReadOnly,
+        readOnly: isReadOnly
+    };
+
     return (
         <div className="relative">
-            <textarea
-                ref={textareaRef}
-                value={localValue}
-                onChange={handleChange}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
-                onSelect={handleCursorChange}
-                onClick={handleCursorChange}
-                onKeyUp={handleCursorChange}
-                className={`w-full form-input relative z-0 ${className}`}
-                placeholder={placeholder}
-                rows={rows}
-            />
+            <textarea {...textareaProps} />
             {renderCursorIndicators()}
 
-            {/* Show pending operations indicator */}
-            {pendingOperations.length > 0 && (
+            {pendingOperations.length > 0 && isOwner && (
                 <div className="absolute top-2 right-2 bg-yellow-100 border border-yellow-300 rounded px-2 py-1 text-xs">
                     Syncing changes...
+                </div>
+            )}
+
+            {isReadOnly && lockInfo.owner && (
+                <div className="absolute top-2 right-2 bg-orange-100 border border-orange-300 rounded px-2 py-1 text-xs">
+                    {lockInfo.owner.userName} is editing
                 </div>
             )}
         </div>
