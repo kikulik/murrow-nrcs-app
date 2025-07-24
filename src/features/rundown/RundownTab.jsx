@@ -1,4 +1,3 @@
-// src/features/rundown/RundownTab.jsx
 import React, { useState, useEffect } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
@@ -23,7 +22,6 @@ const RundownTab = ({ liveMode }) => {
     const availableRundowns = appState.rundowns.filter(r => appState.showArchived || !r.archived);
     const isRundownLocked = liveMode.isLive && liveMode.liveRundownId === appState.activeRundownId;
 
-    // Keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.ctrlKey || e.metaKey) {
@@ -74,7 +72,6 @@ const RundownTab = ({ liveMode }) => {
             const rundownRef = doc(db, "rundowns", currentRundown.id);
             await updateDoc(rundownRef, { archived: true });
 
-            // Clear active rundown if archived
             setAppState(prev => ({ ...prev, activeRundownId: null }));
             setSelectedItems([]);
         } catch (error) {
@@ -179,21 +176,6 @@ const RundownTab = ({ liveMode }) => {
         }
     };
 
-    const handleTakeOverItem = async (itemId, previousUserId) => {
-        const success = await takeOverItem(itemId, previousUserId);
-        if (success) {
-            // Find the item in the list and trigger edit mode for it
-            // This is a bit of a workaround to get the editing state updated
-            const listComponent = document.querySelector(`[data-item-id="${itemId}"]`);
-            if (listComponent) {
-                // This is a conceptual example; direct DOM manipulation isn't ideal in React.
-                // A better approach would be to manage editing state in this component.
-            }
-        }
-        return success;
-    };
-
-
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center flex-wrap gap-4">
@@ -223,7 +205,7 @@ const RundownTab = ({ liveMode }) => {
                                     }`}
                                 title="Archive Rundown"
                             >
-                                <CustomIcon name="time" size={20} />
+                                <CustomIcon name="time" size={40} />
                             </button>
                         )}
 
@@ -235,7 +217,7 @@ const RundownTab = ({ liveMode }) => {
                                     }`}
                                 title="Delete Rundown"
                             >
-                                <CustomIcon name="delete" size={20} />
+                                <CustomIcon name="delete" size={40} />
                             </button>
                         )}
                     </div>
@@ -246,7 +228,7 @@ const RundownTab = ({ liveMode }) => {
                         className={`btn-secondary text-sm ${(isRundownLocked || !userPermissions.canCreateRundowns) ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                     >
-                        <CustomIcon name="add story" size={20} />
+                        <CustomIcon name="add story" size={40} />
                         <span>New</span>
                     </button>
 
@@ -268,7 +250,7 @@ const RundownTab = ({ liveMode }) => {
                         airTime={getAirTime(currentRundown?.airDate)}
                     />
                     <div className="flex items-center gap-2 text-lg">
-                        <CustomIcon name="time" size={24} />
+                        <CustomIcon name="time" size={40} />
                         <span className="font-bold">{formatDuration(totalDuration)}</span>
                     </div>
                     <button
@@ -276,7 +258,7 @@ const RundownTab = ({ liveMode }) => {
                         disabled={!currentRundown || currentRundown.archived || !currentRundown.items?.length}
                         className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium text-sm rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-red-500 disabled:hover:to-red-600"
                     >
-                        <CustomIcon name="golive" size={20} />
+                        <CustomIcon name="golive" size={40} />
                         <span>Go Live</span>
                     </button>
                 </div>
@@ -287,11 +269,11 @@ const RundownTab = ({ liveMode }) => {
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                             <div className="flex items-center gap-2">
-                                <CustomIcon name="assignments" size={20} />
+                                <CustomIcon name="assignments" size={40} />
                                 <span>Air Date: {formatAirDate(currentRundown.airDate)}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <CustomIcon name="time" size={20} />
+                                <CustomIcon name="time" size={40} />
                                 <span>Created: {new Date(currentRundown.created).toLocaleString()}</span>
                             </div>
                             <div className="flex items-center gap-2">
@@ -317,7 +299,7 @@ const RundownTab = ({ liveMode }) => {
                                     onClick={handleSendSelectedToStories}
                                     className="btn-primary text-sm"
                                 >
-                                    <CustomIcon name="send" size={16} />
+                                    <CustomIcon name="send" size={32} />
                                     <span>Send to Stories ({selectedItems.length})</span>
                                 </button>
                             )}
@@ -328,7 +310,7 @@ const RundownTab = ({ liveMode }) => {
                                 className={`btn-primary flex items-center ${(isRundownLocked || currentRundown.archived || !userPermissions.canCreateRundownItems) ? 'opacity-50 cursor-not-allowed' : ''
                                     }`}
                             >
-                                <CustomIcon name="add story" size={20} className="mr-2" />
+                                <CustomIcon name="add story" size={40} className="mr-2" />
                                 <span>Add Story</span>
                             </button>
                         </div>
@@ -344,7 +326,6 @@ const RundownTab = ({ liveMode }) => {
                     onItemsUpdate={handleRundownItemUpdate}
                     selectedItems={selectedItems}
                     onSelectionChange={setSelectedItems}
-                    onTakeOverItem={handleTakeOverItem}
                 />
             ) : (
                 <div className="text-center py-12 text-gray-500">
