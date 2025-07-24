@@ -1,39 +1,52 @@
 // src/components/collaboration/UserPresenceIndicator.jsx
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useCollaboration } from '../../context/CollaborationContext';
 
 const UserPresenceIndicator = ({ itemId, className = '' }) => {
-    const { getUserEditingItem } = useCollaboration();
+    const { getUserEditingItem, getItemLockInfo } = useCollaboration();
     const [stableUser, setStableUser] = useState(null);
 
     const editingUser = getUserEditingItem(itemId);
+    const lockInfo = getItemLockInfo(itemId);
 
-    // Stabilize user to prevent blinking
     useEffect(() => {
-        if (editingUser && editingUser.userId) {
-            setStableUser(editingUser);
-        } else if (!editingUser) {
-            // Only clear after a delay to prevent blinking
+        if (lockInfo.locked && lockInfo.owner) {
+            setStableUser({
+                userId: lockInfo.owner.userId,
+                userName: lockInfo.owner.userName,
+                isOwner: lockInfo.ownedByCurrentUser
+            });
+        } else if (editingUser && editingUser.userId) {
+            setStableUser({
+                ...editingUser,
+                isOwner: editingUser.isOwner || false
+            });
+        } else {
             const clearTimer = setTimeout(() => {
                 setStableUser(null);
             }, 1000);
             return () => clearTimeout(clearTimer);
         }
-    }, [editingUser?.userId]);
+    }, [lockInfo, editingUser]);
 
     if (!stableUser) return null;
+
+    const isCurrentUserOwner = lockInfo.ownedByCurrentUser;
+    const indicatorColor = isCurrentUserOwner ? 'bg-blue-500' : 'bg-orange-500';
+    const statusColor = isCurrentUserOwner ? 'text-blue-600' : 'text-orange-600';
 
     return (
         <div className={`flex items-center space-x-1 ${className}`}>
             <div className="relative">
-                <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                <div className={`w-6 h-6 rounded-full ${indicatorColor} flex items-center justify-center text-white text-xs font-bold`}>
                     {stableUser.userName.charAt(0)}
                 </div>
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
             </div>
-            <span className="text-xs text-blue-600 font-medium">
-                {stableUser.userName} is editing
+            <span className={`text-xs font-medium ${statusColor}`}>
+                {isCurrentUserOwner ? 'You are editing' : `${stableUser.userName} is editing`}
             </span>
         </div>
     );
@@ -44,11 +57,10 @@ export const ActiveUsersPanel = () => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef(null);
 
-    // Memoize users to prevent re-renders
     const stableUsers = useMemo(() => {
         return activeUsers.map((user, index) => ({
             ...user,
-            stableId: `${user.userId}-${index}` // Create stable ID
+            stableId: `${user.userId}-${index}`
         }));
     }, [activeUsers.length, activeUsers.map(u => u.userId).join(',')]);
 
@@ -117,7 +129,9 @@ export const ActiveUsersPanel = () => {
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-medium truncate">{user.userName}</div>
                                         {user.editingItem ? (
-                                            <div className="text-xs text-orange-500">Currently editing</div>
+                                            <div className={`text-xs ${user.isOwner ? 'text-blue-500' : 'text-orange-500'}`}>
+                                                {user.isOwner ? 'Currently editing' : 'Viewing (read-only)'}
+                                            </div>
                                         ) : (
                                             <div className="text-xs text-gray-500">Online</div>
                                         )}
