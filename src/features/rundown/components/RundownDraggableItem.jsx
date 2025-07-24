@@ -36,6 +36,7 @@ const RundownDraggableItem = ({
     } = useCollaboration();
     const ref = useRef(null);
     const [localItem, setLocalItem] = useState(item);
+    const [showTakeOver, setShowTakeOver] = useState(false);
 
     const userPermissions = getUserPermissions(currentUser.role);
 
@@ -55,7 +56,7 @@ const RundownDraggableItem = ({
             const hoverIndex = index;
             if (dragIndex === hoverIndex) return;
 
-            const hoverBoundingRect = ref.current?.getBoundingClientRect();
+            const hoverBoundingRect = ref.current?.getBoundingRect();
             const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
             const clientOffset = monitor.getClientOffset();
             const hoverClientY = clientOffset.y - hoverBoundingRect.top;
@@ -90,6 +91,12 @@ const RundownDraggableItem = ({
 
     const editingUser = getUserEditingItem(item.id);
     const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
+
+    // Stable check for editing user to prevent blinking
+    useEffect(() => {
+        const isCurrentlyBeingEdited = editingUser && editingUser.userId !== currentUser.uid;
+        setShowTakeOver(isCurrentlyBeingEdited && userPermissions.canTakeOverStories);
+    }, [editingUser?.userId, currentUser.uid, userPermissions.canTakeOverStories]);
 
     const handleStatusChange = async (newStatus) => {
         if (isLocked || !appState.activeRundownId || isBeingEditedByOther) return;
@@ -138,7 +145,10 @@ const RundownDraggableItem = ({
         }
     };
 
-    const handleTakeOver = async () => {
+    const handleTakeOver = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
         if (onTakeOverItem && editingUser) {
             await onTakeOverItem(item.id, editingUser.userId);
         }
@@ -159,6 +169,7 @@ const RundownDraggableItem = ({
         ${isDragging ? 'opacity-50' : 'opacity-100'} 
         ${isLocked ? 'opacity-75' : ''} 
         ${isSelected ? 'bg-blue-100 dark:bg-blue-800/50 border-l-4 border-blue-500' : ''}
+        ${isBeingEditedByOther ? 'bg-orange-50 dark:bg-orange-900/10' : ''}
         border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors
     `;
 
@@ -169,7 +180,7 @@ const RundownDraggableItem = ({
             className={itemClasses}
             onClick={handleClick}
         >
-            <div className="grid grid-cols-12 items-center gap-2 px-4 py-2 min-h-[44px] relative">
+            <div className="grid grid-cols-12 items-center gap-2 px-4 py-3 min-h-[50px] relative">
                 <div className="col-span-1 flex justify-center">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'
                         }`}>
@@ -177,20 +188,20 @@ const RundownDraggableItem = ({
                     </div>
                 </div>
 
-                <div className="col-span-5 relative">
-                    <h4 className="font-medium truncate text-sm">
+                <div className="col-span-5 relative pr-4">
+                    <h4 className="font-medium truncate text-sm pr-2">
                         {item.title}
                         {isLocked && <CustomIcon name="lock" size={16} className="text-red-500 inline ml-2" />}
                     </h4>
 
-                    {/* Fixed user presence indicator */}
+                    {/* Fixed user presence indicator - positioned below title to avoid overlap */}
                     {isBeingEditedByOther && (
-                        <div className="absolute -bottom-1 left-0 flex items-center gap-1 bg-orange-100 dark:bg-orange-900/20 px-2 py-1 rounded-sm border border-orange-200 dark:border-orange-800">
-                            <div className="w-3 h-3 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold">
+                        <div className="absolute -bottom-6 left-0 flex items-center gap-1 bg-orange-100 dark:bg-orange-900/30 px-2 py-1 rounded-sm border border-orange-200 dark:border-orange-700 text-xs z-10">
+                            <div className="w-3 h-3 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold text-xs">
                                 {editingUser.userName.charAt(0)}
                             </div>
-                            <span className="text-xs text-orange-700 dark:text-orange-300 font-medium">
-                                {editingUser.userName}
+                            <span className="text-orange-700 dark:text-orange-300 font-medium">
+                                {editingUser.userName} editing
                             </span>
                         </div>
                     )}
@@ -232,16 +243,14 @@ const RundownDraggableItem = ({
                     )}
                 </div>
 
+                {/* Fixed action buttons - better positioning and no blinking */}
                 {!isLocked && (
-                    <div className="absolute top-1 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {isBeingEditedByOther && userPermissions.canTakeOverStories ? (
+                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white dark:bg-gray-800 rounded shadow-sm border p-1">
+                        {showTakeOver ? (
                             <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTakeOver();
-                                }}
-                                className="p-1 text-white bg-orange-500 hover:bg-orange-600 rounded border shadow-sm text-xs font-medium"
-                                title={`Take over from ${editingUser.userName}`}
+                                onClick={handleTakeOver}
+                                className="px-2 py-1 text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 rounded transition-colors"
+                                title={`Take over from ${editingUser?.userName}`}
                             >
                                 Take Over
                             </button>
@@ -249,7 +258,7 @@ const RundownDraggableItem = ({
                             !isBeingEditedByOther && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleEdit(); }}
-                                    className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                                    className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
                                     title="Edit item"
                                 >
                                     <CustomIcon name="edit" size={16} />
@@ -261,9 +270,9 @@ const RundownDraggableItem = ({
                             <button
                                 onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
                                 disabled={isBeingEditedByOther}
-                                className={`p-1 rounded ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'
+                                className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'
                                     }`}
-                                title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Delete item'}
+                                title={isBeingEditedByOther ? `Being edited by ${editingUser?.userName}` : 'Delete item'}
                             >
                                 <CustomIcon name="delete" size={16} />
                             </button>
