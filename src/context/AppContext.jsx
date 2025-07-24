@@ -1,7 +1,6 @@
 /*
 ================================================================================
 File: murrow-nrcs-app.git/src/context/AppContext.jsx
-Description: This file manages the global application state.
 ================================================================================
 */
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -11,7 +10,7 @@ import { setupFirestoreListeners } from '../hooks/useFirestoreData';
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-    const { db } = useAuth();
+    const { db, currentUser } = useAuth(); // Get db and currentUser from AuthContext
     const [appState, setAppState] = useState({
         users: [],
         groups: [],
@@ -40,11 +39,12 @@ export const AppProvider = ({ children }) => {
     });
 
     useEffect(() => {
-        if (!db) return;
-
-        const unsubscribe = setupFirestoreListeners(db, setAppState);
-        return unsubscribe;
-    }, [db]);
+        // Only set up listeners if db and a user are present.
+        if (db && currentUser) {
+            const unsubscribe = setupFirestoreListeners(db, setAppState);
+            return () => unsubscribe();
+        }
+    }, [db, currentUser]); // Rerun effect if db or currentUser changes
 
     return (
         <AppContext.Provider value={{ appState, setAppState }}>
