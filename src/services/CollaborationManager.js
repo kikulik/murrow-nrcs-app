@@ -1,3 +1,5 @@
+// src/services/CollaborationManager.js
+
 export class CollaborationManager {
     constructor(db, currentUser) {
         this.db = db;
@@ -8,6 +10,8 @@ export class CollaborationManager {
         this.presenceInterval = null;
         this.lastUpdate = 0;
         this.updateThrottle = 2000;
+        this.isOwner = false;
+        this.lockTimeout = null;
     }
 
     static addVersionControl(item) {
@@ -15,7 +19,9 @@ export class CollaborationManager {
             ...item,
             version: item.version || 1,
             lastModified: new Date().toISOString(),
-            lastModifiedBy: item.lastModifiedBy || null
+            lastModifiedBy: item.lastModifiedBy || null,
+            lockedBy: item.lockedBy || null,
+            lockTimestamp: item.lockTimestamp || null
         };
     }
 
@@ -42,7 +48,8 @@ export class CollaborationManager {
                 rundownId,
                 lastSeen: new Date().toISOString(),
                 isActive: true,
-                editingItem: null
+                editingItem: null,
+                isOwner: false
             };
 
             await setDoc(presenceDoc, presenceData);
@@ -57,13 +64,14 @@ export class CollaborationManager {
                     await setDoc(presenceDoc, {
                         ...presenceData,
                         lastSeen: new Date().toISOString(),
-                        editingItem: this.currentEditingItem || null
+                        editingItem: this.currentEditingItem || null,
+                        isOwner: this.isOwner
                     }, { merge: true });
                     this.lastUpdate = now;
                 } catch (error) {
                     console.error('Error updating presence:', error);
                 }
-            }, 5000);
+            }, 3000);
 
             const handleBeforeUnload = () => {
                 this.stopPresenceTracking();
@@ -86,6 +94,10 @@ export class CollaborationManager {
             this.presenceInterval = null;
         }
 
+        if (this.currentEditingItem && this.isOwner) {
+            await this.releaseLock(this.currentEditingItem);
+        }
+
         if (this.presenceRef) {
             try {
                 const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
@@ -101,14 +113,110 @@ export class CollaborationManager {
         }
     }
 
+    async acquireLock(itemId) {
+        try {
+            const { doc, getDoc, setDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            const lockDoc = doc(this.db, "itemLocks", itemId);
+            const lockSnapshot = await getDoc(lockDoc);
+
+            const now = new Date().toISOString();
+            const lockExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+
+            if (lockSnapshot.exists()) {
+                const lockData = lockSnapshot.data();
+                const lockAge = new Date() - new Date(lockData.timestamp);
+                
+                if (lockData.userId === this.currentUser.uid) {
+                    await updateDoc(lockDoc, {
+                        timestamp: now,
+                        expiresAt: lockExpiry
+                    });
+                    this.isOwner = true;
+                    return true;
+                }
+
+                if (lockAge < 10 * 60 * 1000) {
+                    this.isOwner = false;
+                    return false;
+                }
+            }
+
+            await setDoc(lockDoc, {
+                userId: this.currentUser.uid,
+                userName: this.currentUser.name,
+                itemId: itemId,
+                timestamp: now,
+                expiresAt: lockExpiry
+            });
+
+            this.isOwner = true;
+            this.renewLockTimer(itemId);
+            return true;
+
+        } catch (error) {
+            console.error('Error acquiring lock:', error);
+            return false;
+        }
+    }
+
+    async releaseLock(itemId) {
+        try {
+            const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            
+            if (this.lockTimeout) {
+                clearTimeout(this.lockTimeout);
+                this.lockTimeout = null;
+            }
+
+            await deleteDoc(doc(this.db, "itemLocks", itemId));
+            this.isOwner = false;
+        } catch (error) {
+            console.error('Error releasing lock:', error);
+        }
+    }
+
+    renewLockTimer(itemId) {
+        if (this.lockTimeout) {
+            clearTimeout(this.lockTimeout);
+        }
+
+        this.lockTimeout = setTimeout(async () => {
+            if (this.isOwner && this.currentEditingItem === itemId) {
+                const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+                try {
+                    await updateDoc(doc(this.db, "itemLocks", itemId), {
+                        timestamp: new Date().toISOString(),
+                        expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+                    });
+                    this.renewLockTimer(itemId);
+                } catch (error) {
+                    console.error('Error renewing lock:', error);
+                }
+            }
+        }, 5 * 60 * 1000);
+    }
+
     async setEditingItem(itemId) {
+        if (this.currentEditingItem && this.currentEditingItem !== itemId) {
+            await this.releaseLock(this.currentEditingItem);
+        }
+
         this.currentEditingItem = itemId;
+
+        if (itemId) {
+            const lockAcquired = await this.acquireLock(itemId);
+            if (!lockAcquired) {
+                this.isOwner = false;
+            }
+        }
 
         if (this.presenceRef) {
             try {
                 const { updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
                 await updateDoc(this.presenceRef, {
                     editingItem: itemId,
+                    isOwner: this.isOwner,
                     lastSeen: new Date().toISOString()
                 });
                 this.lastUpdate = Date.now();
@@ -120,7 +228,15 @@ export class CollaborationManager {
 
     async takeOverItem(itemId, previousUserId) {
         try {
-            const { collection, addDoc, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { collection, addDoc, query, where, getDocs, doc, setDoc, deleteDoc } = 
+                await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            await deleteDoc(doc(this.db, "itemLocks", itemId));
+
+            const lockAcquired = await this.acquireLock(itemId);
+            if (!lockAcquired) {
+                return false;
+            }
 
             await this.setEditingItem(itemId);
 
@@ -132,10 +248,11 @@ export class CollaborationManager {
             const presenceSnapshot = await getDocs(presenceQuery);
             
             if (!presenceSnapshot.empty) {
-                const { updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+                const { updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
                 presenceSnapshot.forEach(async (docSnapshot) => {
                     await updateDoc(doc(this.db, "presence", docSnapshot.id), {
                         editingItem: null,
+                        isOwner: false,
                         lastSeen: new Date().toISOString()
                     });
                 });
@@ -185,7 +302,8 @@ export class CollaborationManager {
                         activeUsers.push({
                             userId: data.userId,
                             userName: data.userName,
-                            editingItem: data.editingItem
+                            editingItem: data.editingItem,
+                            isOwner: data.isOwner || false
                         });
                     }
                 });
@@ -200,6 +318,43 @@ export class CollaborationManager {
         } catch (error) {
             console.error('Error setting up presence listener:', error);
             return () => { };
+        }
+    }
+
+    async listenToItemLock(itemId, callback) {
+        if (!this.db) return () => {};
+
+        try {
+            const { doc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            const lockDoc = doc(this.db, "itemLocks", itemId);
+
+            return onSnapshot(lockDoc, (snapshot) => {
+                if (snapshot.exists()) {
+                    const lockData = snapshot.data();
+                    const isCurrentUserOwner = lockData.userId === this.currentUser.uid;
+                    
+                    callback({
+                        locked: true,
+                        ownedByCurrentUser: isCurrentUserOwner,
+                        owner: {
+                            userId: lockData.userId,
+                            userName: lockData.userName
+                        },
+                        timestamp: lockData.timestamp
+                    });
+                } else {
+                    callback({
+                        locked: false,
+                        ownedByCurrentUser: false,
+                        owner: null,
+                        timestamp: null
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('Error setting up lock listener:', error);
+            return () => {};
         }
     }
 
