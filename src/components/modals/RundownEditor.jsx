@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import ModalBase from '../common/ModalBase';
 import InputField from '../ui/InputField';
 import SelectField from '../ui/SelectField';
+import { collection, addDoc } from 'firebase/firestore';
 
 const RundownEditor = ({ onCancel }) => {
     const { appState, setAppState } = useAppContext();
@@ -21,8 +22,6 @@ const RundownEditor = ({ onCancel }) => {
 
         setSaving(true);
         try {
-            const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
             let items = [];
             if (templateId) {
                 const template = appState.rundownTemplates.find(t => t.id === templateId);
@@ -79,7 +78,7 @@ const RundownEditor = ({ onCancel }) => {
                         label="Template (Optional)"
                         value={templateId}
                         onChange={e => setTemplateId(e.target.value)}
-                        options={appState.rundownTemplates.map(t => ({ value: t.id, label: t.name }))}
+                        options={[{ value: '', label: '-- No Template --' }, ...appState.rundownTemplates.map(t => ({ value: t.id, label: t.name }))]}
                     />
                 )}
                 <div className="flex items-center justify-end space-x-3 pt-4">
