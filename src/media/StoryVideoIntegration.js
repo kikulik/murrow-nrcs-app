@@ -1,5 +1,6 @@
 // src/media/StoryVideoIntegration.js
 // Video integration hooks and utilities
+// FIX: Standardized dynamic import to use 'firebase/firestore'
 import { useState, useCallback } from 'react';
 
 export const useVideoIntegration = (db) => {
@@ -19,7 +20,7 @@ export const useVideoIntegration = (db) => {
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             // Update story in Firestore
-            const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { doc, updateDoc } = await import("firebase/firestore");
             await updateDoc(doc(db, "stories", storyId), {
                 hasVideo: true,
                 videoUrl: `simulated://video-url/${mediaId}`,
@@ -37,7 +38,7 @@ export const useVideoIntegration = (db) => {
 
     const detachVideoFromStory = useCallback(async (storyId) => {
         try {
-            const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { doc, updateDoc } = await import("firebase/firestore");
             await updateDoc(doc(db, "stories", storyId), {
                 hasVideo: false,
                 videoUrl: null,
