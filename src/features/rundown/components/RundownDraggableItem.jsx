@@ -1,4 +1,3 @@
-// src/features/rundown/components/RundownDraggableItem.jsx
 import React, { useRef, useState, useEffect } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import CustomIcon from '../../../components/ui/CustomIcon';
@@ -39,7 +38,6 @@ const RundownDraggableItem = ({
 
     const userPermissions = getUserPermissions(currentUser.role);
 
-    // Sync local state with prop changes
     useEffect(() => {
         setLocalItem(item);
     }, [item]);
@@ -116,9 +114,11 @@ const RundownDraggableItem = ({
 
     const handleEdit = async () => {
         if (isBeingEditedByOther) {
-            const result = confirm(`${editingUser.userName} is currently editing this item. Do you want to take over?`);
-            if (result && onTakeOverItem) {
-                await onTakeOverItem(item.id, editingUser.userId);
+            if (userPermissions.canTakeOverStories) {
+                const result = confirm(`${editingUser.userName} is currently editing this item. Do you want to take over?`);
+                if (result && onTakeOverItem) {
+                    await onTakeOverItem(item.id, editingUser.userId);
+                }
             }
             return;
         }
@@ -132,9 +132,9 @@ const RundownDraggableItem = ({
         e.stopPropagation();
 
         if (e.ctrlKey || e.metaKey) {
-            onSelect(item.id, true); // Multi-select
+            onSelect(item.id, true);
         } else {
-            onSelect(item.id, false); // Single select
+            onSelect(item.id, false);
         }
     };
 
@@ -142,7 +142,7 @@ const RundownDraggableItem = ({
         e.preventDefault();
         e.stopPropagation();
 
-        if (onTakeOverItem && editingUser) {
+        if (onTakeOverItem && editingUser && userPermissions.canTakeOverStories) {
             await onTakeOverItem(item.id, editingUser.userId);
         }
     };
@@ -181,10 +181,10 @@ const RundownDraggableItem = ({
                     </div>
                 </div>
 
-                <div className="col-span-4">
-                    <h4 className="font-medium truncate text-sm">
+                <div className="col-span-4 overflow-hidden">
+                    <h4 className="font-medium text-sm break-words overflow-wrap-anywhere">
                         {item.title}
-                        {isLocked && <CustomIcon name="lock" size={16} className="text-red-500 inline ml-2" />}
+                        {isLocked && <CustomIcon name="lock" size={32} className="text-red-500 inline ml-2" />}
                     </h4>
                 </div>
 
@@ -197,7 +197,7 @@ const RundownDraggableItem = ({
                                     className="p-1 bg-orange-500 hover:bg-orange-600 rounded transition-colors"
                                     title={`Take over from ${editingUser.userName}`}
                                 >
-                                    <CustomIcon name="lock" size={12} className="text-white" />
+                                    <CustomIcon name="lock" size={32} className="text-white" />
                                 </button>
                             ) : (
                                 <div
@@ -211,7 +211,7 @@ const RundownDraggableItem = ({
                     ) : null}
                 </div>
 
-                <div className="col-span-2 flex gap-1 justify-start">
+                <div className="col-span-2 flex gap-1 justify-start flex-wrap">
                     {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
                         <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
                             {t}
@@ -237,7 +237,7 @@ const RundownDraggableItem = ({
                     <span className="text-xs text-gray-600 dark:text-gray-400">{item.duration}</span>
                 </div>
 
-                <div className="col-span-2 text-left">
+                <div className="col-span-2 text-left overflow-hidden">
                     {author ? (
                         <span className="text-xs text-gray-500 truncate block" title={author.name}>
                             {author.name.length > 10 ? author.name.substring(0, 10) + '...' : author.name}
@@ -256,7 +256,7 @@ const RundownDraggableItem = ({
                                     className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
                                     title="Edit item"
                                 >
-                                    <CustomIcon name="edit" size={14} />
+                                    <CustomIcon name="edit" size={32} />
                                 </button>
                             )}
 
@@ -268,7 +268,7 @@ const RundownDraggableItem = ({
                                         }`}
                                     title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Delete item'}
                                 >
-                                    <CustomIcon name="delete" size={14} />
+                                    <CustomIcon name="delete" size={32} />
                                 </button>
                             )}
                         </div>
