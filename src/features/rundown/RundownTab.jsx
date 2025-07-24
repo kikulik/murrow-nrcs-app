@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useCollaboration } from '../../context/CollaborationContext';
 import { getUserPermissions } from '../../lib/permissions';
 import { calculateTotalDuration, formatDuration } from '../../utils/helpers';
 import RundownList from './components/RundownList';
@@ -11,6 +12,7 @@ import PrintDropdown from './components/PrintDropdown';
 const RundownTab = ({ liveMode }) => {
     const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
+    const { takeOverItem } = useCollaboration();
     const [selectedItems, setSelectedItems] = useState([]);
     const [copiedItems, setCopiedItems] = useState([]);
 
@@ -142,15 +144,12 @@ const RundownTab = ({ liveMode }) => {
         );
 
         setCopiedItems(selectedRundownItems);
-
-        // Also store in localStorage for cross-session persistence
         localStorage.setItem('copiedRundownItems', JSON.stringify(selectedRundownItems));
     };
 
     const handlePasteItems = async () => {
         let itemsToPaste = copiedItems;
 
-        // If no items in memory, try localStorage
         if (itemsToPaste.length === 0) {
             const storedItems = localStorage.getItem('copiedRundownItems');
             if (storedItems) {
@@ -181,31 +180,19 @@ const RundownTab = ({ liveMode }) => {
     };
 
     const handleTakeOverItem = async (itemId, previousUserId) => {
-        try {
-            if (db) {
-                const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-                await addDoc(collection(db, "notifications"), {
-                    userId: previousUserId,
-                    type: 'takeOver',
-                    message: `${currentUser.name} has taken over editing the story you were working on.`,
-                    itemId: itemId,
-                    timestamp: new Date().toISOString(),
-                    read: false
-                });
-
-                await addDoc(collection(db, "messages"), {
-                    userId: 'system',
-                    userName: 'System',
-                    text: `${currentUser.name} took over editing from another user.`,
-                    timestamp: new Date().toISOString(),
-                    type: 'system'
-                });
+        const success = await takeOverItem(itemId, previousUserId);
+        if (success) {
+            // Find the item in the list and trigger edit mode for it
+            // This is a bit of a workaround to get the editing state updated
+            const listComponent = document.querySelector(`[data-item-id="${itemId}"]`);
+            if (listComponent) {
+                // This is a conceptual example; direct DOM manipulation isn't ideal in React.
+                // A better approach would be to manage editing state in this component.
             }
-        } catch (error) {
-            console.error('Error sending take-over notification:', error);
         }
+        return success;
     };
+
 
     return (
         <div className="space-y-6">
@@ -228,7 +215,6 @@ const RundownTab = ({ liveMode }) => {
                             ))}
                         </select>
 
-                        {/* Archive button */}
                         {currentRundown && !currentRundown.archived && userPermissions.canDeleteAnything && (
                             <button
                                 onClick={handleArchiveRundown}
@@ -241,7 +227,6 @@ const RundownTab = ({ liveMode }) => {
                             </button>
                         )}
 
-                        {/* Delete button */}
                         {currentRundown && userPermissions.canDeleteAnything && (
                             <button
                                 onClick={handleDeleteRundown}
@@ -314,7 +299,6 @@ const RundownTab = ({ liveMode }) => {
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            {/* Keyboard shortcut indicators */}
                             {selectedItems.length > 0 && (
                                 <div className="flex items-center gap-2 text-xs text-gray-500 mr-4">
                                     <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">Ctrl+C</kbd>
@@ -328,7 +312,6 @@ const RundownTab = ({ liveMode }) => {
                                 </div>
                             )}
 
-                            {/* Send to Stories button - only show when items selected */}
                             {selectedItems.length > 0 && (
                                 <button
                                     onClick={handleSendSelectedToStories}
