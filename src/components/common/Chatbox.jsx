@@ -1,266 +1,118 @@
-// src/services/CollaborationManager.js
-export class CollaborationManager {
-    constructor(db, currentUser) {
-        this.db = db;
-        this.currentUser = currentUser;
-        this.presenceRef = null;
-        this.presenceListeners = new Map();
-        this.currentEditingItem = null;
-        this.presenceInterval = null;
-    }
+// src/components/common/Chatbox.jsx
+import React, { useState, useRef, useEffect } from 'react';
+import CustomIcon from '../ui/CustomIcon';
 
-    static addVersionControl(item) {
-        return {
-            ...item,
-            version: item.version || 1,
-            lastModified: new Date().toISOString(),
-            lastModifiedBy: item.lastModifiedBy || null
-        };
-    }
+const Chatbox = ({ messages, onSendMessage, currentUser, getUserById }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [newMessage, setNewMessage] = useState("");
+    const messagesEndRef = useRef(null);
 
-    static incrementVersion(item, userId) {
-        return {
-            ...item,
-            version: (item.version || 1) + 1,
-            lastModified: new Date().toISOString(),
-            lastModifiedBy: userId
-        };
-    }
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
 
-    async startPresenceTracking(rundownId) {
-        if (!this.db || !this.currentUser || this.presenceRef) return;
+    useEffect(scrollToBottom, [messages]);
 
-        try {
-            const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-            const presenceDoc = doc(this.db, "presence", `${rundownId}_${this.currentUser.uid}`);
-
-            const presenceData = {
-                userId: this.currentUser.uid,
-                userName: this.currentUser.name,
-                rundownId,
-                lastSeen: new Date().toISOString(),
-                isActive: true,
-                editingItem: null
-            };
-
-            await setDoc(presenceDoc, presenceData);
-
-            this.presenceInterval = setInterval(async () => {
-                try {
-                    await setDoc(presenceDoc, {
-                        ...presenceData,
-                        lastSeen: new Date().toISOString(),
-                        editingItem: this.currentEditingItem || null
-                    });
-                } catch (error) {
-                    console.error('Error updating presence:', error);
-                }
-            }, 30000);
-
-            const handleBeforeUnload = () => {
-                this.stopPresenceTracking();
-            };
-
-            window.addEventListener('beforeunload', handleBeforeUnload);
-
-            this.presenceRef = presenceDoc;
-            this.cleanup = () => {
-                window.removeEventListener('beforeunload', handleBeforeUnload);
-            };
-        } catch (error) {
-            console.error('Error starting presence tracking:', error);
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (newMessage.trim()) {
+            onSendMessage(newMessage.trim());
+            setNewMessage("");
         }
-    }
+    };
 
-    async stopPresenceTracking() {
-        if (this.presenceInterval) {
-            clearInterval(this.presenceInterval);
-            this.presenceInterval = null;
-        }
+    return (
+        <div className="fixed bottom-4 right-4 z-50">
+            {isOpen ? (
+                <div className="w-96 h-[500px] bg-gradient-to-br from-sky-50 to-sky-100 dark:from-sky-900 dark:to-sky-950 rounded-lg shadow-2xl flex flex-col border border-sky-200 dark:border-sky-700">
+                    <div className="p-4 border-b border-sky-200 dark:border-sky-700 flex justify-between items-center bg-gradient-to-r from-sky-400 to-sky-500 text-white rounded-t-lg">
+                        <h3 className="font-semibold flex items-center gap-2">
+                            <CustomIcon name="chat" size={24} />
+                            Team Chat
+                        </h3>
+                        <button
+                            onClick={() => setIsOpen(false)}
+                            className="p-1 rounded-full hover:bg-white/20 transition-colors"
+                        >
+                            <CustomIcon name="cancel" size={20} className="text-white" />
+                        </button>
+                    </div>
 
-        if (this.presenceRef) {
-            try {
-                const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-                await deleteDoc(this.presenceRef);
-                this.presenceRef = null;
-            } catch (error) {
-                console.error('Error stopping presence tracking:', error);
-            }
-        }
+                    <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gradient-to-b from-sky-25 to-sky-50 dark:from-sky-950 dark:to-sky-900">
+                        {messages.map(msg => {
+                            const user = getUserById(msg.userId);
+                            const isCurrentUser = msg.userId === currentUser.uid;
+                            const isSystemMessage = msg.userId === 'system';
 
-        if (this.cleanup) {
-            this.cleanup();
-        }
-    }
+                            if (isSystemMessage) {
+                                return (
+                                    <div key={msg.id} className="flex justify-center">
+                                        <div className="bg-sky-100 dark:bg-sky-800 text-sky-700 dark:text-sky-300 px-3 py-2 rounded-full text-xs">
+                                            {msg.text}
+                                        </div>
+                                    </div>
+                                );
+                            }
 
-    async setEditingItem(itemId) {
-        this.currentEditingItem = itemId;
+                            return (
+                                <div key={msg.id} className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : ''}`}>
+                                    {!isCurrentUser && (
+                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-sky-500 flex items-center justify-center font-bold text-sm text-white shrink-0 shadow-sm">
+                                            {msg.userName?.charAt(0)}
+                                        </div>
+                                    )}
+                                    <div className={`max-w-[75%] p-3 rounded-lg shadow-sm ${isCurrentUser ?
+                                        'bg-gradient-to-br from-sky-500 to-sky-600 text-white' :
+                                        'bg-white dark:bg-sky-800 border border-sky-200 dark:border-sky-700'
+                                        }`}>
+                                        {!isCurrentUser && (
+                                            <div className="font-bold text-sm mb-1 text-sky-700 dark:text-sky-300">
+                                                {msg.userName}
+                                            </div>
+                                        )}
+                                        <p className="text-sm">{msg.text}</p>
+                                        <div className={`text-xs mt-1 opacity-70 ${isCurrentUser ? 'text-sky-100' : 'text-sky-600 dark:text-sky-400'
+                                            }`}>
+                                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                    </div>
+                                    {isCurrentUser && (
+                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-sky-500 flex items-center justify-center font-bold text-sm text-white shrink-0 shadow-sm">
+                                            {currentUser.name?.charAt(0)}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        <div ref={messagesEndRef} />
+                    </div>
 
-        if (this.presenceRef) {
-            try {
-                const { updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-                await updateDoc(this.presenceRef, {
-                    editingItem: itemId,
-                    lastSeen: new Date().toISOString()
-                });
-            } catch (error) {
-                console.error('Error updating editing item:', error);
-            }
-        }
-    }
+                    <form onSubmit={handleSubmit} className="p-4 border-t border-sky-200 dark:border-sky-700 flex gap-2 bg-white dark:bg-sky-900 rounded-b-lg">
+                        <input
+                            type="text"
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder="Type a message..."
+                            className="flex-1 px-3 py-2 border border-sky-300 dark:border-sky-600 rounded-lg bg-white dark:bg-sky-800 text-gray-900 dark:text-sky-100 placeholder-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                        />
+                        <button
+                            type="submit"
+                            className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-1"
+                        >
+                            <CustomIcon name="send" size={20} />
+                        </button>
+                    </form>
+                </div>
+            ) : (
+                <button
+                    onClick={() => setIsOpen(true)}
+                    className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:shadow-xl hover:scale-105"
+                >
+                    <CustomIcon name="chat" size={32} />
+                </button>
+            )}
+        </div>
+    );
+};
 
-    async takeOverItem(itemId, previousUserId) {
-        try {
-            const { doc, updateDoc, collection, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-            const presenceQuery = query(
-                collection(this.db, "presence"),
-                where("userId", "==", previousUserId),
-                where("editingItem", "==", itemId)
-            );
-
-            const presenceDocs = await getDocs(presenceQuery);
-
-            for (const presenceDoc of presenceDocs.docs) {
-                await updateDoc(presenceDoc.ref, {
-                    editingItem: null,
-                    lastSeen: new Date().toISOString()
-                });
-            }
-
-            await this.setEditingItem(itemId);
-
-            if (this.db) {
-                const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-                await addDoc(collection(this.db, "notifications"), {
-                    userId: previousUserId,
-                    type: 'takeOver',
-                    message: `${this.currentUser.name} has taken over editing the story you were working on.`,
-                    itemId: itemId,
-                    timestamp: new Date().toISOString(),
-                    read: false
-                });
-            }
-
-            return true;
-        } catch (error) {
-            console.error('Error taking over item:', error);
-            return false;
-        }
-    }
-
-    async listenToPresence(rundownId, callback) {
-        if (!this.db) return () => { };
-
-        try {
-            const { collection, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-            const presenceQuery = query(
-                collection(this.db, "presence"),
-                where("rundownId", "==", rundownId)
-            );
-
-            return onSnapshot(presenceQuery, (snapshot) => {
-                const activeUsers = [];
-                const now = new Date();
-
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    if (!data.lastSeen) return;
-
-                    const lastSeen = new Date(data.lastSeen);
-                    const minutesAgo = (now - lastSeen) / (1000 * 60);
-
-                    if (minutesAgo < 2 && data.userId !== this.currentUser.uid) {
-                        activeUsers.push({
-                            ...data,
-                            id: doc.id
-                        });
-                    }
-                });
-
-                callback(activeUsers);
-            });
-        } catch (error) {
-            console.error('Error setting up presence listener:', error);
-            return () => { };
-        }
-    }
-
-    static applyTextTransform(originalText, operations) {
-        let result = originalText;
-        let offset = 0;
-
-        const sortedOps = [...operations].sort((a, b) => a.position - b.position);
-
-        for (const op of sortedOps) {
-            const pos = op.position + offset;
-
-            switch (op.type) {
-                case 'insert':
-                    result = result.slice(0, pos) + op.text + result.slice(pos);
-                    offset += op.text.length;
-                    break;
-                case 'delete':
-                    result = result.slice(0, pos) + result.slice(pos + op.length);
-                    offset -= op.length;
-                    break;
-                case 'replace':
-                    result = result.slice(0, pos) + op.newText + result.slice(pos + op.oldLength);
-                    offset += op.newText.length - op.oldLength;
-                    break;
-            }
-        }
-
-        return result;
-    }
-
-    static generateTextOperations(oldText, newText) {
-        if (oldText === newText) return [];
-
-        return [{
-            type: 'replace',
-            position: 0,
-            oldLength: oldText.length,
-            newText: newText,
-            timestamp: Date.now(),
-            userId: this.currentUser?.uid
-        }];
-    }
-
-    async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
-        for (let attempt = 0; attempt < retryCount; attempt++) {
-            try {
-                const { doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-                const rundownRef = doc(this.db, "rundowns", rundownId);
-                const rundownDoc = await getDoc(rundownRef);
-
-                if (!rundownDoc.exists()) {
-                    throw new Error("Rundown not found");
-                }
-
-                const currentData = rundownDoc.data();
-                const updatedData = updateFunction(currentData);
-
-                const versionedData = {
-                    ...updatedData,
-                    version: (currentData.version || 1) + 1,
-                    lastModified: new Date().toISOString(),
-                    lastModifiedBy: this.currentUser.uid
-                };
-
-                await updateDoc(rundownRef, versionedData);
-                return versionedData;
-
-            } catch (error) {
-                if (attempt === retryCount - 1) {
-                    throw error;
-                }
-                await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
-            }
-        }
-    }
-}
+export default Chatbox;
