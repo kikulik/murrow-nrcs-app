@@ -10,11 +10,8 @@ const RundownList = ({
     userPermissions,
     onItemsUpdate,
     selectedItems,
-    onSelectionChange,
-    onTakeOverItem
+    onSelectionChange
 }) => {
-    const [editingId, setEditingId] = useState(null);
-
     const moveItem = useCallback((dragIndex, hoverIndex) => {
         if (isLocked) return;
         const draggedItem = rundown.items[dragIndex];
@@ -23,12 +20,6 @@ const RundownList = ({
         newItems.splice(hoverIndex, 0, draggedItem);
         onItemsUpdate(newItems);
     }, [isLocked, rundown.items, onItemsUpdate]);
-
-    const handleSaveItem = (itemId, updatedData) => {
-        const newItems = rundown.items.map(item => (item.id === itemId ? updatedData : item));
-        onItemsUpdate(newItems);
-        setEditingId(null);
-    };
 
     const handleDeleteRundownItem = (itemId) => {
         if (isLocked) return;
@@ -76,14 +67,9 @@ const RundownList = ({
                                 moveItem={moveItem}
                                 canDrag={userPermissions.canMoveRundownItems}
                                 isLocked={isLocked}
-                                isEditing={editingId === item.id}
-                                onToggleEdit={() => setEditingId(item.id)}
-                                onSave={handleSaveItem}
-                                onCancel={() => setEditingId(null)}
                                 onDeleteItem={handleDeleteRundownItem}
                                 isSelected={selectedItems.includes(item.id)}
                                 onSelect={handleSelect}
-                                onTakeOverItem={onTakeOverItem}
                             />
                         ))
                     ) : (
