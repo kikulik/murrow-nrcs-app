@@ -1,4 +1,3 @@
-// src/features/MurrowNRCS.jsx
 import React, { useState, useEffect } from 'react';
 import CustomIcon from '../components/ui/CustomIcon';
 import { useAuth } from '../context/AuthContext';
@@ -70,15 +69,14 @@ const MurrowNRCS = () => {
                         </div>
 
                         <div className="flex items-center space-x-4">
-                            {/* Active users dropdown */}
                             <ActiveUsersPanel />
 
                             <span className="text-sm hidden sm:inline">
                                 Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})
                             </span>
-                            <CustomIcon name="notification" size={36} className="text-gray-500 dark:text-gray-400 cursor-pointer" />
+                            <CustomIcon name="notification" size={40} className="text-gray-500 dark:text-gray-400 cursor-pointer" />
                             <button onClick={logout} className="btn-secondary !px-3">
-                                <CustomIcon name="logout" size={32} />
+                                <CustomIcon name="logout" size={40} />
                             </button>
                         </div>
                     </div>
@@ -98,7 +96,7 @@ const MurrowNRCS = () => {
                                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                         }`}
                                 >
-                                    <CustomIcon name={tab.icon} size={32} />
+                                    <CustomIcon name={tab.icon} size={40} />
                                     <span>{tab.label}</span>
                                 </button>
                             )
@@ -115,7 +113,6 @@ const MurrowNRCS = () => {
                 {appState.activeTab === 'live' && activeRundown && <LiveModeTab liveMode={liveMode} />}
             </main>
 
-            {/* Chat component with sky blue theme */}
             <Chatbox
                 messages={appState.messages}
                 onSendMessage={handleSendMessage}
@@ -123,7 +120,6 @@ const MurrowNRCS = () => {
                 getUserById={(id) => appState.users.find(u => u.uid === id)}
             />
 
-            {/* Modal manager */}
             <ModalManager />
         </div>
     );
