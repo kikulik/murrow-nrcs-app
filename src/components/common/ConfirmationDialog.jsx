@@ -1,5 +1,4 @@
 // src/components/common/ConfirmationDialog.jsx
-// Reusable confirmation dialog
 import React from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import ModalBase from './ModalBase';
