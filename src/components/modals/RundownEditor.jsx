@@ -6,7 +6,8 @@ import { useAuth } from '../../context/AuthContext';
 import ModalBase from '../common/ModalBase';
 import InputField from '../ui/InputField';
 import SelectField from '../ui/SelectField';
-import { collection, addDoc } from 'firebase/firestore';
+// FIX: Removed the static import of firestore functions.
+// They will be imported dynamically inside the handleSubmit function.
 
 const RundownEditor = ({ onCancel }) => {
     const { appState, setAppState } = useAppContext();
@@ -22,6 +23,10 @@ const RundownEditor = ({ onCancel }) => {
 
         setSaving(true);
         try {
+            // FIX: Dynamically import firestore functions to ensure consistency
+            // with other parts of the application.
+            const { collection, addDoc } = await import('firebase/firestore');
+
             let items = [];
             if (templateId) {
                 const template = appState.rundownTemplates.find(t => t.id === templateId);
