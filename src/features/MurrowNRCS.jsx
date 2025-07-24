@@ -1,7 +1,6 @@
 /*
 ================================================================================
 File: murrow-nrcs-app.git/src/features/MurrowNRCS.jsx
-Description: Main application layout after authentication.
 ================================================================================
 */
 import React from 'react';
@@ -26,12 +25,21 @@ import { collection, addDoc } from "firebase/firestore";
 const MurrowNRCS = () => {
     const { currentUser, logout, db } = useAuth();
     const { appState, setAppState } = useAppContext();
-    const { activeUsers } = useCollaboration();
+    const { collaborationManager } = useCollaboration(); // Get the manager instance
 
     const userPermissions = getUserPermissions(currentUser.role);
 
     const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
     const liveMode = useLiveMode(activeRundown, appState.activeRundownId);
+
+    const handleLogout = async () => {
+        // First, perform cleanup operations while the user is still authenticated.
+        if (collaborationManager) {
+            await collaborationManager.stopPresenceTracking();
+        }
+        // After cleanup is complete, sign the user out.
+        await logout();
+    };
 
     const handleSendMessage = async (text) => {
         if (!db || !currentUser) return;
@@ -84,7 +92,7 @@ const MurrowNRCS = () => {
                                 Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})
                             </span>
                             <NotificationPanel />
-                            <button onClick={logout} className="btn-secondary !px-3">
+                            <button onClick={handleLogout} className="btn-secondary !px-3">
                                 <CustomIcon name="logout" size={40} />
                             </button>
                         </div>
