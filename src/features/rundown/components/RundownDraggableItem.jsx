@@ -173,9 +173,7 @@ const RundownDraggableItem = ({
             className={itemClasses}
             onClick={handleClick}
         >
-            {/* Updated grid with 13 columns to include presence column */}
             <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 min-h-[44px] relative">
-                {/* Column 1: Index */}
                 <div className="col-span-1 flex justify-center">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'
                         }`}>
@@ -183,7 +181,6 @@ const RundownDraggableItem = ({
                     </div>
                 </div>
 
-                {/* Column 2-5: Title (clean, no overlapping) */}
                 <div className="col-span-4">
                     <h4 className="font-medium truncate text-sm">
                         {item.title}
@@ -191,7 +188,6 @@ const RundownDraggableItem = ({
                     </h4>
                 </div>
 
-                {/* Column 6: Dedicated Presence Column */}
                 <div className="col-span-1 flex justify-center">
                     {isBeingEditedByOther ? (
                         <div className="flex items-center justify-center">
@@ -215,7 +211,6 @@ const RundownDraggableItem = ({
                     ) : null}
                 </div>
 
-                {/* Column 7-8: Type */}
                 <div className="col-span-2 flex gap-1 justify-start">
                     {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
                         <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
@@ -224,7 +219,6 @@ const RundownDraggableItem = ({
                     ))}
                 </div>
 
-                {/* Column 9: Status */}
                 <div className="col-span-1">
                     <select
                         value={item.storyStatus || 'Ready for Air'}
@@ -239,12 +233,10 @@ const RundownDraggableItem = ({
                     </select>
                 </div>
 
-                {/* Column 10: Duration */}
                 <div className="col-span-1 text-center">
                     <span className="text-xs text-gray-600 dark:text-gray-400">{item.duration}</span>
                 </div>
 
-                {/* Column 11-12: Author */}
                 <div className="col-span-2 text-left">
                     {author ? (
                         <span className="text-xs text-gray-500 truncate block" title={author.name}>
@@ -255,7 +247,6 @@ const RundownDraggableItem = ({
                     )}
                 </div>
 
-                {/* Column 13: Actions (positioned properly at the end) */}
                 <div className="col-span-1 flex justify-end">
                     {!isLocked && (
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -288,4 +279,4 @@ const RundownDraggableItem = ({
     );
 };
 
-export default RundownDraggableItem;
+export default React.memo(RundownDraggableItem);
