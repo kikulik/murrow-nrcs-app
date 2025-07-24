@@ -1,4 +1,3 @@
-// src/features/assignments/components/AssignmentEditor.jsx
 import React, { useState } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAppContext } from '../../../context/AppContext';
@@ -68,7 +67,10 @@ const AssignmentEditor = ({ assignment, onSave, onCancel }) => {
                 </div>
 
                 <div className="flex items-center justify-end space-x-3 pt-4">
-                    <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
+                    <button type="button" onClick={onCancel} className="btn-secondary">
+                        <CustomIcon name="cancel" size={32} />
+                        <span>Cancel</span>
+                    </button>
                     <button type="submit" className="btn-primary">
                         <CustomIcon name="save" size={32} />
                         <span>Save</span>
