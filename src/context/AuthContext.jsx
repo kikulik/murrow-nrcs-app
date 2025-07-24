@@ -1,4 +1,4 @@
-// src/context/AuthContext.jsx - Firebase v8 approach
+// src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { nameToUsername } from '../utils/helpers';
 
@@ -29,31 +29,33 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const initialize = async () => {
       try {
-        // Load Firebase v8 using script tags
-        await loadFirebaseV8();
+        // Load Firebase using script tags instead of dynamic imports
+        await loadFirebaseScripts();
         
-        console.log('Firebase loaded, initializing...');
+        // Wait a bit for scripts to fully load
+        await new Promise(resolve => setTimeout(resolve, 100));
         
-        // Initialize Firebase using the global firebase object
-        if (!window.firebase) {
-          throw new Error('Firebase not loaded');
-        }
+        // Access Firebase from window object
+        const { initializeApp } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js');
+        const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js');
+        const { getFirestore, doc, getDoc, setDoc } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
 
-        // Initialize Firebase
-        const app = window.firebase.initializeApp(firebaseConfig);
-        const auth = window.firebase.auth();
-        const db = window.firebase.firestore();
+        console.log('Firebase modules loaded successfully');
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
         console.log('Firebase initialized successfully');
 
         // Set up auth state listener
-        auth.onAuthStateChanged(async (user) => {
+        onAuthStateChanged(auth, async (user) => {
           console.log('Auth state changed:', user ? 'User logged in' : 'User logged out');
           
           if (user) {
             try {
-              const userDoc = await db.collection("users").doc(user.uid).get();
-              const userData = userDoc.exists ? { uid: user.uid, ...userDoc.data() } : null;
+              const userDoc = await getDoc(doc(db, "users", user.uid));
+              const userData = userDoc.exists() ? { uid: user.uid, ...userDoc.data() } : null;
               
               setAuthServices(prev => ({ 
                 ...prev, 
@@ -72,7 +74,7 @@ export const AuthProvider = ({ children }) => {
         const login = async (email, password) => {
           try {
             console.log('Attempting login for:', email);
-            const result = await auth.signInWithEmailAndPassword(email, password);
+            const result = await signInWithEmailAndPassword(auth, email, password);
             console.log('Login successful');
             return result;
           } catch (error) {
@@ -84,7 +86,7 @@ export const AuthProvider = ({ children }) => {
         const register = async (email, password, name, role) => {
           try {
             console.log('Attempting registration for:', email);
-            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const newUser = {
               name, 
               email, 
@@ -92,7 +94,7 @@ export const AuthProvider = ({ children }) => {
               username: nameToUsername(name),
               groupId: null
             };
-            await db.collection("users").doc(userCredential.user.uid).set(newUser);
+            await setDoc(doc(db, "users", userCredential.user.uid), newUser);
             console.log('Registration successful');
             return userCredential;
           } catch (error) {
@@ -103,7 +105,7 @@ export const AuthProvider = ({ children }) => {
         
         const logout = async () => {
           try {
-            await auth.signOut();
+            await signOut(auth);
             console.log('Logout successful');
           } catch (error) {
             console.error('Logout error:', error);
@@ -146,26 +148,12 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// Helper function to load Firebase v8 scripts
-const loadFirebaseV8 = () => {
+// Helper function to load Firebase scripts
+const loadFirebaseScripts = () => {
   return new Promise((resolve, reject) => {
-    // Check if Firebase is already loaded
-    if (window.firebase) {
-      resolve();
-      return;
-    }
-
-    // Check if scripts are already loading
+    // Check if scripts are already loaded
     if (document.querySelector('script[src*="firebase-app"]')) {
-      // Wait for existing scripts to load
-      const checkFirebase = () => {
-        if (window.firebase) {
-          resolve();
-        } else {
-          setTimeout(checkFirebase, 100);
-        }
-      };
-      checkFirebase();
+      resolve();
       return;
     }
 
@@ -175,14 +163,7 @@ const loadFirebaseV8 = () => {
     const onScriptLoad = () => {
       scriptsLoaded++;
       if (scriptsLoaded === totalScripts) {
-        // Wait a bit for Firebase to be fully available
-        setTimeout(() => {
-          if (window.firebase) {
-            resolve();
-          } else {
-            reject(new Error('Firebase not available after loading'));
-          }
-        }, 100);
+        resolve();
       }
     };
 
@@ -191,20 +172,19 @@ const loadFirebaseV8 = () => {
       reject(error);
     };
 
-    // Load Firebase v8 scripts in order
+    // Load Firebase scripts
     const scripts = [
-      'https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js',
-      'https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js',
-      'https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js'
+      'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js',
+      'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js',
+      'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js'
     ];
 
-    scripts.forEach((src, index) => {
+    scripts.forEach(src => {
       const script = document.createElement('script');
+      script.type = 'module';
       script.src = src;
       script.onload = onScriptLoad;
       script.onerror = onScriptError;
-      
-      // Add scripts to head
       document.head.appendChild(script);
     });
   });
