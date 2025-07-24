@@ -10,7 +10,7 @@ import RundownTab from './rundown/RundownTab';
 import AssignmentsTab from './assignments/AssignmentsTab';
 import AdminTab from './admin/AdminTab.jsx';
 import LiveModeTab from './rundown/LiveModeTab';
-import StoryEditTab from './collaboration/StoryEditTab';
+import StoryEditTab from '../components/collaboration/StoryEditTab';
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
 import NotificationPanel from '../components/collaboration/NotificationPanel';
