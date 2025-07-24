@@ -1,4 +1,3 @@
-// src/components/modals/AddStoryToRundownModal.jsx
 import React, { useState, useEffect } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
@@ -261,7 +260,10 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                 )}
 
                 <div className="flex items-center justify-end space-x-3 pt-4">
-                    <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
+                    <button type="button" onClick={onCancel} className="btn-secondary">
+                        <CustomIcon name="cancel" size={32} />
+                        <span>Cancel</span>
+                    </button>
                     <button
                         onClick={handleSave}
                         className="btn-primary"
