@@ -29,22 +29,33 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const initialize = async () => {
       try {
-        // Import Firebase modules with error handling
-        const [appModule, authModule, firestoreModule] = await Promise.all([
-          import("https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"),
-          import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"),
-          import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js")
-        ]);
+        // Import Firebase modules one by one to avoid destructuring issues
+        const appModule = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js");
+        const authModule = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js");
+        const firestoreModule = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
-        const { initializeApp } = appModule;
-        const { 
-          getAuth, 
-          createUserWithEmailAndPassword, 
-          signInWithEmailAndPassword, 
-          onAuthStateChanged, 
-          signOut 
-        } = authModule;
-        const { getFirestore, doc, getDoc, setDoc } = firestoreModule;
+        // Check if the modules were imported correctly
+        console.log('App module:', appModule);
+        console.log('Auth module:', authModule);
+        console.log('Firestore module:', firestoreModule);
+
+        // Use default export or try different destructuring patterns
+        const initializeApp = appModule.initializeApp || appModule.default?.initializeApp;
+        const getAuth = authModule.getAuth || authModule.default?.getAuth;
+        const createUserWithEmailAndPassword = authModule.createUserWithEmailAndPassword || authModule.default?.createUserWithEmailAndPassword;
+        const signInWithEmailAndPassword = authModule.signInWithEmailAndPassword || authModule.default?.signInWithEmailAndPassword;
+        const onAuthStateChanged = authModule.onAuthStateChanged || authModule.default?.onAuthStateChanged;
+        const signOut = authModule.signOut || authModule.default?.signOut;
+        
+        const getFirestore = firestoreModule.getFirestore || firestoreModule.default?.getFirestore;
+        const doc = firestoreModule.doc || firestoreModule.default?.doc;
+        const getDoc = firestoreModule.getDoc || firestoreModule.default?.getDoc;
+        const setDoc = firestoreModule.setDoc || firestoreModule.default?.setDoc;
+
+        // Verify all functions are available
+        if (!initializeApp || !getAuth || !getFirestore) {
+          throw new Error('Failed to import required Firebase functions');
+        }
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
