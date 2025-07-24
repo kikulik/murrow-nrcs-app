@@ -18,6 +18,7 @@ import {
     sanitizeFolderName,
     parseFolderPath
 } from '../../../utils/folderHelpers';
+
 const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
     const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
@@ -31,12 +32,15 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
         duration: story?.duration || '01:00',
         folder: story?.folder || defaultFolder || generateDateFolder()
     });
+
     const [selectedTypes, setSelectedTypes] = useState(
         story?.types || ['STD']
     );
+
     const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
     const [showCreateFolder, setShowCreateFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
+
     // Get existing folders
     const existingFolders = React.useMemo(() => {
         const folderMap = getFoldersByDate(appState.stories);
@@ -66,6 +70,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
 
         return Array.from(folders).sort();
     }, [appState.stories, appState.createdFolders]);
+
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
 
@@ -77,6 +82,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
             }));
         }
     }, [calculatedDuration, useCalculatedDuration]);
+
     const handleTypeChange = (type) => {
         setSelectedTypes(prev =>
             prev.includes(type)
@@ -109,8 +115,10 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
         try {
             const { collection, addDoc, doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
             const storyToSave = {
                 ...formData,
                 tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
@@ -120,6 +128,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                 comments: story?.comments || [],
                 types: selectedTypes // Store selected types
             };
+
             // Add video fields if video types are selected
             const isVideoStory = selectedTypes.some(type => VIDEO_ITEM_TYPES.includes(type));
             if (isVideoStory) {
@@ -137,6 +146,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
             }
 
             onCancel();
+
         } catch (error) {
             console.error('Error saving story:', error);
         }
@@ -262,7 +272,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                         </label>
                         {wordCount > 0 && (
                             <p className="text-xs text-gray-500 mt-1">
-                                {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                                {wordCount} words • Est. {calculatedDuration} reading time
                             </p>
                         )}
                     </div>
