@@ -1,9 +1,13 @@
-// src/components/collaboration/CollaborativeTextEditor.jsx
-
+/*
+================================================================================
+File: murrow-nrcs-app.git/src/components/collaboration/CollaborativeTextEditor.jsx
+================================================================================
+*/
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useCollaboration } from '../../context/CollaborationContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
+import { collection, query, where, onSnapshot, addDoc, doc, setDoc } from 'firebase/firestore';
 
 const CollaborativeTextEditor = ({
     value,
@@ -28,7 +32,6 @@ const CollaborativeTextEditor = ({
     const lastValueRef = useRef(value || '');
     const operationsListener = useRef(null);
 
-    // Use app state to determine if user can edit
     const isOwner = appState.editingStoryIsOwner;
     const isTakenOver = appState.editingStoryTakenOver;
     const isReadOnly = isTakenOver && !isOwner;
@@ -43,40 +46,37 @@ const CollaborativeTextEditor = ({
     useEffect(() => {
         if (!db || !itemId || !isOwner) return;
 
-        const setupOperationsListener = async () => {
-            const { collection, query, where, onSnapshot, orderBy } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+        // FIX: Removed orderBy("timestamp") to prevent query failure without a composite index.
+        const operationsQuery = query(
+            collection(db, "textOperations"),
+            where("itemId", "==", itemId)
+        );
 
-            const operationsQuery = query(
-                collection(db, "textOperations"),
-                where("itemId", "==", itemId),
-                orderBy("timestamp", "desc")
-            );
-
-            operationsListener.current = onSnapshot(operationsQuery, (snapshot) => {
-                const operations = [];
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    if (data.userId !== currentUser.uid) {
-                        operations.push({
-                            id: doc.id,
-                            ...data
-                        });
-                    }
-                });
-
-                if (operations.length > 0 && isOwner) {
-                    const newValue = CollaborationManager.applyTextTransform(
-                        lastValueRef.current,
-                        operations
-                    );
-                    setLocalValue(newValue);
-                    lastValueRef.current = newValue;
-                    onChange(newValue);
+        operationsListener.current = onSnapshot(operationsQuery, (snapshot) => {
+            const operations = [];
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.userId !== currentUser.uid) {
+                    operations.push({
+                        id: doc.id,
+                        ...data
+                    });
                 }
             });
-        };
+            
+            // FIX: Sorting is now done on the client-side to preserve order.
+            operations.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-        setupOperationsListener();
+            if (operations.length > 0 && isOwner) {
+                const newValue = CollaborationManager.applyTextTransform(
+                    lastValueRef.current,
+                    operations
+                );
+                setLocalValue(newValue);
+                lastValueRef.current = newValue;
+                onChange(newValue);
+            }
+        });
 
         return () => {
             if (operationsListener.current) {
@@ -109,8 +109,6 @@ const CollaborativeTextEditor = ({
 
         if (operations.length > 0 && db) {
             try {
-                const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
                 for (const operation of operations) {
                     await addDoc(collection(db, "textOperations"), {
                         ...operation,
@@ -137,8 +135,6 @@ const CollaborativeTextEditor = ({
 
         if (db && itemId) {
             try {
-                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
                 await setDoc(doc(db, "cursors", `${itemId}_${currentUser.uid}`), {
                     itemId,
                     userId: currentUser.uid,
@@ -155,38 +151,32 @@ const CollaborativeTextEditor = ({
     useEffect(() => {
         if (!db || !itemId || !isOwner) return;
 
-        const setupCursorListener = async () => {
-            const { collection, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+        const cursorsQuery = query(
+            collection(db, "cursors"),
+            where("itemId", "==", itemId)
+        );
 
-            const cursorsQuery = query(
-                collection(db, "cursors"),
-                where("itemId", "==", itemId)
-            );
+        const unsubscribe = onSnapshot(cursorsQuery, (snapshot) => {
+            const positions = new Map();
+            const now = new Date();
 
-            const unsubscribe = onSnapshot(cursorsQuery, (snapshot) => {
-                const positions = new Map();
-                const now = new Date();
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                const timestamp = new Date(data.timestamp);
+                const secondsAgo = (now - timestamp) / 1000;
 
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    const timestamp = new Date(data.timestamp);
-                    const secondsAgo = (now - timestamp) / 1000;
-
-                    if (secondsAgo < 10 && data.userId !== currentUser.uid) {
-                        positions.set(data.userId, {
-                            ...data,
-                            id: doc.id
-                        });
-                    }
-                });
-
-                setCursorPositions(positions);
+                if (secondsAgo < 10 && data.userId !== currentUser.uid) {
+                    positions.set(data.userId, {
+                        ...data,
+                        id: doc.id
+                    });
+                }
             });
 
-            return unsubscribe;
-        };
+            setCursorPositions(positions);
+        });
 
-        setupCursorListener();
+        return unsubscribe;
     }, [db, itemId, currentUser.uid, isOwner]);
 
     const renderCursorIndicators = () => {
