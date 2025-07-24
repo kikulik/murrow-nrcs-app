@@ -1,5 +1,4 @@
 // src/components/ui/GlobalStyles.jsx
-// Global CSS styles component
 import React from 'react';
 
 const GlobalStyles = () => (
