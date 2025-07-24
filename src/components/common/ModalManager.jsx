@@ -8,6 +8,7 @@ import AddStoryToRundownModal from '../modals/AddStoryToRundownModal';
 import SendMultipleToStoriesModal from '../modals/SendMultipleToStoriesModal';
 import CreateFolderModal from '../../features/stories/components/CreateFolderModal';
 import ConfirmationDialog from './ConfirmationDialog';
+import { doc, deleteDoc } from 'firebase/firestore';
 
 const ModalManager = () => {
     const { appState, setAppState } = useAppContext();
@@ -20,7 +21,6 @@ const ModalManager = () => {
     const handleDelete = async (id, itemType) => {
         if (!db) return;
         try {
-            const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
             await deleteDoc(doc(db, itemType, id));
         } catch (error) {
             console.error(`Failed to delete item from ${itemType}:`, error);
