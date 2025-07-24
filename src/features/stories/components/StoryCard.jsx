@@ -36,7 +36,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                     </div>
                 </div>
 
-                <p className="text-gray-600 dark:text-gray-300 mb-4 line-clamp-3">{story.content}</p>
+                <p className="text-gray-600 dark:text-gray-300 mb-4 line-clamp-3 break-words">{story.content}</p>
 
                 <div className="flex items-center justify-between text-sm text-gray-500">
                     <span>By {getUserById(story.authorId)?.name}</span>
