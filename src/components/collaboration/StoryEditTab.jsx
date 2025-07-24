@@ -38,10 +38,10 @@ const StoryEditTab = () => {
     const [realTimeContent, setRealTimeContent] = useState('');
 
     const itemId = appState.editingStoryId;
-    const lockInfo = getItemLockInfo(itemId);
-    const isOwner = isCurrentUserOwner(itemId);
-    const isReadOnly = lockInfo.locked && !lockInfo.ownedByCurrentUser;
-    const otherEditor = !isOwner && lockInfo.locked ? lockInfo.owner : null;
+    const isOwner = appState.editingStoryIsOwner;
+    const isTakenOver = appState.editingStoryTakenOver;
+    const takenOverBy = appState.editingStoryTakenOverBy;
+    const isReadOnly = isTakenOver && !isOwner;
 
     useEffect(() => {
         if (appState.editingStoryData) {
@@ -144,20 +144,24 @@ const StoryEditTab = () => {
     };
 
     const handleTakeOver = async () => {
-        if (!otherEditor) return;
+        if (!takenOverBy) return;
         
-        const confirmed = confirm(`${otherEditor.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`);
+        const confirmed = confirm(`${takenOverBy} is currently editing this story. Do you want to take over? Their progress will be saved.`);
         if (!confirmed) return;
 
-        const success = await takeOverStory(itemId, otherEditor.userId);
-        if (success) {
-            setAppState(prev => ({
-                ...prev,
-                editingStoryIsOwner: true,
-                editingStoryTakenOver: false
-            }));
-        } else {
-            alert('Failed to take over the story. Please try again.');
+        // Try to take over
+        if (collaborationManager.current) {
+            const success = await collaborationManager.current.setEditingItem(itemId);
+            if (success) {
+                setAppState(prev => ({
+                    ...prev,
+                    editingStoryIsOwner: true,
+                    editingStoryTakenOver: false,
+                    editingStoryTakenOverBy: null
+                }));
+            } else {
+                alert('Failed to take over the story. Please try again.');
+            }
         }
     };
 
@@ -221,11 +225,11 @@ const StoryEditTab = () => {
                 <div className="flex items-center gap-4">
                     <h2 className="text-xl font-semibold">Edit Story</h2>
                     <UserPresenceIndicator itemId={itemId} />
-                    {isReadOnly && lockInfo.owner && (
+                    {!isOwner && isTakenOver && takenOverBy && (
                         <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
                             <CustomIcon name="lock" size={32} className="text-orange-600" />
                             <span className="text-sm text-orange-800 dark:text-orange-200">
-                                {lockInfo.owner.userName} is editing
+                                {takenOverBy} is editing
                             </span>
                             <button
                                 onClick={handleTakeOver}
@@ -263,14 +267,14 @@ const StoryEditTab = () => {
                 </div>
             </div>
 
-            {!isOwner && lockInfo.locked && (
+            {!isOwner && isTakenOver && (
                 <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
                     <div className="flex items-center space-x-2">
                         <CustomIcon name="lock" size={40} className="text-orange-600" />
                         <div>
                             <h4 className="font-medium text-orange-800 dark:text-orange-200">Story is Being Edited</h4>
                             <p className="text-sm text-orange-700 dark:text-orange-300">
-                                {lockInfo.owner?.userName} is currently editing this story. You can view the content but cannot make changes unless you take over.
+                                {takenOverBy} is currently editing this story. You can view the content but cannot make changes unless you take over.
                             </p>
                         </div>
                     </div>
