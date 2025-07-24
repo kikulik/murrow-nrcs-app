@@ -22,17 +22,17 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
     return (
         <div className="relative group/storycard">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
-                <div className="flex items-start justify-between mb-3 pr-40">
-                    <div className="flex items-center space-x-4 flex-1 min-w-0">
+                <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center space-x-4 flex-1 min-w-0 pr-4">
                         {getPlatformIcon(story.platform)}
-                        <h3 className="text-lg font-medium break-words line-clamp-2">{story.title}</h3>
+                        <h3 className="text-lg font-medium break-words line-clamp-2 flex-1">{story.title}</h3>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(story.status)} shrink-0`}>
                             {story.status}
                         </span>
                     </div>
-                    <div className="flex items-center space-x-3 text-sm text-gray-500 shrink-0">
+                    <div className="flex items-center space-x-3 text-sm text-gray-500 shrink-0 ml-4">
                         <CustomIcon name="time" size={40} />
-                        <span className="min-w-[50px]">{story.duration}</span>
+                        <span className="min-w-[50px] font-medium">{story.duration}</span>
                     </div>
                 </div>
 
@@ -49,34 +49,34 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                     story={story}
                     showControls={canEdit}
                 />
-            </div>
 
-            <div className="absolute top-4 right-4 opacity-0 group-hover/storycard:opacity-100 transition-opacity flex gap-3">
-                {canEdit && (
+                <div className="opacity-0 group-hover/storycard:opacity-100 transition-opacity absolute top-6 right-6 flex gap-2 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-lg border">
+                    {canEdit && (
+                        <button
+                            onClick={handleEdit}
+                            className="p-2 text-gray-500 hover:text-blue-600 rounded transition-colors"
+                            title="Edit Story"
+                        >
+                            <CustomIcon name="edit" size={32} />
+                        </button>
+                    )}
                     <button
-                        onClick={handleEdit}
-                        className="btn-secondary !p-3"
-                        title="Edit Story"
+                        onClick={() => onSendToRundown(story)}
+                        className="p-2 text-gray-500 hover:text-green-600 rounded transition-colors"
+                        title="Send to Rundown"
                     >
-                        <CustomIcon name="edit" size={40} />
+                        <CustomIcon name="send" size={32} />
                     </button>
-                )}
-                <button
-                    onClick={() => onSendToRundown(story)}
-                    className="btn-secondary !p-3"
-                    title="Send to Rundown"
-                >
-                    <CustomIcon name="send" size={40} />
-                </button>
-                {(canEdit || userPermissions.canDeleteAnything) && (
-                    <button
-                        onClick={handleDelete}
-                        className="btn-secondary !p-3"
-                        title="Delete Story"
-                    >
-                        <CustomIcon name="delete" size={40} className="text-red-500" />
-                    </button>
-                )}
+                    {(canEdit || userPermissions.canDeleteAnything) && (
+                        <button
+                            onClick={handleDelete}
+                            className="p-2 text-gray-500 hover:text-red-600 rounded transition-colors"
+                            title="Delete Story"
+                        >
+                            <CustomIcon name="delete" size={32} />
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );
