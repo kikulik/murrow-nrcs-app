@@ -28,7 +28,17 @@ const UserPresenceIndicator = ({ itemId, className = '' }) => {
 export const ActiveUsersPanel = () => {
     const { activeUsers } = useCollaboration();
     const [isOpen, setIsOpen] = useState(false);
+    const [stableUsers, setStableUsers] = useState([]);
     const dropdownRef = useRef(null);
+
+    // Stabilize users list to prevent blinking
+    useEffect(() => {
+        const stabilizeTimer = setTimeout(() => {
+            setStableUsers(activeUsers);
+        }, 500); // Wait 500ms before updating to prevent rapid changes
+
+        return () => clearTimeout(stabilizeTimer);
+    }, [activeUsers]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -41,7 +51,7 @@ export const ActiveUsersPanel = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    if (activeUsers.length === 0) return null;
+    if (stableUsers.length === 0) return null;
 
     return (
         <div className="relative inline-block text-left" ref={dropdownRef}>
@@ -50,9 +60,9 @@ export const ActiveUsersPanel = () => {
                 className="flex items-center space-x-2 px-3 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
                 <div className="flex -space-x-1">
-                    {activeUsers.slice(0, 3).map(user => (
+                    {stableUsers.slice(0, 3).map((user, index) => (
                         <div
-                            key={user.id}
+                            key={`${user.id}-${index}`} // Stable key to prevent re-rendering
                             className="w-6 h-6 rounded-full bg-sky-500 flex items-center justify-center text-white text-xs font-bold border-2 border-white relative"
                             title={user.userName}
                         >
@@ -60,14 +70,14 @@ export const ActiveUsersPanel = () => {
                             <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border border-white"></div>
                         </div>
                     ))}
-                    {activeUsers.length > 3 && (
+                    {stableUsers.length > 3 && (
                         <div className="w-6 h-6 rounded-full bg-gray-500 flex items-center justify-center text-white text-xs font-bold border-2 border-white">
-                            +{activeUsers.length - 3}
+                            +{stableUsers.length - 3}
                         </div>
                     )}
                 </div>
                 <span className="text-sm font-medium">
-                    {activeUsers.length} online
+                    {stableUsers.length} online
                 </span>
                 <CustomIcon
                     name={isOpen ? "close" : "add story"}
@@ -84,8 +94,8 @@ export const ActiveUsersPanel = () => {
                             <span className="text-sm font-medium">Active Users</span>
                         </div>
                         <div className="space-y-3 max-h-48 overflow-y-auto">
-                            {activeUsers.map(user => (
-                                <div key={user.id} className="flex items-center space-x-3">
+                            {stableUsers.map((user, index) => (
+                                <div key={`${user.id}-detail-${index}`} className="flex items-center space-x-3">
                                     <div className="relative">
                                         <div className="w-8 h-8 rounded-full bg-sky-500 flex items-center justify-center text-white text-sm font-bold">
                                             {user.userName.charAt(0)}
