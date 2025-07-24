@@ -121,7 +121,7 @@ export class CollaborationManager {
             const lockSnapshot = await getDoc(lockDoc);
 
             const now = new Date().toISOString();
-            const lockExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+            const lockExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
             if (lockSnapshot.exists()) {
                 const lockData = lockSnapshot.data();
@@ -133,6 +133,7 @@ export class CollaborationManager {
                         expiresAt: lockExpiry
                     });
                     this.isOwner = true;
+                    this.renewLockTimer(itemId);
                     return true;
                 }
 
@@ -156,6 +157,7 @@ export class CollaborationManager {
 
         } catch (error) {
             console.error('Error acquiring lock:', error);
+            this.isOwner = false;
             return false;
         }
     }
