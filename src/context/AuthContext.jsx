@@ -1,5 +1,6 @@
+// src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { nameToUsername } from '../utils/helpers'; // Assuming helpers.js is in utils
+import { nameToUsername } from '../utils/helpers';
 
 const AuthContext = createContext();
 
@@ -28,9 +29,22 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const initialize = async () => {
       try {
-        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js");
-        const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js");
-        const { getFirestore, doc, getDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+        // Import Firebase modules with error handling
+        const [appModule, authModule, firestoreModule] = await Promise.all([
+          import("https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"),
+          import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"),
+          import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js")
+        ]);
+
+        const { initializeApp } = appModule;
+        const { 
+          getAuth, 
+          createUserWithEmailAndPassword, 
+          signInWithEmailAndPassword, 
+          onAuthStateChanged, 
+          signOut 
+        } = authModule;
+        const { getFirestore, doc, getDoc, setDoc } = firestoreModule;
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -39,9 +53,18 @@ export const AuthProvider = ({ children }) => {
         // This listener is the key: it waits for Firebase to check the auth state
         onAuthStateChanged(auth, async (user) => {
           if (user) {
-            const userDoc = await getDoc(doc(db, "users", user.uid));
-            // Once the user is found (or not), set loading to false
-            setAuthServices(prev => ({ ...prev, currentUser: userDoc.exists() ? { uid: user.uid, ...userDoc.data() } : null, loading: false }));
+            try {
+              const userDoc = await getDoc(doc(db, "users", user.uid));
+              // Once the user is found (or not), set loading to false
+              setAuthServices(prev => ({ 
+                ...prev, 
+                currentUser: userDoc.exists() ? { uid: user.uid, ...userDoc.data() } : null, 
+                loading: false 
+              }));
+            } catch (error) {
+              console.error('Error fetching user data:', error);
+              setAuthServices(prev => ({ ...prev, currentUser: null, loading: false }));
+            }
           } else {
             // If there's no user, set loading to false
             setAuthServices(prev => ({ ...prev, currentUser: null, loading: false }));
@@ -49,16 +72,20 @@ export const AuthProvider = ({ children }) => {
         });
 
         const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
+        
         const register = async (email, password, name, role) => {
           const userCredential = await createUserWithEmailAndPassword(auth, email, password);
           const newUser = {
-            name, email, role,
+            name, 
+            email, 
+            role,
             username: nameToUsername(name),
             groupId: null
           };
           await setDoc(doc(db, "users", userCredential.user.uid), newUser);
           return userCredential;
         };
+        
         const logout = () => signOut(auth);
 
         setAuthServices(prev => ({
