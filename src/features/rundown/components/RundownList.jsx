@@ -3,6 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import RundownDraggableItem from './RundownDraggableItem';
+import CustomIcon from '../../../components/ui/CustomIcon';
 
 const RundownList = ({
     rundown,
@@ -55,6 +56,20 @@ const RundownList = ({
     return (
         <DndProvider backend={HTML5Backend}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border">
+                {/* Header row with column labels */}
+                <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <div className="col-span-1 text-center">#</div>
+                    <div className="col-span-4">Title</div>
+                    <div className="col-span-1 text-center">
+                        <CustomIcon name="user" size={16} title="User Editing" />
+                    </div>
+                    <div className="col-span-2">Type</div>
+                    <div className="col-span-1 text-center">Status</div>
+                    <div className="col-span-1 text-center">Duration</div>
+                    <div className="col-span-2">Author</div>
+                    <div className="col-span-1 text-center">Actions</div>
+                </div>
+
                 <div className="divide-y dark:divide-gray-700">
                     {rundown.items?.length > 0 ? (
                         rundown.items.map((item, index) => (
