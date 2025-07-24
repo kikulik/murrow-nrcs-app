@@ -138,6 +138,12 @@ const RundownDraggableItem = ({
         }
     };
 
+    const handleTakeOver = async () => {
+        if (onTakeOverItem && editingUser) {
+            await onTakeOverItem(item.id, editingUser.userId);
+        }
+    };
+
     if (isEditing) {
         return (
             <RundownItemEditor
@@ -152,7 +158,6 @@ const RundownDraggableItem = ({
         group relative cursor-pointer
         ${isDragging ? 'opacity-50' : 'opacity-100'} 
         ${isLocked ? 'opacity-75' : ''} 
-        ${isBeingEditedByOther ? 'bg-orange-50 dark:bg-orange-900/20' : ''}
         ${isSelected ? 'bg-blue-100 dark:bg-blue-800/50 border-l-4 border-blue-500' : ''}
         border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors
     `;
@@ -173,18 +178,18 @@ const RundownDraggableItem = ({
                 </div>
 
                 <div className="col-span-5 relative">
-                    <h4 className="font-medium truncate text-sm pr-8">
+                    <h4 className="font-medium truncate text-sm">
                         {item.title}
                         {isLocked && <CustomIcon name="lock" size={16} className="text-red-500 inline ml-2" />}
                     </h4>
 
-                    {/* User presence indicator - positioned carefully to not overlap title */}
+                    {/* Fixed user presence indicator */}
                     {isBeingEditedByOther && (
-                        <div className="absolute -top-1 right-0 flex items-center gap-1">
-                            <div className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold">
+                        <div className="absolute -bottom-1 left-0 flex items-center gap-1 bg-orange-100 dark:bg-orange-900/20 px-2 py-1 rounded-sm border border-orange-200 dark:border-orange-800">
+                            <div className="w-3 h-3 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold">
                                 {editingUser.userName.charAt(0)}
                             </div>
-                            <span className="text-xs text-orange-600 bg-orange-100 px-1 rounded">
+                            <span className="text-xs text-orange-700 dark:text-orange-300 font-medium">
                                 {editingUser.userName}
                             </span>
                         </div>
@@ -204,7 +209,8 @@ const RundownDraggableItem = ({
                         value={item.storyStatus || 'Ready for Air'}
                         onChange={(e) => handleStatusChange(e.target.value)}
                         disabled={isLocked || isBeingEditedByOther}
-                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${(isLocked || isBeingEditedByOther) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${(isLocked || isBeingEditedByOther) ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
                         onClick={e => e.stopPropagation()}
                         title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : ''}
                     >
@@ -232,15 +238,12 @@ const RundownDraggableItem = ({
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    const result = confirm(`${editingUser.userName} is currently editing this item. Do you want to take over?`);
-                                    if (result && onTakeOverItem) {
-                                        onTakeOverItem(item.id, editingUser.userId);
-                                    }
+                                    handleTakeOver();
                                 }}
-                                className="p-1 text-orange-500 hover:text-orange-700 rounded bg-white border border-orange-300 shadow-sm"
+                                className="p-1 text-white bg-orange-500 hover:bg-orange-600 rounded border shadow-sm text-xs font-medium"
                                 title={`Take over from ${editingUser.userName}`}
                             >
-                                <CustomIcon name="user" size={16} />
+                                Take Over
                             </button>
                         ) : (
                             !isBeingEditedByOther && (
@@ -258,7 +261,8 @@ const RundownDraggableItem = ({
                             <button
                                 onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
                                 disabled={isBeingEditedByOther}
-                                className={`p-1 rounded ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`}
+                                className={`p-1 rounded ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'
+                                    }`}
                                 title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Delete item'}
                             >
                                 <CustomIcon name="delete" size={16} />
