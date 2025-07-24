@@ -25,6 +25,12 @@ export const CollaborationProvider = ({ children }) => {
             if (!collaborationManagerRef.current) {
                 collaborationManagerRef.current = new CollaborationManager(db, currentUser);
             }
+        } else {
+            // Clear the manager when user logs out
+            if (collaborationManagerRef.current) {
+                collaborationManagerRef.current.stopPresenceTracking();
+                collaborationManagerRef.current = null;
+            }
         }
     }, [db, currentUser]);
 
@@ -75,7 +81,6 @@ export const CollaborationProvider = ({ children }) => {
             );
         }
 
-        // The cleanup function now only needs to call the manager's stop method.
         return () => {
             if (collaborationManagerRef.current) {
                 collaborationManagerRef.current.stopPresenceTracking();
@@ -250,7 +255,7 @@ export const CollaborationProvider = ({ children }) => {
         getUserEditingItem,
         isItemBeingEdited,
         markNotificationAsRead,
-        CollaborationManager: collaborationManagerRef.current ? CollaborationManager : null
+        collaborationManager: collaborationManagerRef.current // Expose the instance
     };
 
     return (
