@@ -7,6 +7,7 @@ import ModalBase from '../common/ModalBase';
 import SelectField from '../ui/SelectField';
 import InputField from '../ui/InputField';
 import { generateDateFolder, createStoryFolder } from '../../utils/folderHelpers';
+import { collection, addDoc } from 'firebase/firestore';
 
 const SendMultipleToStoriesModal = ({ rundownItems, onCancel }) => {
     const { db, currentUser } = useAuth();
@@ -16,10 +17,8 @@ const SendMultipleToStoriesModal = ({ rundownItems, onCancel }) => {
     const [creating, setCreating] = useState(false);
     const [sending, setSending] = useState(false);
 
-    // Get current date folder
     const currentDateFolder = generateDateFolder();
 
-    // Get available folders from existing stories
     const availableFolders = React.useMemo(() => {
         const folders = new Set();
         appState.stories.forEach(story => {
@@ -27,21 +26,16 @@ const SendMultipleToStoriesModal = ({ rundownItems, onCancel }) => {
                 folders.add(story.folder);
             }
         });
-
-        // Add current date folder if it doesn't exist
         folders.add(currentDateFolder);
-
         return Array.from(folders).sort();
     }, [appState.stories, currentDateFolder]);
 
     useEffect(() => {
-        // Default to current date folder
         setSelectedFolder(currentDateFolder);
     }, [currentDateFolder]);
 
     const handleCreateNewFolder = async () => {
         if (!newFolderName.trim()) return;
-
         const newFolder = createStoryFolder(currentDateFolder, newFolderName.trim());
         setSelectedFolder(newFolder);
         setNewFolderName('');
@@ -53,8 +47,6 @@ const SendMultipleToStoriesModal = ({ rundownItems, onCancel }) => {
 
         setSending(true);
         try {
-            const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
             for (const item of rundownItems) {
                 const newStory = {
                     title: item.title,
@@ -67,14 +59,11 @@ const SendMultipleToStoriesModal = ({ rundownItems, onCancel }) => {
                     created: new Date().toISOString(),
                     folder: selectedFolder,
                     comments: [],
-                    // Link back to original rundown item if needed
                     sourceRundownId: item.rundownId || null,
                     sourceItemId: item.id
                 };
-
                 await addDoc(collection(db, "stories"), newStory);
             }
-
             alert(`Successfully sent ${rundownItems.length} item${rundownItems.length > 1 ? 's' : ''} to Stories`);
             onCancel();
         } catch (error) {
