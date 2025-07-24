@@ -21,7 +21,6 @@ export const CollaborationProvider = ({ children }) => {
     const presenceUnsubscribeRef = useRef(null);
     const notificationsUnsubscribeRef = useRef(null);
 
-    // Initialize CollaborationManager only when db and currentUser are ready
     useEffect(() => {
         if (db && currentUser) {
             if (!collaborationManagerRef.current) {
@@ -34,23 +33,28 @@ export const CollaborationProvider = ({ children }) => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
 
         try {
+            // FIX: Simplified the query to use only one 'where' clause to avoid
+            // the need for a composite index. Filtering for 'read === false'
+            // will now happen on the client side.
             const notificationsQuery = query(
                 collection(db, "notifications"),
-                where("userId", "==", currentUser.uid),
-                where("read", "==", false)
+                where("userId", "==", currentUser.uid)
             );
 
             notificationsUnsubscribeRef.current = onSnapshot(notificationsQuery, (snapshot) => {
-                const newNotifications = snapshot.docs.map(doc => ({
+                const allUserNotifications = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data()
                 }));
-                
-                newNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                
-                setNotifications(newNotifications);
 
-                newNotifications.forEach(notification => {
+                // Filter for unread notifications on the client
+                const unreadNotifications = allUserNotifications.filter(n => n.read === false);
+                
+                unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                setNotifications(unreadNotifications);
+
+                unreadNotifications.forEach(notification => {
                     if (notification.type === 'takeOver') {
                         handleTakeOverNotification(notification);
                     }
@@ -71,7 +75,6 @@ export const CollaborationProvider = ({ children }) => {
         };
     }, [setupNotificationListener]);
     
-    // Manage presence tracking based on active rundown and manager availability
     useEffect(() => {
         const manager = collaborationManagerRef.current;
         if (manager && appState.activeRundownId) {
@@ -96,8 +99,9 @@ export const CollaborationProvider = ({ children }) => {
                 presenceUnsubscribeRef.current();
                 presenceUnsubscribeRef.current = null;
             }
-            if (manager) {
-                manager.stopPresenceTracking();
+            // Ensure manager exists before trying to call stopPresenceTracking
+            if (collaborationManagerRef.current) {
+                collaborationManagerRef.current.stopPresenceTracking();
             }
         };
     }, [appState.activeRundownId, db, currentUser]);
