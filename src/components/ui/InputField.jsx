@@ -1,5 +1,4 @@
 // src/components/ui/InputField.jsx
-// Reusable input component
 import React from 'react';
 
 const InputField = ({ label, ...props }) => (
