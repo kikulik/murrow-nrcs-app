@@ -10,8 +10,10 @@ import RundownTab from './rundown/RundownTab';
 import AssignmentsTab from './assignments/AssignmentsTab';
 import AdminTab from './admin/AdminTab.jsx';
 import LiveModeTab from './rundown/LiveModeTab';
+import StoryEditTab from './collaboration/StoryEditTab';
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
+import NotificationPanel from '../components/collaboration/NotificationPanel';
 import { ActiveUsersPanel } from '../components/collaboration/UserPresenceIndicator';
 import { collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
@@ -54,6 +56,7 @@ const MurrowNRCS = () => {
         { id: 'assignments', label: 'Assignments', icon: 'assignments', permission: userPermissions.canCreateAssignments || appState.assignments.some(a => a.assigneeId === currentUser.uid) },
         { id: 'admin', label: 'Admin', icon: 'admin', permission: userPermissions.canManageUsers },
         { id: 'live', label: 'Live Mode', icon: 'golive', permission: liveMode.isLive },
+        { id: 'storyEdit', label: `Editing: ${appState.editingStoryData?.title || 'Story'}`, icon: 'edit', permission: !!appState.editingStoryId, isEditing: true },
     ];
 
     return (
@@ -74,7 +77,7 @@ const MurrowNRCS = () => {
                             <span className="text-sm hidden sm:inline">
                                 Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})
                             </span>
-                            <CustomIcon name="notification" size={40} className="text-gray-500 dark:text-gray-400 cursor-pointer" />
+                            <NotificationPanel />
                             <button onClick={logout} className="btn-secondary !px-3">
                                 <CustomIcon name="logout" size={40} />
                             </button>
@@ -91,13 +94,19 @@ const MurrowNRCS = () => {
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${appState.activeTab === tab.id
-                                        ? 'border-sky-500 text-sky-600 dark:text-sky-400'
-                                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                                        }`}
+                                    className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                                        appState.activeTab === tab.id
+                                            ? 'border-sky-500 text-sky-600 dark:text-sky-400'
+                                            : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                    } ${
+                                        tab.isEditing ? 'bg-blue-50 dark:bg-blue-900/20 rounded-t-lg px-3' : ''
+                                    }`}
                                 >
                                     <CustomIcon name={tab.icon} size={40} />
-                                    <span>{tab.label}</span>
+                                    <span className={tab.isEditing ? 'max-w-[150px] truncate' : ''}>{tab.label}</span>
+                                    {tab.isEditing && appState.editingStoryTakenOver && (
+                                        <CustomIcon name="notification" size={32} className="text-red-500" />
+                                    )}
                                 </button>
                             )
                         ))}
@@ -111,6 +120,7 @@ const MurrowNRCS = () => {
                 {appState.activeTab === 'assignments' && <AssignmentsTab />}
                 {appState.activeTab === 'admin' && <AdminTab />}
                 {appState.activeTab === 'live' && activeRundown && <LiveModeTab liveMode={liveMode} />}
+                {appState.activeTab === 'storyEdit' && <StoryEditTab />}
             </main>
 
             <Chatbox
