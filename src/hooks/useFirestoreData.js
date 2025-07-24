@@ -1,7 +1,9 @@
 // src/hooks/useFirestoreData.js
 // Custom hook for Firestore data management
+// FIX: Standardized the dynamic import to use 'firebase/firestore' for consistency
+// across the application.
 export const setupFirestoreListeners = async (db, setAppState) => {
-    const { collection, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+    const { collection, onSnapshot, query, orderBy } = await import("firebase/firestore");
 
     const unsubscribers = [
         onSnapshot(collection(db, "users"), (snapshot) =>
@@ -22,10 +24,12 @@ export const setupFirestoreListeners = async (db, setAppState) => {
         onSnapshot(collection(db, "rundownTemplates"), (snapshot) =>
             setAppState(prev => ({ ...prev, rundownTemplates: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }))
         ),
-        onSnapshot(collection(db, "messages"), (snapshot) =>
-            setAppState(prev => ({ ...prev, messages: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)) }))
+        // FIX: Added a query with orderBy to ensure messages are always sorted by timestamp from Firestore.
+        onSnapshot(query(collection(db, "messages"), orderBy("timestamp", "asc")), (snapshot) =>
+            setAppState(prev => ({ ...prev, messages: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }))
         ),
     ];
 
+    // Return a single cleanup function that unsubscribes from all listeners.
     return () => unsubscribers.forEach(unsub => unsub());
 };
