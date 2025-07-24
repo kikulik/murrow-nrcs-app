@@ -1,25 +1,71 @@
-import React, { useState } from 'react';
+// src/features/stories/StoriesTab.jsx
+import React, { useState, useMemo } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
 import { getStatusColor } from '../../utils/styleHelpers';
+import {
+    getFoldersByDate,
+    getStoriesInFolder,
+    sortFoldersByDate,
+    generateDateFolder,
+    createStoryFolder,
+    validateFolderName,
+    sanitizeFolderName
+} from '../../utils/folderHelpers';
 import StoryCard from './components/StoryCard';
 import SendStoryToRundownModal from './components/SendStoryToRundownModal';
+import CreateFolderModal from './components/CreateFolderModal';
 
 const StoriesTab = () => {
     const { currentUser } = useAuth();
     const { appState, setAppState } = useAppContext();
     const [view, setView] = useState('all');
     const [sendToRundownModalStory, setSendToRundownModalStory] = useState(null);
+    const [selectedFolder, setSelectedFolder] = useState('');
+    const [expandedFolders, setExpandedFolders] = useState(new Set([generateDateFolder()]));
+    const [showCreateFolder, setShowCreateFolder] = useState(false);
 
     const userPermissions = getUserPermissions(currentUser.role);
 
-    const filteredStories = appState.stories.filter(story =>
-        story.title.toLowerCase().includes(appState.searchTerm.toLowerCase()) ||
-        (story.content && story.content.toLowerCase().includes(appState.searchTerm.toLowerCase())) ||
-        (story.tags && story.tags.some(tag => tag.toLowerCase().includes(appState.searchTerm.toLowerCase())))
-    );
+    // Organize stories by folders
+    const folderStructure = useMemo(() => {
+        const folderMap = getFoldersByDate(appState.stories);
+        const sortedDates = sortFoldersByDate(folderMap.keys());
+
+        // Add current date if no stories exist yet
+        if (!folderMap.has(generateDateFolder())) {
+            folderMap.set(generateDateFolder(), new Set());
+        }
+
+        return sortedDates.concat([generateDateFolder()]).filter((date, index, arr) => arr.indexOf(date) === index).map(dateFolder => ({
+            dateFolder,
+            subFolders: Array.from(folderMap.get(dateFolder) || []).sort(),
+            stories: getStoriesInFolder(appState.stories, dateFolder)
+        }));
+    }, [appState.stories]);
+
+    // Filter stories based on search and selected folder
+    const filteredStories = useMemo(() => {
+        let stories = appState.stories;
+
+        // Filter by search term
+        if (appState.searchTerm) {
+            stories = stories.filter(story =>
+                story.title.toLowerCase().includes(appState.searchTerm.toLowerCase()) ||
+                (story.content && story.content.toLowerCase().includes(appState.searchTerm.toLowerCase())) ||
+                (story.tags && story.tags.some(tag => tag.toLowerCase().includes(appState.searchTerm.toLowerCase())))
+            );
+        }
+
+        // Filter by selected folder
+        if (selectedFolder) {
+            stories = stories.filter(story => story.folder === selectedFolder);
+        }
+
+        return stories;
+    }, [appState.stories, appState.searchTerm, selectedFolder]);
 
     const myAuthoredStories = filteredStories.filter(story => story.authorId === (currentUser.id || currentUser.uid));
     const myAssignedTasks = appState.assignments.filter(assignment => assignment.assigneeId === (currentUser.id || currentUser.uid));
@@ -33,7 +79,8 @@ const StoriesTab = () => {
             ...prev,
             modal: {
                 type: 'storyEditor',
-                story: story
+                story: story,
+                defaultFolder: selectedFolder || generateDateFolder()
             }
         }));
     };
@@ -47,6 +94,100 @@ const StoriesTab = () => {
 
     const handleEditStory = (story) => {
         openStoryEditor(story);
+    };
+
+    const toggleFolder = (folderPath) => {
+        setExpandedFolders(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(folderPath)) {
+                newSet.delete(folderPath);
+            } else {
+                newSet.add(folderPath);
+            }
+            return newSet;
+        });
+    };
+
+    const selectFolder = (folderPath) => {
+        setSelectedFolder(selectedFolder === folderPath ? '' : folderPath);
+    };
+
+    const renderFolderTree = () => {
+        return (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4 max-h-96 overflow-y-auto">
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium text-sm">Story Folders</h3>
+                    <button
+                        onClick={() => setShowCreateFolder(true)}
+                        className="p-1 text-gray-500 hover:text-blue-600 rounded"
+                        title="Create new folder"
+                    >
+                        <CustomIcon name="add story" size={16} />
+                    </button>
+                </div>
+
+                <div className="space-y-0.5 text-sm">
+                    {/* All Stories option */}
+                    <div className="flex items-center">
+                        <div className="w-4"></div>
+                        <button
+                            onClick={() => selectFolder('')}
+                            className={`flex-1 text-left px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-1 ${selectedFolder === '' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' : ''
+                                }`}
+                        >
+                            <span>📁</span>
+                            <span>All Stories ({appState.stories.length})</span>
+                        </button>
+                    </div>
+
+                    {folderStructure.map(({ dateFolder, subFolders, stories }) => (
+                        <div key={dateFolder}>
+                            {/* Date folder */}
+                            <div className="flex items-center">
+                                <button
+                                    onClick={() => toggleFolder(dateFolder)}
+                                    className="w-4 h-4 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                    {expandedFolders.has(dateFolder) ? (
+                                        <span className="text-xs">▼</span>
+                                    ) : (
+                                        <span className="text-xs">▶</span>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => selectFolder(dateFolder)}
+                                    className={`flex-1 text-left px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-1 ${selectedFolder === dateFolder ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' : ''
+                                        }`}
+                                >
+                                    <span>📅</span>
+                                    <span>{dateFolder} ({stories.length})</span>
+                                </button>
+                            </div>
+
+                            {/* Subfolders */}
+                            {expandedFolders.has(dateFolder) && subFolders.map(subFolder => {
+                                const fullPath = createStoryFolder(dateFolder, subFolder);
+                                const subFolderStories = getStoriesInFolder(appState.stories, fullPath);
+
+                                return (
+                                    <div key={fullPath} className="flex items-center ml-4">
+                                        <div className="w-4"></div>
+                                        <button
+                                            onClick={() => selectFolder(fullPath)}
+                                            className={`flex-1 text-left px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-1 ${selectedFolder === fullPath ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' : ''
+                                                }`}
+                                        >
+                                            <span>📂</span>
+                                            <span>{subFolder} ({subFolderStories.length})</span>
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
     };
 
     return (
@@ -93,58 +234,99 @@ const StoriesTab = () => {
                 </div>
             </div>
 
-            {view === 'all' ? (
-                <div className="grid gap-4">
-                    {filteredStories.map(story => (
-                        <StoryCard
-                            key={story.id}
-                            story={story}
-                            onSendToRundown={setSendToRundownModalStory}
-                            onDelete={handleDeleteStory}
-                            onEdit={handleEditStory}
-                            userPermissions={userPermissions}
-                            currentUser={currentUser}
-                        />
-                    ))}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                {/* Folder sidebar */}
+                <div className="lg:col-span-1">
+                    {renderFolderTree()}
                 </div>
-            ) : (
-                <div>
-                    <h3 className="text-lg font-semibold mb-3">My Authored Stories ({myAuthoredStories.length})</h3>
-                    {myAuthoredStories.length > 0 ? (
-                        <div className="grid gap-4 mb-8">
-                            {myAuthoredStories.map(story => (
-                                <StoryCard
-                                    key={story.id}
-                                    story={story}
-                                    onSendToRundown={setSendToRundownModalStory}
-                                    onDelete={handleDeleteStory}
-                                    onEdit={handleEditStory}
-                                    userPermissions={userPermissions}
-                                    currentUser={currentUser}
-                                />
-                            ))}
+
+                {/* Stories content */}
+                <div className="lg:col-span-3">
+                    {selectedFolder && (
+                        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                            <div className="flex items-center justify-between">
+                                <span className="font-medium">Viewing: {selectedFolder}</span>
+                                <button
+                                    onClick={() => setSelectedFolder('')}
+                                    className="text-blue-600 hover:text-blue-700 text-sm"
+                                >
+                                    Clear filter
+                                </button>
+                            </div>
                         </div>
-                    ) : (
-                        <p className="text-gray-500">You have not authored any stories.</p>
                     )}
 
-                    <h3 className="text-lg font-semibold mb-3">My Assignments ({myAssignedTasks.length})</h3>
-                    {myAssignedTasks.length > 0 ? (
-                        <div className="grid gap-4">
-                            {myAssignedTasks.map(assignment => (
-                                <AssignmentCard key={assignment.id} assignment={assignment} />
-                            ))}
+                    {view === 'all' ? (
+                        <div className="space-y-4">
+                            {filteredStories.length > 0 ? (
+                                <div className="grid gap-4">
+                                    {filteredStories.map(story => (
+                                        <StoryCard
+                                            key={story.id}
+                                            story={story}
+                                            onSendToRundown={setSendToRundownModalStory}
+                                            onDelete={handleDeleteStory}
+                                            onEdit={handleEditStory}
+                                            userPermissions={userPermissions}
+                                            currentUser={currentUser}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-12 text-gray-500">
+                                    {appState.searchTerm || selectedFolder
+                                        ? 'No stories found matching your criteria.'
+                                        : 'No stories yet. Create your first story!'
+                                    }
+                                </div>
+                            )}
                         </div>
                     ) : (
-                        <p className="text-gray-500">You have no pending assignments.</p>
+                        <div>
+                            <h3 className="text-lg font-semibold mb-3">My Authored Stories ({myAuthoredStories.length})</h3>
+                            {myAuthoredStories.length > 0 ? (
+                                <div className="grid gap-4 mb-8">
+                                    {myAuthoredStories.map(story => (
+                                        <StoryCard
+                                            key={story.id}
+                                            story={story}
+                                            onSendToRundown={setSendToRundownModalStory}
+                                            onDelete={handleDeleteStory}
+                                            onEdit={handleEditStory}
+                                            userPermissions={userPermissions}
+                                            currentUser={currentUser}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-gray-500">You have not authored any stories.</p>
+                            )}
+
+                            <h3 className="text-lg font-semibold mb-3">My Assignments ({myAssignedTasks.length})</h3>
+                            {myAssignedTasks.length > 0 ? (
+                                <div className="grid gap-4">
+                                    {myAssignedTasks.map(assignment => (
+                                        <AssignmentCard key={assignment.id} assignment={assignment} />
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-gray-500">You have no pending assignments.</p>
+                            )}
+                        </div>
                     )}
                 </div>
-            )}
+            </div>
 
             {sendToRundownModalStory && (
                 <SendStoryToRundownModal
                     story={sendToRundownModalStory}
                     onCancel={() => setSendToRundownModalStory(null)}
+                />
+            )}
+
+            {showCreateFolder && (
+                <CreateFolderModal
+                    onCancel={() => setShowCreateFolder(false)}
                 />
             )}
         </div>
