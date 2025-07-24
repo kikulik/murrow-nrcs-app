@@ -219,6 +219,14 @@ const StoryEditTab = () => {
         );
     }
 
+    if (!itemId) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <p className="text-gray-500">No story selected for editing</p>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -391,6 +399,9 @@ const StoryEditTab = () => {
             </div>
         </div>
     );
+};
+
+export default StoryEditTab;
                 <div className="flex items-center gap-4">
                     {lastSaved && isOwner && (
                         <span className="text-sm text-gray-500">
