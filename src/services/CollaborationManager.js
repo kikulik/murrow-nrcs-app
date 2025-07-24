@@ -9,7 +9,6 @@ export class CollaborationManager {
         this.presenceInterval = null;
     }
 
-    // Optimistic Locking
     static addVersionControl(item) {
         return {
             ...item,
@@ -28,7 +27,6 @@ export class CollaborationManager {
         };
     }
 
-    // User Presence Management
     async startPresenceTracking(rundownId) {
         if (!this.db || !this.currentUser || this.presenceRef) return;
 
@@ -37,7 +35,6 @@ export class CollaborationManager {
 
             const presenceDoc = doc(this.db, "presence", `${rundownId}_${this.currentUser.uid}`);
 
-            // Set user presence initially
             const presenceData = {
                 userId: this.currentUser.uid,
                 userName: this.currentUser.name,
@@ -49,7 +46,6 @@ export class CollaborationManager {
 
             await setDoc(presenceDoc, presenceData);
 
-            // Update presence every 45 seconds (increased to reduce rapid updates)
             this.presenceInterval = setInterval(async () => {
                 try {
                     await setDoc(presenceDoc, {
@@ -60,9 +56,8 @@ export class CollaborationManager {
                 } catch (error) {
                     console.error('Error updating presence:', error);
                 }
-            }, 45000);
+            }, 30000);
 
-            // Clean up on page unload
             const handleBeforeUnload = () => {
                 this.stopPresenceTracking();
             };
@@ -117,7 +112,6 @@ export class CollaborationManager {
 
     async takeOverItem(itemId, previousUserId) {
         try {
-            // Clear the previous user's editing status
             const { doc, updateDoc, collection, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
             const presenceQuery = query(
@@ -128,7 +122,6 @@ export class CollaborationManager {
 
             const presenceDocs = await getDocs(presenceQuery);
 
-            // Clear previous user's editing status
             for (const presenceDoc of presenceDocs.docs) {
                 await updateDoc(presenceDoc.ref, {
                     editingItem: null,
@@ -136,10 +129,8 @@ export class CollaborationManager {
                 });
             }
 
-            // Set current user as editor
             await this.setEditingItem(itemId);
 
-            // Send notification to previous user
             if (this.db) {
                 const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
@@ -182,8 +173,7 @@ export class CollaborationManager {
                     const lastSeen = new Date(data.lastSeen);
                     const minutesAgo = (now - lastSeen) / (1000 * 60);
 
-                    // Consider users active if seen within last 3 minutes (increased tolerance)
-                    if (minutesAgo < 3 && data.userId !== this.currentUser.uid) {
+                    if (minutesAgo < 2 && data.userId !== this.currentUser.uid) {
                         activeUsers.push({
                             ...data,
                             id: doc.id
@@ -199,12 +189,10 @@ export class CollaborationManager {
         }
     }
 
-    // Operational Transforms for text editing
     static applyTextTransform(originalText, operations) {
         let result = originalText;
         let offset = 0;
 
-        // Sort operations by position to apply them correctly
         const sortedOps = [...operations].sort((a, b) => a.position - b.position);
 
         for (const op of sortedOps) {
@@ -230,10 +218,8 @@ export class CollaborationManager {
     }
 
     static generateTextOperations(oldText, newText) {
-        // Simple diff algorithm - in production, use a proper diff library
         if (oldText === newText) return [];
 
-        // For now, treat the entire change as a single replace operation
         return [{
             type: 'replace',
             position: 0,
@@ -244,7 +230,6 @@ export class CollaborationManager {
         }];
     }
 
-    // Safe rundown update with conflict resolution
     async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
         for (let attempt = 0; attempt < retryCount; attempt++) {
             try {
@@ -260,7 +245,6 @@ export class CollaborationManager {
                 const currentData = rundownDoc.data();
                 const updatedData = updateFunction(currentData);
 
-                // Add version control
                 const versionedData = {
                     ...updatedData,
                     version: (currentData.version || 1) + 1,
@@ -275,7 +259,6 @@ export class CollaborationManager {
                 if (attempt === retryCount - 1) {
                     throw error;
                 }
-                // Wait before retry
                 await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
             }
         }
