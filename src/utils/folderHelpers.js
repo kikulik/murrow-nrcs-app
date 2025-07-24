@@ -1,6 +1,3 @@
-// src/utils/folderHelpers.js
-// Helper functions for managing story folders
-
 export const generateDateFolder = (date = new Date()) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -51,14 +48,12 @@ export const getStoriesInFolder = (stories, folderPath) => {
 
 export const sortFoldersByDate = (folders) => {
     return Array.from(folders).sort((a, b) => {
-        // Sort date folders in descending order (newest first)
         return new Date(b) - new Date(a);
     });
 };
 
 export const validateFolderName = (name) => {
     if (!name || !name.trim()) return false;
-    // Check for invalid characters
     const invalidChars = /[<>:"/\\|?*]/;
     return !invalidChars.test(name.trim());
 };
@@ -66,4 +61,38 @@ export const validateFolderName = (name) => {
 export const sanitizeFolderName = (name) => {
     if (!name) return '';
     return name.trim().replace(/[<>:"/\\|?*]/g, '_');
+};
+
+export const getPersistedFolders = () => {
+    try {
+        const stored = localStorage.getItem('murrow_created_folders');
+        return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+        console.error('Error reading persisted folders:', error);
+        return [];
+    }
+};
+
+export const persistFolder = (folderPath) => {
+    try {
+        const existing = getPersistedFolders();
+        const updated = [...new Set([...existing, folderPath])];
+        localStorage.setItem('murrow_created_folders', JSON.stringify(updated));
+        return updated;
+    } catch (error) {
+        console.error('Error persisting folder:', error);
+        return [];
+    }
+};
+
+export const removePersistedFolder = (folderPath) => {
+    try {
+        const existing = getPersistedFolders();
+        const updated = existing.filter(folder => folder !== folderPath);
+        localStorage.setItem('murrow_created_folders', JSON.stringify(updated));
+        return updated;
+    } catch (error) {
+        console.error('Error removing persisted folder:', error);
+        return [];
+    }
 };
