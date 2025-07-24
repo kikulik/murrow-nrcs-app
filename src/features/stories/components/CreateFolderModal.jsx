@@ -1,4 +1,3 @@
-// src/features/stories/components/CreateFolderModal.jsx
 import React, { useState } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import ModalBase from '../../../components/common/ModalBase';
@@ -10,27 +9,27 @@ import {
     validateFolderName,
     sanitizeFolderName,
     getFoldersByDate,
-    sortFoldersByDate
+    sortFoldersByDate,
+    persistFolder
 } from '../../../utils/folderHelpers';
 import { useAppContext } from '../../../context/AppContext';
 
-const CreateFolderModal = ({ onCancel }) => {
-    const { appState, setAppState } = useAppContext();
-    const [folderType, setFolderType] = useState('date'); // 'date' or 'subfolder'
+const CreateFolderModal = ({ onCancel, onFolderCreated }) => {
+    const { appState } = useAppContext();
+    const [folderType, setFolderType] = useState('date');
     const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
     const [parentFolder, setParentFolder] = useState(generateDateFolder());
     const [folderName, setFolderName] = useState('');
     const [creating, setCreating] = useState(false);
-    // Get existing date folders
+
     const existingFolders = getFoldersByDate(appState.stories);
     const existingDateFolders = sortFoldersByDate(existingFolders.keys());
+
     const handleCreate = async () => {
         let newFolderPath;
         if (folderType === 'date') {
-            // Create new date folder
             newFolderPath = customDate;
         } else {
-            // Create subfolder
             if (!validateFolderName(folderName)) {
                 alert('Please enter a valid folder name');
                 return;
@@ -42,10 +41,10 @@ const CreateFolderModal = ({ onCancel }) => {
 
         setCreating(true);
         try {
-            setAppState(prev => ({
-                ...prev,
-                createdFolders: [...new Set([...(prev.createdFolders || []), newFolderPath])]
-            }));
+            persistFolder(newFolderPath);
+            if (onFolderCreated) {
+                onFolderCreated(newFolderPath);
+            }
             onCancel();
         } catch (error) {
             console.error('Error creating folder:', error);
@@ -129,7 +128,7 @@ const CreateFolderModal = ({ onCancel }) => {
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Preview:
                     </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 font-mono break-words">
                         {getPreviewPath() || 'Enter folder details...'}
                     </p>
                 </div>
@@ -149,7 +148,7 @@ const CreateFolderModal = ({ onCancel }) => {
                         disabled={creating || (folderType === 'subfolder' && !folderName.trim())}
                         className="btn-primary"
                     >
-                        <CustomIcon name="add story" size={32} />
+                        <CustomIcon name="add story" size={40} />
                         <span>{creating ? 'Creating...' : 'Create Folder'}</span>
                     </button>
                 </div>
