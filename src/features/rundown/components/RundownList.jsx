@@ -4,7 +4,15 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import RundownDraggableItem from './RundownDraggableItem';
 
-const RundownList = ({ rundown, isLocked, userPermissions, onItemsUpdate }) => {
+const RundownList = ({
+    rundown,
+    isLocked,
+    userPermissions,
+    onItemsUpdate,
+    selectedItems,
+    onSelectionChange,
+    onTakeOverItem
+}) => {
     const [editingId, setEditingId] = useState(null);
 
     const moveItem = useCallback((dragIndex, hoverIndex) => {
@@ -28,6 +36,22 @@ const RundownList = ({ rundown, isLocked, userPermissions, onItemsUpdate }) => {
         onItemsUpdate(newItems);
     };
 
+    const handleSelect = (itemId, isMultiSelect) => {
+        if (isMultiSelect) {
+            // Multi-select with Ctrl/Cmd
+            const newSelection = selectedItems.includes(itemId)
+                ? selectedItems.filter(id => id !== itemId)
+                : [...selectedItems, itemId];
+            onSelectionChange(newSelection);
+        } else {
+            // Single select
+            const newSelection = selectedItems.includes(itemId) && selectedItems.length === 1
+                ? []
+                : [itemId];
+            onSelectionChange(newSelection);
+        }
+    };
+
     return (
         <DndProvider backend={HTML5Backend}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border">
@@ -46,6 +70,9 @@ const RundownList = ({ rundown, isLocked, userPermissions, onItemsUpdate }) => {
                                 onSave={handleSaveItem}
                                 onCancel={() => setEditingId(null)}
                                 onDeleteItem={handleDeleteRundownItem}
+                                isSelected={selectedItems.includes(item.id)}
+                                onSelect={handleSelect}
+                                onTakeOverItem={onTakeOverItem}
                             />
                         ))
                     ) : (
