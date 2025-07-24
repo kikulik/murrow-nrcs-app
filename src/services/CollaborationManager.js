@@ -1,5 +1,8 @@
-// src/services/CollaborationManager.js
-
+/*
+================================================================================
+File: murrow-nrcs-app.git/src/services/CollaborationManager.js
+================================================================================
+*/
 export class CollaborationManager {
     constructor(db, currentUser) {
         this.db = db;
@@ -7,17 +10,22 @@ export class CollaborationManager {
         this.presenceRef = null;
         this.currentEditingItem = null;
         this.presenceInterval = null;
-        this.presenceListenerUnsubscribe = null; // To hold the listener's unsubscribe function
+        this.presenceListenerUnsubscribe = null;
         this.lastUpdate = 0;
         this.updateThrottle = 2000;
         this.cleanup = () => {};
     }
 
     async startPresenceTracking(rundownId) {
-        if (!this.db || !this.currentUser || this.presenceRef) return;
+        if (!this.db || !this.currentUser) return;
+        // If we are already tracking for another rundown, stop it first.
+        if (this.presenceRef) {
+            await this.stopPresenceTracking();
+        }
 
         try {
             const { doc, setDoc, collection } = await import("firebase/firestore");
+
             const presenceCollection = collection(this.db, "presence");
             const presenceDoc = doc(presenceCollection, `${rundownId}_${this.currentUser.uid}`);
             this.presenceRef = presenceDoc;
@@ -30,12 +38,14 @@ export class CollaborationManager {
                 isActive: true,
                 editingItem: null
             };
+
             await setDoc(this.presenceRef, presenceData);
 
             this.presenceInterval = setInterval(async () => {
                 if (!this.presenceRef) return;
                 const now = Date.now();
                 if (now - this.lastUpdate < this.updateThrottle) return;
+
                 try {
                     await setDoc(this.presenceRef, {
                         lastSeen: new Date().toISOString(),
@@ -50,7 +60,6 @@ export class CollaborationManager {
             const handleBeforeUnload = () => this.stopPresenceTracking();
             window.addEventListener('beforeunload', handleBeforeUnload);
             this.cleanup = () => window.removeEventListener('beforeunload', handleBeforeUnload);
-
         } catch (error) {
             console.error('Error starting presence tracking:', error);
         }
@@ -62,26 +71,25 @@ export class CollaborationManager {
             this.presenceInterval = null;
         }
 
-        // Unsubscribe from the listener first
         if (this.presenceListenerUnsubscribe) {
             this.presenceListenerUnsubscribe();
             this.presenceListenerUnsubscribe = null;
         }
 
         if (this.presenceRef) {
+            const refToDelete = this.presenceRef;
+            this.presenceRef = null; // Nullify immediately to prevent multiple attempts
             try {
                 const { deleteDoc } = await import("firebase/firestore");
-                await deleteDoc(this.presenceRef);
-                this.presenceRef = null;
+                await deleteDoc(refToDelete);
             } catch (error) {
-                // It's possible the doc is already gone or permissions are lost on logout.
-                // Log the error but don't throw, as this is a cleanup operation.
-                console.warn('Could not delete presence document on cleanup:', error.message);
+                console.warn('Could not delete presence document on cleanup (this is expected on logout):', error.message);
             }
         }
 
         if (this.cleanup) {
             this.cleanup();
+            this.cleanup = () => {}; // Ensure it only runs once
         }
     }
 
@@ -120,7 +128,6 @@ export class CollaborationManager {
 
     async listenToPresence(rundownId, callback) {
         if (!this.db) return;
-        // If there's an existing listener, stop it before starting a new one.
         if (this.presenceListenerUnsubscribe) {
             this.presenceListenerUnsubscribe();
         }
@@ -130,7 +137,6 @@ export class CollaborationManager {
                 collection(this.db, "presence"),
                 where("rundownId", "==", rundownId)
             );
-            // Store the unsubscribe function on the instance
             this.presenceListenerUnsubscribe = onSnapshot(presenceQuery, (snapshot) => {
                 const activeUsers = snapshot.docs
                     .map(doc => doc.data())
