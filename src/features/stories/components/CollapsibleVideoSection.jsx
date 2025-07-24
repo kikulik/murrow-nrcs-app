@@ -1,5 +1,4 @@
 // src/features/stories/components/CollapsibleVideoSection.jsx
-// Video section for stories with NLE integration
 import React, { useState } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 
