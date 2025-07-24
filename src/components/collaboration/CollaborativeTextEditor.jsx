@@ -30,7 +30,7 @@ const CollaborativeTextEditor = ({
 
     const lockInfo = getItemLockInfo(itemId);
     const isOwner = isCurrentUserOwner(itemId);
-    const isReadOnly = !isOwner && lockInfo.locked;
+    const isReadOnly = lockInfo.locked && !lockInfo.ownedByCurrentUser;
 
     useEffect(() => {
         if (value !== lastValueRef.current) {
