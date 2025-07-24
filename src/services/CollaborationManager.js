@@ -7,6 +7,8 @@ export class CollaborationManager {
         this.presenceListeners = new Map();
         this.currentEditingItem = null;
         this.presenceInterval = null;
+        this.lastUpdate = 0;
+        this.updateThrottle = 2000; // Throttle updates to prevent rapid changes
     }
 
     static addVersionControl(item) {
@@ -46,17 +48,24 @@ export class CollaborationManager {
 
             await setDoc(presenceDoc, presenceData);
 
+            // Reduced frequency to prevent rapid updates
             this.presenceInterval = setInterval(async () => {
+                const now = Date.now();
+                if (now - this.lastUpdate < this.updateThrottle) {
+                    return; // Skip update if too soon
+                }
+
                 try {
                     await setDoc(presenceDoc, {
                         ...presenceData,
                         lastSeen: new Date().toISOString(),
                         editingItem: this.currentEditingItem || null
                     });
+                    this.lastUpdate = now;
                 } catch (error) {
                     console.error('Error updating presence:', error);
                 }
-            }, 30000);
+            }, 5000); // Increased to 5 seconds
 
             const handleBeforeUnload = () => {
                 this.stopPresenceTracking();
@@ -95,6 +104,12 @@ export class CollaborationManager {
     }
 
     async setEditingItem(itemId) {
+        // Throttle editing item updates
+        const now = Date.now();
+        if (this.currentEditingItem === itemId && now - this.lastUpdate < this.updateThrottle) {
+            return;
+        }
+
         this.currentEditingItem = itemId;
 
         if (this.presenceRef) {
@@ -104,6 +119,7 @@ export class CollaborationManager {
                     editingItem: itemId,
                     lastSeen: new Date().toISOString()
                 });
+                this.lastUpdate = now;
             } catch (error) {
                 console.error('Error updating editing item:', error);
             }
@@ -112,16 +128,16 @@ export class CollaborationManager {
 
     async takeOverItem(itemId, previousUserId) {
         try {
-            const { doc, updateDoc, collection, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { doc, updateDoc, collection, query, where, getDocs, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
             const presenceQuery = query(
                 collection(this.db, "presence"),
-                where("userId", "==", previousUserId),
-                where("editingItem", "==", itemId)
+                where("userId", "==", previousUserId)
             );
 
             const presenceDocs = await getDocs(presenceQuery);
 
+            // Clear all editing items for previous user
             for (const presenceDoc of presenceDocs.docs) {
                 await updateDoc(presenceDoc.ref, {
                     editingItem: null,
@@ -129,20 +145,18 @@ export class CollaborationManager {
                 });
             }
 
+            // Set current user as editor
             await this.setEditingItem(itemId);
 
-            if (this.db) {
-                const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-                await addDoc(collection(this.db, "notifications"), {
-                    userId: previousUserId,
-                    type: 'takeOver',
-                    message: `${this.currentUser.name} has taken over editing the story you were working on.`,
-                    itemId: itemId,
-                    timestamp: new Date().toISOString(),
-                    read: false
-                });
-            }
+            // Send notification
+            await addDoc(collection(this.db, "notifications"), {
+                userId: previousUserId,
+                type: 'takeOver',
+                message: `${this.currentUser.name} has taken over editing the story you were working on.`,
+                itemId: itemId,
+                timestamp: new Date().toISOString(),
+                read: false
+            });
 
             return true;
         } catch (error) {
@@ -162,7 +176,15 @@ export class CollaborationManager {
                 where("rundownId", "==", rundownId)
             );
 
+            let lastSnapshot = null;
+
             return onSnapshot(presenceQuery, (snapshot) => {
+                // Prevent rapid updates by comparing snapshots
+                if (lastSnapshot && this.snapshotsEqual(lastSnapshot, snapshot)) {
+                    return;
+                }
+                lastSnapshot = snapshot;
+
                 const activeUsers = [];
                 const now = new Date();
 
@@ -173,7 +195,8 @@ export class CollaborationManager {
                     const lastSeen = new Date(data.lastSeen);
                     const minutesAgo = (now - lastSeen) / (1000 * 60);
 
-                    if (minutesAgo < 2 && data.userId !== this.currentUser.uid) {
+                    // Increased tolerance to 5 minutes for same-PC testing
+                    if (minutesAgo < 5 && data.userId !== this.currentUser.uid) {
                         activeUsers.push({
                             ...data,
                             id: doc.id
@@ -181,12 +204,25 @@ export class CollaborationManager {
                     }
                 });
 
-                callback(activeUsers);
+                // Debounce callback to prevent rapid UI updates
+                setTimeout(() => {
+                    callback(activeUsers);
+                }, 200);
             });
         } catch (error) {
             console.error('Error setting up presence listener:', error);
             return () => { };
         }
+    }
+
+    // Helper to compare snapshots and prevent unnecessary updates
+    snapshotsEqual(snap1, snap2) {
+        if (snap1.size !== snap2.size) return false;
+
+        const docs1 = snap1.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+        const docs2 = snap2.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+
+        return JSON.stringify(docs1) === JSON.stringify(docs2);
     }
 
     static applyTextTransform(originalText, operations) {
