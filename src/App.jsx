@@ -1,3 +1,10 @@
+/*
+================================================================================
+File: murrow-nrcs-app.git/src/App.jsx
+Description: Main App component that wraps providers and handles routing.
+================================================================================
+*/
+import React from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -11,7 +18,6 @@ const AppWrapper = () => (
   <AuthProvider>
     <AppProvider>
       <CollaborationProvider>
-        {/* DndProvider is needed for drag-and-drop functionality in the rundown list. */}
         <DndProvider backend={HTML5Backend}>
           <GlobalStyles />
           <App />
