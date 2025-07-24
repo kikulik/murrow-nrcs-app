@@ -1,6 +1,12 @@
-// src/context/CollaborationContext.jsx
-
+/*
+================================================================================
+File: murrow-nrcs-app.git/src/context/CollaborationContext.jsx
+Description: FIX - Removed orderBy from a query to prevent index error and
+standardized all Firebase imports to v9.
+================================================================================
+*/
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { useAppContext } from './AppContext';
 import { CollaborationManager } from '../services/CollaborationManager';
@@ -65,24 +71,22 @@ export const CollaborationProvider = ({ children }) => {
         if (!db || !currentUser) return;
 
         try {
-            const { collection, query, where, onSnapshot, orderBy } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
+            // FIX: Removed orderBy("timestamp") to prevent query failure without a composite index.
             const notificationsQuery = query(
                 collection(db, "notifications"),
                 where("userId", "==", currentUser.uid),
-                where("read", "==", false),
-                orderBy("timestamp", "desc")
+                where("read", "==", false)
             );
 
             notificationsUnsubscribe.current = onSnapshot(notificationsQuery, (snapshot) => {
-                const newNotifications = [];
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    newNotifications.push({
-                        id: doc.id,
-                        ...data
-                    });
-                });
+                const newNotifications = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                
+                // FIX: Sorting is now done on the client-side to preserve order.
+                newNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
                 setNotifications(newNotifications);
 
                 newNotifications.forEach(notification => {
@@ -128,7 +132,6 @@ export const CollaborationProvider = ({ children }) => {
     const markNotificationAsRead = async (notificationId) => {
         if (!db) return;
         try {
-            const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
             await updateDoc(doc(db, "notifications", notificationId), { read: true });
         } catch (error) {
             console.error('Error marking notification as read:', error);
@@ -136,11 +139,9 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const startEditingStory = async (itemId, storyData) => {
-        // Check if someone else is editing
         const existingEditor = editingSessions.get(itemId);
         
         if (existingEditor && existingEditor.userId !== currentUser.uid) {
-            // Someone else is editing - show as taken over
             setAppState(prev => ({
                 ...prev,
                 activeTab: 'storyEdit',
@@ -151,7 +152,6 @@ export const CollaborationProvider = ({ children }) => {
                 editingStoryIsOwner: false
             }));
         } else {
-            // We can edit - become the owner
             await collaborationManager.current?.setEditingItem(itemId);
             
             setAppState(prev => ({
@@ -164,7 +164,6 @@ export const CollaborationProvider = ({ children }) => {
                 editingStoryIsOwner: true
             }));
         }
-
         return true;
     };
 
@@ -183,22 +182,15 @@ export const CollaborationProvider = ({ children }) => {
 
     const takeOverStory = async (itemId, previousUserId) => {
         if (!collaborationManager.current) return false;
-
         try {
-            // Send notification to previous user
             await collaborationManager.current.sendTakeOverNotification(itemId, previousUserId);
-            
-            // Take over editing
             await collaborationManager.current.setEditingItem(itemId);
-            
-            // Update our state
             setAppState(prev => ({
                 ...prev,
                 editingStoryTakenOver: false,
                 editingStoryTakenOverBy: null,
                 editingStoryIsOwner: true
             }));
-            
             return true;
         } catch (error) {
             console.error('Error taking over story:', error);
@@ -208,10 +200,7 @@ export const CollaborationProvider = ({ children }) => {
 
     const saveStoryProgress = async (itemId, storyData) => {
         if (!db || !itemId || !appState.editingStoryIsOwner) return;
-
         try {
-            const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-            
             await setDoc(doc(db, "storyDrafts", `${itemId}_${currentUser.uid}`), {
                 itemId,
                 userId: currentUser.uid,
@@ -226,16 +215,9 @@ export const CollaborationProvider = ({ children }) => {
 
     const getStoryProgress = async (itemId) => {
         if (!db || !itemId) return null;
-
         try {
-            const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-            
             const draftDoc = await getDoc(doc(db, "storyDrafts", `${itemId}_${currentUser.uid}`));
-            
-            if (draftDoc.exists()) {
-                return draftDoc.data().storyData;
-            }
-            return null;
+            return draftDoc.exists() ? draftDoc.data().storyData : null;
         } catch (error) {
             console.error('Error getting story progress:', error);
             return null;
@@ -284,7 +266,7 @@ export const CollaborationProvider = ({ children }) => {
         getUserEditingItem,
         isItemBeingEdited,
         markNotificationAsRead,
-        CollaborationManager
+        CollaborationManager: CollaborationManager
     };
 
     return (
