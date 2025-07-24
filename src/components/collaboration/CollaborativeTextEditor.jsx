@@ -1,271 +1,243 @@
-// src/components/collaboration/CollaborativeTextEditor.jsx
+// src/features/rundown/components/RundownDraggableItem.jsx
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useCollaboration } from '../../context/CollaborationContext';
-import { useAuth } from '../../context/AuthContext';
-import { useAppContext } from '../../context/AppContext';
+import React, { useRef, useState, useEffect } from 'react';
+import { useDrag, useDrop } from 'react-dnd';
+import CustomIcon from '../../../components/ui/CustomIcon';
+import { useAppContext } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
+import { useCollaboration } from '../../../context/CollaborationContext';
+import { getStatusColor, getRundownTypeColor } from '../../../utils/styleHelpers';
+import { RUNDOWN_STORY_STATUSES } from '../../../lib/constants';
+import { getUserPermissions } from '../../../lib/permissions';
 
-const CollaborativeTextEditor = ({
-    value,
-    onChange,
-    itemId,
-    className = '',
-    placeholder = '',
-    rows = 4
+const RundownDraggableItem = ({
+    item,
+    index,
+    moveItem,
+    canDrag,
+    isLocked,
+    onDeleteItem,
+    isSelected,
+    onSelect
 }) => {
-    const { currentUser, db } = useAuth();
     const { appState } = useAppContext();
-    const { 
-        setEditingItem, 
-        clearEditingItem, 
-        CollaborationManager
+    const { db, currentUser } = useAuth();
+    const {
+        safeUpdateRundown,
+        getUserEditingItem,
+        getItemLockInfo,
+        isCurrentUserOwner,
+        startEditingStory
     } = useCollaboration();
-    
-    const [localValue, setLocalValue] = useState(value || '');
-    const [pendingOperations, setPendingOperations] = useState([]);
-    const [cursorPositions, setCursorPositions] = useState(new Map());
-    const textareaRef = useRef(null);
-    const lastValueRef = useRef(value || '');
-    const operationsListener = useRef(null);
+    const ref = useRef(null);
 
-    // Use app state to determine if user can edit
-    const isOwner = appState.editingStoryIsOwner;
-    const isTakenOver = appState.editingStoryTakenOver;
-    const isReadOnly = isTakenOver && !isOwner;
+    const userPermissions = getUserPermissions(currentUser.role);
+    const editingUser = getUserEditingItem(item.id);
+    const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
 
-    useEffect(() => {
-        if (value !== lastValueRef.current) {
-            setLocalValue(value || '');
-            lastValueRef.current = value || '';
+    const [{ handlerId }, drop] = useDrop({
+        accept: 'rundownItem',
+        collect(monitor) {
+            return { handlerId: monitor.getHandlerId() };
+        },
+        hover(draggedItem, monitor) {
+            if (!ref.current || isLocked || !userPermissions.canMoveRundownItems) return;
+            const dragIndex = draggedItem.index;
+            const hoverIndex = index;
+            if (dragIndex === hoverIndex) return;
+
+            const hoverBoundingRect = ref.current?.getBoundingClientRect();
+            const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
+            const clientOffset = monitor.getClientOffset();
+            const hoverClientY = clientOffset.y - hoverBoundingRect.top;
+
+            if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) return;
+            if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) return;
+
+            moveItem(dragIndex, hoverIndex);
+            draggedItem.index = hoverIndex;
+        },
+    });
+
+    const [{ isDragging }, drag] = useDrag({
+        type: 'rundownItem',
+        item: () => ({ id: item.id, index }),
+        canDrag: canDrag && !isLocked && !isBeingEditedByOther && userPermissions.canMoveRundownItems,
+        collect: (monitor) => ({
+            isDragging: monitor.isDragging(),
+        }),
+    });
+
+    if (canDrag && !isLocked && userPermissions.canMoveRundownItems) {
+        drag(drop(ref));
+    } else {
+        drop(ref);
+    }
+
+    const story = appState.stories?.find(s => s.id === item.storyId);
+    const author = story ?
+        appState.users.find(u => u.id === story.authorId || u.uid === story.authorId) :
+        item.authorId ? appState.users.find(u => u.id === item.authorId || u.uid === item.authorId) : null;
+
+    const handleStatusChange = async (newStatus) => {
+        if (isLocked || !appState.activeRundownId || isBeingEditedByOther) return;
+
+        try {
+            await safeUpdateRundown(appState.activeRundownId, (rundownData) => ({
+                ...rundownData,
+                items: rundownData.items.map(rundownItem =>
+                    rundownItem.id === item.id
+                        ? {
+                            ...rundownItem,
+                            storyStatus: newStatus,
+                            version: (rundownItem.version || 1) + 1,
+                            lastModified: new Date().toISOString(),
+                            lastModifiedBy: currentUser.uid
+                        }
+                        : rundownItem
+                )
+            }));
+        } catch (error) {
+            console.error("Error updating story status:", error);
         }
-    }, [value]);
-
-    useEffect(() => {
-        if (!db || !itemId || !isOwner) return;
-
-        const setupOperationsListener = async () => {
-            const { collection, query, where, onSnapshot, orderBy } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-            const operationsQuery = query(
-                collection(db, "textOperations"),
-                where("itemId", "==", itemId),
-                orderBy("timestamp", "desc")
-            );
-
-            operationsListener.current = onSnapshot(operationsQuery, (snapshot) => {
-                const operations = [];
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    if (data.userId !== currentUser.uid) {
-                        operations.push({
-                            id: doc.id,
-                            ...data
-                        });
-                    }
-                });
-
-                if (operations.length > 0 && isOwner) {
-                    const newValue = CollaborationManager.applyTextTransform(
-                        lastValueRef.current,
-                        operations
-                    );
-                    setLocalValue(newValue);
-                    lastValueRef.current = newValue;
-                    onChange(newValue);
-                }
-            });
-        };
-
-        setupOperationsListener();
-
-        return () => {
-            if (operationsListener.current) {
-                operationsListener.current();
-            }
-        };
-    }, [db, itemId, currentUser.uid, onChange, CollaborationManager, isOwner]);
-
-    const handleFocus = useCallback(async () => {
-        if (isOwner) {
-            await setEditingItem(itemId);
-        }
-    }, [setEditingItem, itemId, isOwner]);
-
-    const handleBlur = useCallback(async () => {
-        if (isOwner) {
-            await clearEditingItem();
-        }
-    }, [clearEditingItem, isOwner]);
-
-    const handleChange = useCallback(async (e) => {
-        if (!isOwner) return;
-
-        const newValue = e.target.value;
-        const oldValue = localValue;
-
-        setLocalValue(newValue);
-
-        const operations = CollaborationManager.generateTextOperations(oldValue, newValue);
-
-        if (operations.length > 0 && db) {
-            try {
-                const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-                for (const operation of operations) {
-                    await addDoc(collection(db, "textOperations"), {
-                        ...operation,
-                        itemId,
-                        userId: currentUser.uid,
-                        userName: currentUser.name,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-            } catch (error) {
-                console.error('Error saving text operations:', error);
-            }
-        }
-
-        onChange(newValue);
-        lastValueRef.current = newValue;
-    }, [localValue, db, itemId, currentUser, onChange, CollaborationManager, isOwner]);
-
-    const handleCursorChange = useCallback(async (e) => {
-        if (!isOwner) return;
-
-        const textarea = e.target;
-        const cursorPosition = textarea.selectionStart;
-
-        if (db && itemId) {
-            try {
-                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-                await setDoc(doc(db, "cursors", `${itemId}_${currentUser.uid}`), {
-                    itemId,
-                    userId: currentUser.uid,
-                    userName: currentUser.name,
-                    position: cursorPosition,
-                    timestamp: new Date().toISOString()
-                });
-            } catch (error) {
-                console.error('Error updating cursor position:', error);
-            }
-        }
-    }, [db, itemId, currentUser, isOwner]);
-
-    useEffect(() => {
-        if (!db || !itemId || !isOwner) return;
-
-        const setupCursorListener = async () => {
-            const { collection, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-            const cursorsQuery = query(
-                collection(db, "cursors"),
-                where("itemId", "==", itemId)
-            );
-
-            const unsubscribe = onSnapshot(cursorsQuery, (snapshot) => {
-                const positions = new Map();
-                const now = new Date();
-
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    const timestamp = new Date(data.timestamp);
-                    const secondsAgo = (now - timestamp) / 1000;
-
-                    if (secondsAgo < 10 && data.userId !== currentUser.uid) {
-                        positions.set(data.userId, {
-                            ...data,
-                            id: doc.id
-                        });
-                    }
-                });
-
-                setCursorPositions(positions);
-            });
-
-            return unsubscribe;
-        };
-
-        setupCursorListener();
-    }, [db, itemId, currentUser.uid, isOwner]);
-
-    const renderCursorIndicators = () => {
-        if (!isOwner) return null;
-        
-        const textarea = textareaRef.current;
-        if (!textarea || cursorPositions.size === 0) return null;
-
-        const indicators = [];
-        cursorPositions.forEach((cursor, userId) => {
-            const textBeforeCursor = localValue.substring(0, cursor.position);
-            const lines = textBeforeCursor.split('\n');
-            const lineNumber = lines.length;
-            const columnNumber = lines[lines.length - 1].length;
-
-            const topOffset = (lineNumber - 1) * 20;
-            const leftOffset = columnNumber * 8;
-
-            indicators.push(
-                <div
-                    key={userId}
-                    className="absolute pointer-events-none z-10"
-                    style={{
-                        top: topOffset + 'px',
-                        left: leftOffset + 'px',
-                        transform: 'translateX(-50%)'
-                    }}
-                >
-                    <div className="flex flex-col items-center">
-                        <div className="w-0.5 h-5 bg-blue-500 animate-pulse"></div>
-                        <div className="bg-blue-500 text-white text-xs px-1 py-0.5 rounded whitespace-nowrap">
-                            {cursor.userName}
-                        </div>
-                    </div>
-                </div>
-            );
-        });
-
-        return (
-            <div className="absolute inset-0 pointer-events-none">
-                {indicators}
-            </div>
-        );
     };
 
-    const textareaProps = {
-        ref: textareaRef,
-        value: localValue,
-        onChange: handleChange,
-        onFocus: handleFocus,
-        onBlur: handleBlur,
-        onSelect: handleCursorChange,
-        onClick: handleCursorChange,
-        onKeyUp: handleCursorChange,
-        className: `w-full form-input relative z-0 ${className} ${isReadOnly ? 'bg-gray-50 dark:bg-gray-700 cursor-not-allowed' : ''}`,
-        placeholder: isReadOnly ? 'Read-only: Another user is editing' : placeholder,
-        rows: rows,
-        disabled: isReadOnly,
-        readOnly: isReadOnly
+    const handleEdit = async () => {
+        const success = await startEditingStory(item.id, item);
+        if (!success) {
+            console.log('Could not start editing story');
+        }
     };
+
+    const handleClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.ctrlKey || e.metaKey) {
+            onSelect(item.id, true);
+        } else {
+            onSelect(item.id, false);
+        }
+    };
+
+    const itemClasses = `
+        group relative cursor-pointer
+        ${isDragging ? 'opacity-50' : 'opacity-100'} 
+        ${isLocked ? 'opacity-75' : ''} 
+        ${isSelected ? 'bg-blue-100 dark:bg-blue-800/50 border-l-4 border-blue-500' : ''}
+        ${isBeingEditedByOther ? 'bg-orange-50 dark:bg-orange-900/10 border-l-4 border-orange-500' : ''}
+        border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors
+    `;
 
     return (
-        <div className="relative">
-            <textarea {...textareaProps} />
-            {renderCursorIndicators()}
-
-            {pendingOperations.length > 0 && isOwner && (
-                <div className="absolute top-2 right-2 bg-yellow-100 border border-yellow-300 rounded px-2 py-1 text-xs">
-                    Syncing changes...
+        <div
+            ref={ref}
+            data-handler-id={handlerId}
+            className={itemClasses}
+            onClick={handleClick}
+        >
+            <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 min-h-[44px] relative">
+                <div className="col-span-1 flex justify-center">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'
+                        }`}>
+                        {index + 1}
+                    </div>
                 </div>
-            )}
 
-            {isReadOnly && appState.editingStoryTakenOverBy && (
-                <div className="absolute top-2 right-2 bg-orange-100 border border-orange-300 rounded px-2 py-1 text-xs">
-                    {appState.editingStoryTakenOverBy} is editing
+                <div className="col-span-4 overflow-hidden">
+                    <h4 className="font-medium text-sm break-words overflow-wrap-anywhere">
+                        {item.title}
+                        {isLocked && <CustomIcon name="lock" size={32} className="text-red-500 inline ml-2" />}
+                    </h4>
                 </div>
-            )}
+
+                <div className="col-span-1 flex justify-center">
+                    {isBeingEditedByOther ? (
+                        <div className="flex items-center justify-center">
+                            <div
+                                className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
+                                title={`${editingUser.userName} is editing`}
+                            >
+                                {editingUser.userName?.charAt(0)}
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
+                                className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
+                                title={`${lockInfo.owner?.userName} is editing`}
+                            >
+                                {lockInfo.owner?.userName?.charAt(0)}
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
+
+                <div className="col-span-2 flex gap-1 justify-start flex-wrap">
+                    {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
+                        <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
+                            {t}
+                        </span>
+                    ))}
+                </div>
+
+                <div className="col-span-1">
+                    <select
+                        value={item.storyStatus || 'Ready for Air'}
+                        onChange={(e) => handleStatusChange(e.target.value)}
+                        disabled={isLocked || isBeingEditedByOther}
+                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${(isLocked || isBeingEditedByOther) ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                        onClick={e => e.stopPropagation()}
+                        title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : ''}
+                    >
+                        {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                </div>
+
+                <div className="col-span-1 text-center">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">{item.duration}</span>
+                </div>
+
+                <div className="col-span-2 text-left overflow-hidden">
+                    {author ? (
+                        <span className="text-xs text-gray-500 truncate block" title={author.name}>
+                            {author.name.length > 10 ? author.name.substring(0, 10) + '...' : author.name}
+                        </span>
+                    ) : (
+                        <span className="text-xs text-gray-400">No Author</span>
+                    )}
+                </div>
+
+                <div className="col-span-1 flex justify-end">
+                    {!isLocked && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {!isBeingEditedByOther && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleEdit(); }}
+                                    className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
+                                    title="Edit item"
+                                >
+                                    <CustomIcon name="edit" size={32} />
+                                </button>
+                            )}
+
+                            {userPermissions.canDeleteAnything && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
+                                    disabled={isBeingEditedByOther}
+                                    className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'
+                                        }`}
+                                    title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Delete item'}
+                                >
+                                    <CustomIcon name="delete" size={32} />
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };
 
-export default CollaborativeTextEditor;
+export default React.memo(RundownDraggableItem);
