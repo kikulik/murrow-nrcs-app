@@ -1,5 +1,4 @@
 // src/features/admin/components/GroupEditor.jsx
-// Inline group editor component
 import React, { useState } from 'react';
 import InputField from '../../../components/ui/InputField';
 
