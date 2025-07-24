@@ -13,11 +13,11 @@ import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalc
 const StoryEditTab = () => {
     const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
-    const {
-        stopEditingStory,
-        saveStoryProgress,
+    const { 
+        stopEditingStory, 
+        saveStoryProgress, 
         getStoryProgress,
-        safeUpdateRundown
+        safeUpdateRundown 
     } = useCollaboration();
 
     const [formData, setFormData] = useState({
