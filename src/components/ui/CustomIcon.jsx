@@ -1,7 +1,9 @@
+// src/components/ui/CustomIcon.jsx
 import React from 'react';
 
 const CustomIcon = ({ name, size = 40, className = '', alt = '' }) => {
     const getIconPath = (iconName) => {
+        // Assuming icons are in the public folder
         return `/assets/icons/${iconName}.png`;
     };
 
