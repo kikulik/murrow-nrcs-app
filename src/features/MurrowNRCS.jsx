@@ -70,26 +70,8 @@ const MurrowNRCS = () => {
                         </div>
 
                         <div className="flex items-center space-x-4">
-                            {/* Collaboration indicator */}
-                            {activeUsers.length > 0 && (
-                                <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
-                                    <div className="flex -space-x-1">
-                                        {activeUsers.slice(0, 3).map(user => (
-                                            <div
-                                                key={user.id}
-                                                className="w-6 h-6 rounded-full bg-sky-500 flex items-center justify-center text-white text-xs font-bold border-2 border-white"
-                                                title={user.userName}
-                                            >
-                                                {user.userName.charAt(0)}
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {activeUsers.length > 3 && (
-                                        <span className="text-xs">+{activeUsers.length - 3} more</span>
-                                    )}
-                                    <span className="text-xs">online</span>
-                                </div>
-                            )}
+                            {/* Active users dropdown */}
+                            <ActiveUsersPanel />
 
                             <span className="text-sm hidden sm:inline">
                                 Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})
@@ -132,9 +114,6 @@ const MurrowNRCS = () => {
                 {appState.activeTab === 'admin' && <AdminTab />}
                 {appState.activeTab === 'live' && activeRundown && <LiveModeTab liveMode={liveMode} />}
             </main>
-
-            {/* Active users panel */}
-            <ActiveUsersPanel />
 
             {/* Chat component with sky blue theme */}
             <Chatbox
