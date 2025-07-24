@@ -7,8 +7,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { useCollaboration } from '../../../context/CollaborationContext';
 import { getStatusColor, getRundownTypeColor } from '../../../utils/styleHelpers';
 import { RUNDOWN_STORY_STATUSES } from '../../../lib/constants';
+import { getUserPermissions } from '../../../lib/permissions';
 import RundownItemEditor from './RundownItemEditor';
-import UserPresenceIndicator from '../../../components/collaboration/UserPresenceIndicator';
 
 const RundownDraggableItem = ({
     item,
@@ -20,7 +20,10 @@ const RundownDraggableItem = ({
     onToggleEdit,
     onSave,
     onCancel,
-    onDeleteItem
+    onDeleteItem,
+    isSelected,
+    onSelect,
+    onTakeOverItem
 }) => {
     const { appState } = useAppContext();
     const { db, currentUser } = useAuth();
@@ -33,16 +36,13 @@ const RundownDraggableItem = ({
     } = useCollaboration();
     const ref = useRef(null);
     const [localItem, setLocalItem] = useState(item);
-    const [hasConflict, setHasConflict] = useState(false);
+
+    const userPermissions = getUserPermissions(currentUser.role);
 
     // Sync local state with prop changes
     useEffect(() => {
-        // Check for conflicts
-        if (item.version && localItem.version && item.version > localItem.version) {
-            setHasConflict(true);
-        }
         setLocalItem(item);
-    }, [item, localItem.version]);
+    }, [item]);
 
     const [{ handlerId }, drop] = useDrop({
         accept: 'rundownItem',
@@ -50,7 +50,7 @@ const RundownDraggableItem = ({
             return { handlerId: monitor.getHandlerId() };
         },
         hover(draggedItem, monitor) {
-            if (!ref.current || isLocked || isEditing) return;
+            if (!ref.current || isLocked || isEditing || !userPermissions.canMoveRundownItems) return;
             const dragIndex = draggedItem.index;
             const hoverIndex = index;
             if (dragIndex === hoverIndex) return;
@@ -71,13 +71,13 @@ const RundownDraggableItem = ({
     const [{ isDragging }, drag] = useDrag({
         type: 'rundownItem',
         item: () => ({ id: item.id, index }),
-        canDrag: canDrag && !isLocked && !isEditing && !isItemBeingEdited(item.id),
+        canDrag: canDrag && !isLocked && !isEditing && !isItemBeingEdited(item.id) && userPermissions.canMoveRundownItems,
         collect: (monitor) => ({
             isDragging: monitor.isDragging(),
         }),
     });
 
-    if (canDrag && !isLocked) {
+    if (canDrag && !isLocked && userPermissions.canMoveRundownItems) {
         drag(drop(ref));
     } else {
         drop(ref);
@@ -111,21 +111,31 @@ const RundownDraggableItem = ({
             }));
         } catch (error) {
             console.error("Error updating story status:", error);
-            // Show conflict resolution if needed
-            if (error.message.includes('conflict')) {
-                setHasConflict(true);
-            }
         }
     };
 
     const handleEdit = async () => {
         if (isBeingEditedByOther) {
-            alert(`This item is currently being edited by ${editingUser.userName}. Please wait or coordinate with them.`);
+            const result = confirm(`${editingUser.userName} is currently editing this item. Do you want to take over?`);
+            if (result && onTakeOverItem) {
+                await onTakeOverItem(item.id, editingUser.userId);
+            }
             return;
         }
 
         await setEditingItem(item.id);
         onToggleEdit(item.id);
+    };
+
+    const handleClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.ctrlKey || e.metaKey) {
+            onSelect(item.id, true); // Multi-select
+        } else {
+            onSelect(item.id, false); // Single select
+        }
     };
 
     if (isEditing) {
@@ -139,11 +149,11 @@ const RundownDraggableItem = ({
     }
 
     const itemClasses = `
-        group relative 
+        group relative cursor-pointer
         ${isDragging ? 'opacity-50' : 'opacity-100'} 
         ${isLocked ? 'opacity-75' : ''} 
-        ${isBeingEditedByOther ? 'bg-blue-50 dark:bg-blue-900/20' : ''}
-        ${hasConflict ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : ''}
+        ${isBeingEditedByOther ? 'bg-orange-50 dark:bg-orange-900/20' : ''}
+        ${isSelected ? 'bg-blue-100 dark:bg-blue-800/50 border-l-4 border-blue-500' : ''}
         border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors
     `;
 
@@ -152,29 +162,31 @@ const RundownDraggableItem = ({
             ref={ref}
             data-handler-id={handlerId}
             className={itemClasses}
+            onClick={handleClick}
         >
-            <div className="grid grid-cols-12 items-center gap-2 px-4 py-1 min-h-[40px]">
+            <div className="grid grid-cols-12 items-center gap-2 px-4 py-2 min-h-[44px] relative">
                 <div className="col-span-1 flex justify-center">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium bg-gray-100 dark:bg-gray-600">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'
+                        }`}>
                         {index + 1}
                     </div>
                 </div>
 
                 <div className="col-span-5 relative">
-                    <h4 className="font-medium truncate text-sm pr-2">
+                    <h4 className="font-medium truncate text-sm pr-8">
                         {item.title}
-                        {isLocked && <CustomIcon name="lock" size={20} className="text-red-500 inline ml-2" />}
-                        {hasConflict && (
-                            <span className="inline-flex items-center ml-2 px-1 py-0.5 text-xs bg-red-100 text-red-800 rounded">
-                                Conflict
-                            </span>
-                        )}
+                        {isLocked && <CustomIcon name="lock" size={16} className="text-red-500 inline ml-2" />}
                     </h4>
 
-                    {/* Show user presence indicator */}
+                    {/* User presence indicator - positioned carefully to not overlap title */}
                     {isBeingEditedByOther && (
-                        <div className="absolute -bottom-1 left-0">
-                            <UserPresenceIndicator itemId={item.id} className="text-xs" />
+                        <div className="absolute -top-1 right-0 flex items-center gap-1">
+                            <div className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold">
+                                {editingUser.userName.charAt(0)}
+                            </div>
+                            <span className="text-xs text-orange-600 bg-orange-100 px-1 rounded">
+                                {editingUser.userName}
+                            </span>
                         </div>
                     )}
                 </div>
@@ -212,44 +224,46 @@ const RundownDraggableItem = ({
                     ) : (
                         <span className="text-xs text-gray-400">No Author</span>
                     )}
-
-                    {/* Version info */}
-                    {item.version && (
-                        <div className="text-xs text-gray-400">
-                            v{item.version}
-                        </div>
-                    )}
                 </div>
 
                 {!isLocked && (
                     <div className="absolute top-1 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {hasConflict && (
+                        {isBeingEditedByOther && userPermissions.canTakeOverStories ? (
                             <button
-                                onClick={(e) => { e.stopPropagation(); /* Show conflict resolution modal */ }}
-                                className="p-1 text-red-500 hover:text-red-700 rounded"
-                                title="Resolve conflict"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const result = confirm(`${editingUser.userName} is currently editing this item. Do you want to take over?`);
+                                    if (result && onTakeOverItem) {
+                                        onTakeOverItem(item.id, editingUser.userId);
+                                    }
+                                }}
+                                className="p-1 text-orange-500 hover:text-orange-700 rounded bg-white border border-orange-300 shadow-sm"
+                                title={`Take over from ${editingUser.userName}`}
                             >
-                                <CustomIcon name="notification" size={20} />
+                                <CustomIcon name="user" size={16} />
                             </button>
+                        ) : (
+                            !isBeingEditedByOther && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleEdit(); }}
+                                    className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                                    title="Edit item"
+                                >
+                                    <CustomIcon name="edit" size={16} />
+                                </button>
+                            )
                         )}
 
-                        <button
-                            onClick={(e) => { e.stopPropagation(); handleEdit(); }}
-                            disabled={isBeingEditedByOther}
-                            className={`p-1 rounded ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-blue-600'}`}
-                            title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Edit item'}
-                        >
-                            <CustomIcon name="edit" size={20} />
-                        </button>
-
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
-                            disabled={isBeingEditedByOther}
-                            className={`p-1 rounded ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`}
-                            title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Delete item'}
-                        >
-                            <CustomIcon name="delete" size={20} />
-                        </button>
+                        {userPermissions.canDeleteAnything && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
+                                disabled={isBeingEditedByOther}
+                                className={`p-1 rounded ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`}
+                                title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Delete item'}
+                            >
+                                <CustomIcon name="delete" size={16} />
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
