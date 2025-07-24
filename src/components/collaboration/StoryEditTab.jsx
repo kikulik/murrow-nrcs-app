@@ -1,5 +1,4 @@
 // src/components/collaboration/StoryEditTab.jsx
-
 import React, { useState, useEffect, useCallback } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
@@ -12,17 +11,14 @@ import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
 
 const StoryEditTab = () => {
-    const { currentUser, db } = useAuth();
+    const { currentUser } = useAuth();
     const { appState, setAppState } = useAppContext();
     const { 
         stopEditingStory, 
         saveStoryProgress, 
         getStoryProgress,
         safeUpdateRundown,
-        getItemLockInfo,
-        isCurrentUserOwner,
         takeOverStory,
-        getUserEditingItem
     } = useCollaboration();
 
     const [formData, setFormData] = useState({
@@ -74,9 +70,8 @@ const StoryEditTab = () => {
         if (!isOwner && !isReadOnly) {
             const interval = setInterval(async () => {
                 if (itemId && appState.editingStoryData) {
-                    const currentData = appState.rundowns
-                        .find(r => r.id === appState.activeRundownId)
-                        ?.items?.find(item => item.id === itemId);
+                    const rundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
+                    const currentData = rundown?.items?.find(item => item.id === itemId);
                     
                     if (currentData && currentData.content !== realTimeContent) {
                         setRealTimeContent(currentData.content || '');
@@ -144,23 +139,21 @@ const StoryEditTab = () => {
     };
 
     const handleTakeOver = async () => {
-        if (!takenOverBy) return;
+        if (!takenOverBy || !itemId) return;
         
-        const confirmed = confirm(`${takenOverBy} is currently editing this story. Do you want to take over? Their progress will be saved.`);
+        const confirmed = window.confirm(`${takenOverBy} is currently editing this story. Do you want to take over? Their progress will be saved.`);
         if (!confirmed) return;
 
-        if (collaborationManager.current) {
-            const success = await collaborationManager.current.setEditingItem(itemId);
-            if (success) {
-                setAppState(prev => ({
-                    ...prev,
-                    editingStoryIsOwner: true,
-                    editingStoryTakenOver: false,
-                    editingStoryTakenOverBy: null
-                }));
-            } else {
-                alert('Failed to take over the story. Please try again.');
-            }
+        const success = await takeOverStory(itemId, null); // We don't have the previous user's ID here, but the backend logic can handle it
+        if (success) {
+            setAppState(prev => ({
+                ...prev,
+                editingStoryIsOwner: true,
+                editingStoryTakenOver: false,
+                editingStoryTakenOverBy: null
+            }));
+        } else {
+            alert('Failed to take over the story. Please try again.');
         }
     };
 
@@ -200,7 +193,7 @@ const StoryEditTab = () => {
 
     const handleClose = async () => {
         if (hasUnsavedChanges && isOwner) {
-            const shouldSave = confirm('You have unsaved changes. Do you want to save before closing?');
+            const shouldSave = window.confirm('You have unsaved changes. Do you want to save before closing?');
             if (shouldSave) {
                 await autoSave();
             }
