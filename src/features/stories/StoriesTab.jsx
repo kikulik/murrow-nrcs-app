@@ -10,12 +10,12 @@ import {
     getStoriesInFolder,
     sortFoldersByDate,
     generateDateFolder,
-    createStoryFolder
+    createStoryFolder,
+    parseFolderPath
 } from '../../utils/folderHelpers';
 import StoryCard from './components/StoryCard';
 import SendStoryToRundownModal from './components/SendStoryToRundownModal';
 import CreateFolderModal from './components/CreateFolderModal';
-
 const StoriesTab = () => {
     const { currentUser } = useAuth();
     const { appState, setAppState } = useAppContext();
@@ -26,27 +26,35 @@ const StoriesTab = () => {
     const [showCreateFolder, setShowCreateFolder] = useState(false);
 
     const userPermissions = getUserPermissions(currentUser.role);
-
     // Organize stories by folders
     const folderStructure = useMemo(() => {
         const folderMap = getFoldersByDate(appState.stories);
-        const sortedDates = sortFoldersByDate(Array.from(folderMap.keys()));
 
-        // Add current date if no stories exist yet
+        // Also include folders that were created but are empty
+        (appState.createdFolders || []).forEach(folderPath => {
+            const { dateFolder, subFolder } = parseFolderPath(folderPath);
+            if (!folderMap.has(dateFolder)) {
+                folderMap.set(dateFolder, new Set());
+            }
+            if (subFolder) {
+                folderMap.get(dateFolder).add(subFolder);
+            }
+        });
+
+        // Ensure current date folder exists
         const currentDate = generateDateFolder();
         if (!folderMap.has(currentDate)) {
             folderMap.set(currentDate, new Set());
         }
 
-        const allDates = [...new Set([...sortedDates, currentDate])];
+        const allDates = sortFoldersByDate(Array.from(folderMap.keys()));
 
         return allDates.map(dateFolder => ({
             dateFolder,
             subFolders: Array.from(folderMap.get(dateFolder) || []).sort(),
             stories: getStoriesInFolder(appState.stories, dateFolder)
         }));
-    }, [appState.stories]);
-
+    }, [appState.stories, appState.createdFolders]);
     // Filter stories based on search and selected folder
     const filteredStories = useMemo(() => {
         let stories = appState.stories;
@@ -70,7 +78,6 @@ const StoriesTab = () => {
 
     const myAuthoredStories = filteredStories.filter(story => story.authorId === (currentUser.id || currentUser.uid));
     const myAssignedTasks = appState.assignments.filter(assignment => assignment.assigneeId === (currentUser.id || currentUser.uid));
-
     const updateSearchTerm = (term) => {
         setAppState(prev => ({ ...prev, searchTerm: term }));
     };
@@ -85,7 +92,6 @@ const StoriesTab = () => {
             }
         }));
     };
-
     const handleDeleteStory = (storyId) => {
         setAppState(prev => ({
             ...prev,
@@ -96,7 +102,6 @@ const StoriesTab = () => {
     const handleEditStory = (story) => {
         openStoryEditor(story);
     };
-
     const toggleFolder = (folderPath) => {
         setExpandedFolders(prev => {
             const newSet = new Set(prev);
@@ -154,9 +159,9 @@ const StoriesTab = () => {
                                     className="w-4 h-4 mr-2 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                                 >
                                     {expandedFolders.has(dateFolder) ? (
-                                        <span className="text-xs">▼</span>
+                                        <span className="text-xs">â–¼</span>
                                     ) : (
-                                        <span className="text-xs">▶</span>
+                                        <span className="text-xs">â–¶</span>
                                     )}
                                 </button>
                                 <div
@@ -173,7 +178,6 @@ const StoriesTab = () => {
                             {expandedFolders.has(dateFolder) && subFolders.map(subFolder => {
                                 const fullPath = createStoryFolder(dateFolder, subFolder);
                                 const subFolderStories = getStoriesInFolder(appState.stories, fullPath);
-
                                 return (
                                     <div
                                         key={fullPath}
@@ -286,8 +290,7 @@ const StoriesTab = () => {
                                 <div className="text-center py-12 text-gray-500">
                                     {appState.searchTerm || selectedFolder
                                         ? 'No stories found matching your criteria.'
-                                        : 'No stories yet. Create your first story!'
-                                    }
+                                        : 'No stories yet. Create your first story!'}
                                 </div>
                             )}
                         </div>
