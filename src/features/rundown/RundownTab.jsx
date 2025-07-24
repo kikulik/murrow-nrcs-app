@@ -1,17 +1,17 @@
+// src/features/rundown/RundownTab.jsx
 import React, { useState, useEffect } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { useCollaboration } from '../../context/CollaborationContext';
 import { getUserPermissions } from '../../lib/permissions';
 import { calculateTotalDuration, formatDuration } from '../../utils/helpers';
 import RundownList from './components/RundownList';
 import PrintDropdown from './components/PrintDropdown';
+import { doc, updateDoc } from 'firebase/firestore';
 
 const RundownTab = ({ liveMode }) => {
     const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
-    const { takeOverItem } = useCollaboration();
     const [selectedItems, setSelectedItems] = useState([]);
     const [copiedItems, setCopiedItems] = useState([]);
 
@@ -41,16 +41,13 @@ const RundownTab = ({ liveMode }) => {
 
     const formatAirDate = (airDate) => {
         if (!airDate) return 'No air date set';
-        const date = new Date(airDate);
-        return date.toLocaleString();
+        return new Date(airDate).toLocaleString();
     };
 
     const getAirTime = (airDate) => {
         if (!airDate) return '12:00';
         const date = new Date(airDate);
-        const hours = date.getHours();
-        const minutes = date.getMinutes();
-        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
     };
 
     const handleDeleteRundown = () => {
@@ -64,11 +61,10 @@ const RundownTab = ({ liveMode }) => {
     const handleArchiveRundown = async () => {
         if (!currentRundown || !db) return;
 
-        const confirmArchive = confirm(`Are you sure you want to archive "${currentRundown.name}"?`);
+        const confirmArchive = window.confirm(`Are you sure you want to archive "${currentRundown.name}"?`);
         if (!confirmArchive) return;
 
         try {
-            const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
             const rundownRef = doc(db, "rundowns", currentRundown.id);
             await updateDoc(rundownRef, { archived: true });
 
@@ -82,7 +78,6 @@ const RundownTab = ({ liveMode }) => {
 
     const handleRundownItemUpdate = async (updatedItems) => {
         if (!db || !currentRundown) return;
-        const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
         const rundownRef = doc(db, "rundowns", currentRundown.id);
         try {
             await updateDoc(rundownRef, { items: updatedItems });
