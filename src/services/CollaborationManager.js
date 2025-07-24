@@ -6,6 +6,7 @@ export class CollaborationManager {
         this.presenceRef = null;
         this.presenceListeners = new Map();
         this.currentEditingItem = null;
+        this.presenceInterval = null;
     }
 
     // Optimistic Locking
@@ -29,45 +30,49 @@ export class CollaborationManager {
 
     // User Presence Management
     async startPresenceTracking(rundownId) {
-        if (!this.db || !this.currentUser) return;
+        if (!this.db || !this.currentUser || this.presenceRef) return;
 
         try {
             const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
             const presenceDoc = doc(this.db, "presence", `${rundownId}_${this.currentUser.uid}`);
 
-            // Set user presence
-            await setDoc(presenceDoc, {
+            // Set user presence initially
+            const presenceData = {
                 userId: this.currentUser.uid,
                 userName: this.currentUser.name,
                 rundownId,
                 lastSeen: new Date().toISOString(),
                 isActive: true,
                 editingItem: null
-            });
+            };
 
-            // Update presence every 30 seconds
+            await setDoc(presenceDoc, presenceData);
+
+            // Update presence every 45 seconds (increased to reduce rapid updates)
             this.presenceInterval = setInterval(async () => {
                 try {
                     await setDoc(presenceDoc, {
-                        userId: this.currentUser.uid,
-                        userName: this.currentUser.name,
-                        rundownId,
+                        ...presenceData,
                         lastSeen: new Date().toISOString(),
-                        isActive: true,
                         editingItem: this.currentEditingItem || null
                     });
                 } catch (error) {
                     console.error('Error updating presence:', error);
                 }
-            }, 30000);
+            }, 45000);
 
             // Clean up on page unload
-            window.addEventListener('beforeunload', () => {
+            const handleBeforeUnload = () => {
                 this.stopPresenceTracking();
-            });
+            };
+
+            window.addEventListener('beforeunload', handleBeforeUnload);
 
             this.presenceRef = presenceDoc;
+            this.cleanup = () => {
+                window.removeEventListener('beforeunload', handleBeforeUnload);
+            };
         } catch (error) {
             console.error('Error starting presence tracking:', error);
         }
@@ -83,9 +88,14 @@ export class CollaborationManager {
             try {
                 const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
                 await deleteDoc(this.presenceRef);
+                this.presenceRef = null;
             } catch (error) {
                 console.error('Error stopping presence tracking:', error);
             }
+        }
+
+        if (this.cleanup) {
+            this.cleanup();
         }
     }
 
@@ -119,12 +129,12 @@ export class CollaborationManager {
             const presenceDocs = await getDocs(presenceQuery);
 
             // Clear previous user's editing status
-            presenceDocs.forEach(async (presenceDoc) => {
+            for (const presenceDoc of presenceDocs.docs) {
                 await updateDoc(presenceDoc.ref, {
                     editingItem: null,
                     lastSeen: new Date().toISOString()
                 });
-            });
+            }
 
             // Set current user as editor
             await this.setEditingItem(itemId);
@@ -150,45 +160,43 @@ export class CollaborationManager {
         }
     }
 
-    listenToPresence(rundownId, callback) {
+    async listenToPresence(rundownId, callback) {
         if (!this.db) return () => { };
 
-        const setupListener = async () => {
-            try {
-                const { collection, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+        try {
+            const { collection, query, where, onSnapshot } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
-                const presenceQuery = query(
-                    collection(this.db, "presence"),
-                    where("rundownId", "==", rundownId)
-                );
+            const presenceQuery = query(
+                collection(this.db, "presence"),
+                where("rundownId", "==", rundownId)
+            );
 
-                return onSnapshot(presenceQuery, (snapshot) => {
-                    const activeUsers = [];
-                    const now = new Date();
+            return onSnapshot(presenceQuery, (snapshot) => {
+                const activeUsers = [];
+                const now = new Date();
 
-                    snapshot.docs.forEach(doc => {
-                        const data = doc.data();
-                        const lastSeen = new Date(data.lastSeen);
-                        const minutesAgo = (now - lastSeen) / (1000 * 60);
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (!data.lastSeen) return;
 
-                        // Consider users active if seen within last 2 minutes
-                        if (minutesAgo < 2 && data.userId !== this.currentUser.uid) {
-                            activeUsers.push({
-                                ...data,
-                                id: doc.id
-                            });
-                        }
-                    });
+                    const lastSeen = new Date(data.lastSeen);
+                    const minutesAgo = (now - lastSeen) / (1000 * 60);
 
-                    callback(activeUsers);
+                    // Consider users active if seen within last 3 minutes (increased tolerance)
+                    if (minutesAgo < 3 && data.userId !== this.currentUser.uid) {
+                        activeUsers.push({
+                            ...data,
+                            id: doc.id
+                        });
+                    }
                 });
-            } catch (error) {
-                console.error('Error setting up presence listener:', error);
-                return () => { };
-            }
-        };
 
-        return setupListener();
+                callback(activeUsers);
+            });
+        } catch (error) {
+            console.error('Error setting up presence listener:', error);
+            return () => { };
+        }
     }
 
     // Operational Transforms for text editing
