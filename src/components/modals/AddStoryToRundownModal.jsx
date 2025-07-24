@@ -1,3 +1,4 @@
+// src/components/modals/AddStoryToRundownModal.jsx
 import React, { useState, useEffect } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
@@ -7,6 +8,7 @@ import InputField from '../ui/InputField';
 import SelectField from '../ui/SelectField';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 const AddStoryToRundownModal = ({ onCancel }) => {
     const { appState } = useAppContext();
@@ -81,8 +83,6 @@ const AddStoryToRundownModal = ({ onCancel }) => {
 
         setSaving(true);
         try {
-            const { doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
             const rundownRef = doc(db, "rundowns", appState.activeRundownId);
             const rundownDoc = await getDoc(rundownRef);
 
