@@ -1,3 +1,5 @@
+// src/context/CollaborationContext.jsx
+
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useAppContext } from './AppContext';
@@ -11,9 +13,11 @@ export const CollaborationProvider = ({ children }) => {
     const [activeUsers, setActiveUsers] = useState([]);
     const [editingSessions, setEditingSessions] = useState(new Map());
     const [notifications, setNotifications] = useState([]);
+    const [itemLocks, setItemLocks] = useState(new Map());
     const collaborationManager = useRef(null);
     const presenceUnsubscribe = useRef(null);
     const notificationsUnsubscribe = useRef(null);
+    const lockListeners = useRef(new Map());
 
     useEffect(() => {
         if (db && currentUser) {
@@ -31,6 +35,7 @@ export const CollaborationProvider = ({ children }) => {
             if (notificationsUnsubscribe.current) {
                 notificationsUnsubscribe.current();
             }
+            lockListeners.current.forEach(unsubscribe => unsubscribe());
         };
     }, [db, currentUser]);
 
@@ -101,6 +106,7 @@ export const CollaborationProvider = ({ children }) => {
                 sessions.set(user.editingItem, {
                     userId: user.userId,
                     userName: user.userName,
+                    isOwner: user.isOwner || false,
                     timestamp: Date.now()
                 });
             }
@@ -125,7 +131,7 @@ export const CollaborationProvider = ({ children }) => {
                 setAppState(prev => ({
                     ...prev,
                     editingStoryTakenOver: true,
-                    editingStoryTakenOverBy: notification.message.match(/by (.+)$/)?.[1] || 'another user'
+                    editingStoryTakenOverBy: notification.message.match(/(.+) has taken over/)?.[1] || 'another user'
                 }));
             }
 
@@ -133,6 +139,29 @@ export const CollaborationProvider = ({ children }) => {
                 markNotificationAsRead(notification.id);
             }, 5000);
         }
+    };
+
+    const setupItemLockListener = async (itemId) => {
+        if (!collaborationManager.current || lockListeners.current.has(itemId)) return;
+
+        const unsubscribe = await collaborationManager.current.listenToItemLock(itemId, (lockInfo) => {
+            setItemLocks(prev => new Map(prev.set(itemId, lockInfo)));
+        });
+
+        lockListeners.current.set(itemId, unsubscribe);
+    };
+
+    const cleanupItemLockListener = (itemId) => {
+        const unsubscribe = lockListeners.current.get(itemId);
+        if (unsubscribe) {
+            unsubscribe();
+            lockListeners.current.delete(itemId);
+        }
+        setItemLocks(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(itemId);
+            return newMap;
+        });
     };
 
     const markNotificationAsRead = async (notificationId) => {
@@ -146,47 +175,41 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const startEditingStory = async (itemId, storyData) => {
-        const existingEditor = editingSessions.get(itemId);
+        await setupItemLockListener(itemId);
         
-        if (existingEditor && existingEditor.userId !== currentUser.uid) {
-            const shouldTakeOver = confirm(
-                `${existingEditor.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`
-            );
-            
-            if (!shouldTakeOver) {
-                return false;
-            }
-
-            const success = await takeOverStory(itemId, existingEditor.userId);
-            if (!success) {
-                alert('Failed to take over the story. Please try again.');
-                return false;
-            }
-        }
-
         await collaborationManager.current?.setEditingItem(itemId);
+        
+        const isOwner = collaborationManager.current?.isOwner || false;
         
         setAppState(prev => ({
             ...prev,
             activeTab: 'storyEdit',
             editingStoryId: itemId,
             editingStoryData: storyData,
-            editingStoryTakenOver: false,
-            editingStoryTakenOverBy: null
+            editingStoryTakenOver: !isOwner,
+            editingStoryTakenOverBy: null,
+            editingStoryIsOwner: isOwner
         }));
 
         return true;
     };
 
     const stopEditingStory = async () => {
+        const itemId = appState.editingStoryId;
+        
         await collaborationManager.current?.setEditingItem(null);
+        
+        if (itemId) {
+            cleanupItemLockListener(itemId);
+        }
         
         setAppState(prev => ({
             ...prev,
             editingStoryId: null,
             editingStoryData: null,
             editingStoryTakenOver: false,
-            editingStoryTakenOverBy: null
+            editingStoryTakenOverBy: null,
+            editingStoryIsOwner: false
         }));
     };
 
@@ -195,6 +218,16 @@ export const CollaborationProvider = ({ children }) => {
 
         try {
             const success = await collaborationManager.current.takeOverItem(itemId, previousUserId);
+            
+            if (success) {
+                setAppState(prev => ({
+                    ...prev,
+                    editingStoryTakenOver: false,
+                    editingStoryTakenOverBy: null,
+                    editingStoryIsOwner: true
+                }));
+            }
+            
             return success;
         } catch (error) {
             console.error('Error taking over story:', error);
@@ -204,6 +237,12 @@ export const CollaborationProvider = ({ children }) => {
 
     const saveStoryProgress = async (itemId, storyData) => {
         if (!db || !itemId) return;
+
+        const lockInfo = itemLocks.get(itemId);
+        if (!lockInfo?.ownedByCurrentUser) {
+            console.warn('Cannot save story progress: not the owner');
+            return;
+        }
 
         try {
             const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
@@ -265,10 +304,20 @@ export const CollaborationProvider = ({ children }) => {
         return session && session.userId !== currentUser.uid;
     };
 
+    const getItemLockInfo = (itemId) => {
+        return itemLocks.get(itemId) || { locked: false, ownedByCurrentUser: false };
+    };
+
+    const isCurrentUserOwner = (itemId) => {
+        const lockInfo = getItemLockInfo(itemId);
+        return lockInfo.ownedByCurrentUser;
+    };
+
     const value = {
         activeUsers,
         editingSessions,
         notifications,
+        itemLocks,
         startEditingStory,
         stopEditingStory,
         takeOverStory,
@@ -279,6 +328,10 @@ export const CollaborationProvider = ({ children }) => {
         safeUpdateRundown,
         getUserEditingItem,
         isItemBeingEdited,
+        getItemLockInfo,
+        isCurrentUserOwner,
+        setupItemLockListener,
+        cleanupItemLockListener,
         markNotificationAsRead,
         CollaborationManager
     };
