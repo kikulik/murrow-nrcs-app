@@ -1,10 +1,11 @@
 // src/context/AppContext.jsx
-// Main app state management
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
 
 const AppContext = createContext();
+
 export const AppProvider = ({ children }) => {
     const { db } = useAuth();
     const [appState, setAppState] = useState({
@@ -23,19 +24,24 @@ export const AppProvider = ({ children }) => {
         searchTerm: '',
         showArchived: false,
         createdFolders: [],
-        // Live mode state
         isLive: false,
         liveTime: 0,
         currentLiveItemIndex: 0,
         liveRundownId: null,
+        editingStoryId: null,
+        editingStoryData: null,
+        editingStoryTakenOver: false,
+        editingStoryTakenOverBy: null,
+        editingStoryIsOwner: false
     });
-    // Setup Firestore listeners
+
     useEffect(() => {
         if (!db) return;
 
         const unsubscribe = setupFirestoreListeners(db, setAppState);
         return unsubscribe;
     }, [db]);
+
     return (
         <AppContext.Provider value={{ appState, setAppState }}>
             {children}
