@@ -56,7 +56,6 @@ const RundownList = ({
     return (
         <DndProvider backend={HTML5Backend}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border">
-                {/* Header row with column labels */}
                 <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300">
                     <div className="col-span-1 text-center">#</div>
                     <div className="col-span-4">Title</div>
