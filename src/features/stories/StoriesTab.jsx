@@ -1,5 +1,4 @@
-// src/features/stories/StoriesTab.jsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -18,7 +17,7 @@ import SendStoryToRundownModal from './components/SendStoryToRundownModal';
 import CreateFolderModal from './components/CreateFolderModal';
 
 const StoriesTab = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
     const [view, setView] = useState('all');
     const [sendToRundownModalStory, setSendToRundownModalStory] = useState(null);
@@ -28,11 +27,52 @@ const StoriesTab = () => {
 
     const userPermissions = getUserPermissions(currentUser.role);
 
-    // Organize stories by folders
+    useEffect(() => {
+        const saveCreatedFolders = async () => {
+            if (appState.createdFolders && appState.createdFolders.length > 0 && db) {
+                try {
+                    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+                    const userFoldersRef = doc(db, "userFolders", currentUser.uid);
+                    await setDoc(userFoldersRef, {
+                        folders: appState.createdFolders,
+                        lastUpdated: new Date().toISOString()
+                    }, { merge: true });
+                } catch (error) {
+                    console.error('Error saving folders:', error);
+                }
+            }
+        };
+
+        saveCreatedFolders();
+    }, [appState.createdFolders, db, currentUser.uid]);
+
+    useEffect(() => {
+        const loadCreatedFolders = async () => {
+            if (db && currentUser.uid) {
+                try {
+                    const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+                    const userFoldersRef = doc(db, "userFolders", currentUser.uid);
+                    const folderDoc = await getDoc(userFoldersRef);
+                    
+                    if (folderDoc.exists()) {
+                        const data = folderDoc.data();
+                        setAppState(prev => ({
+                            ...prev,
+                            createdFolders: data.folders || []
+                        }));
+                    }
+                } catch (error) {
+                    console.error('Error loading folders:', error);
+                }
+            }
+        };
+
+        loadCreatedFolders();
+    }, [db, currentUser.uid, setAppState]);
+
     const folderStructure = useMemo(() => {
         const folderMap = getFoldersByDate(appState.stories);
 
-        // Also include folders that were created but are empty
         (appState.createdFolders || []).forEach(folderPath => {
             const { dateFolder, subFolder } = parseFolderPath(folderPath);
             if (!folderMap.has(dateFolder)) {
@@ -43,7 +83,6 @@ const StoriesTab = () => {
             }
         });
 
-        // Ensure current date folder exists
         const currentDate = generateDateFolder();
         if (!folderMap.has(currentDate)) {
             folderMap.set(currentDate, new Set());
@@ -58,11 +97,9 @@ const StoriesTab = () => {
         }));
     }, [appState.stories, appState.createdFolders]);
 
-    // Filter stories based on search and selected folder
     const filteredStories = useMemo(() => {
         let stories = appState.stories;
 
-        // Filter by search term
         if (appState.searchTerm) {
             stories = stories.filter(story =>
                 story.title.toLowerCase().includes(appState.searchTerm.toLowerCase()) ||
@@ -71,7 +108,6 @@ const StoriesTab = () => {
             );
         }
 
-        // Filter by selected folder
         if (selectedFolder) {
             stories = stories.filter(story => story.folder === selectedFolder);
         }
@@ -129,7 +165,7 @@ const StoriesTab = () => {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border overflow-hidden">
                 <div className="p-3 border-b bg-gray-50 dark:bg-gray-700 flex items-center justify-between">
                     <h3 className="font-medium text-sm flex items-center gap-2">
-                        <CustomIcon name="stories" size={16} />
+                        <CustomIcon name="stories" size={32} />
                         Story Folders
                     </h3>
                     <button
@@ -137,25 +173,23 @@ const StoriesTab = () => {
                         className="p-1 text-gray-500 hover:text-blue-600 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
                         title="Create new folder"
                     >
-                        <CustomIcon name="add story" size={16} />
+                        <CustomIcon name="add story" size={32} />
                     </button>
                 </div>
 
                 <div className="max-h-96 overflow-y-auto">
-                    {/* All Stories option */}
                     <div
                         className={`flex items-center px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer ${selectedFolder === '' ? 'bg-blue-100 dark:bg-blue-900 border-r-2 border-blue-500' : ''
                             }`}
                         onClick={() => selectFolder('')}
                     >
                         <div className="w-4 mr-2"></div>
-                        <CustomIcon name="stories" size={16} className="mr-2 text-blue-600" />
+                        <CustomIcon name="stories" size={32} className="mr-2 text-blue-600" />
                         <span className="text-sm font-medium">All Stories ({appState.stories.length})</span>
                     </div>
 
                     {folderStructure.map(({ dateFolder, subFolders, stories }) => (
                         <div key={dateFolder}>
-                            {/* Date folder */}
                             <div
                                 className={`flex items-center px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 ${selectedFolder === dateFolder ? 'bg-blue-100 dark:bg-blue-900 border-r-2 border-blue-500' : ''
                                     }`}
@@ -164,19 +198,18 @@ const StoriesTab = () => {
                                     onClick={() => toggleFolder(dateFolder)}
                                     className="w-4 h-4 mr-2 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                                 >
-                                    <CustomIcon name={expandedFolders.has(dateFolder) ? "chevron-down" : "chevron-right"} size={12} />
+                                    <CustomIcon name={expandedFolders.has(dateFolder) ? "close" : "add story"} size={32} />
                                 </button>
                                 <div
                                     className="flex items-center flex-1 cursor-pointer"
                                     onClick={() => selectFolder(dateFolder)}
                                 >
-                                    <CustomIcon name="time" size={16} className="mr-2 text-orange-600" />
+                                    <CustomIcon name="time" size={32} className="mr-2 text-orange-600" />
                                     <span className="text-sm">{dateFolder}</span>
                                     <span className="ml-auto text-xs text-gray-500">({stories.length})</span>
                                 </div>
                             </div>
 
-                            {/* Subfolders */}
                             {expandedFolders.has(dateFolder) && subFolders.map(subFolder => {
                                 const fullPath = createStoryFolder(dateFolder, subFolder);
                                 const subFolderStories = getStoriesInFolder(appState.stories, fullPath);
@@ -189,7 +222,7 @@ const StoriesTab = () => {
                                         onClick={() => selectFolder(fullPath)}
                                     >
                                         <div className="w-4 mr-2"></div>
-                                        <CustomIcon name="add story" size={16} className="mr-2 text-green-600" />
+                                        <CustomIcon name="add story" size={32} className="mr-2 text-green-600" />
                                         <span className="text-sm">{subFolder}</span>
                                         <span className="ml-auto text-xs text-gray-500">({subFolderStories.length})</span>
                                     </div>
@@ -230,7 +263,7 @@ const StoriesTab = () => {
                 </div>
                 <div className="flex items-center space-x-3">
                     <div className="relative">
-                        <CustomIcon name="search" size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <CustomIcon name="search" size={32} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
                             placeholder="Search stories..."
@@ -240,25 +273,23 @@ const StoriesTab = () => {
                         />
                     </div>
                     <button onClick={() => openStoryEditor()} className="btn-primary">
-                        <CustomIcon name="add story" size={20} />
+                        <CustomIcon name="add story" size={32} />
                         <span>New Story</span>
                     </button>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                {/* Folder sidebar */}
                 <div className="lg:col-span-1">
                     {renderFolderTree()}
                 </div>
 
-                {/* Stories content */}
                 <div className="lg:col-span-3">
                     {selectedFolder && (
                         <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                    <CustomIcon name="add story" size={16} className="text-blue-600" />
+                                    <CustomIcon name="add story" size={32} className="text-blue-600" />
                                     <span className="font-medium text-blue-800 dark:text-blue-200">
                                         Viewing: {selectedFolder}
                                     </span>
@@ -354,7 +385,7 @@ const AssignmentCard = ({ assignment }) => {
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
             <div className="flex items-center flex-wrap gap-x-3 mb-2">
-                <CustomIcon name="assignments" size={24} className="text-purple-500" />
+                <CustomIcon name="assignments" size={40} className="text-purple-500" />
                 <h3 className="text-lg font-medium">{assignment.title}</h3>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(assignment.status)}`}>
                     {assignment.status}
