@@ -18,7 +18,6 @@ export const CollaborationProvider = ({ children }) => {
     const [editingSessions, setEditingSessions] = useState(new Map());
     const [notifications, setNotifications] = useState([]);
     const collaborationManagerRef = useRef(null);
-    const presenceUnsubscribeRef = useRef(null);
     const notificationsUnsubscribeRef = useRef(null);
 
     useEffect(() => {
@@ -33,9 +32,6 @@ export const CollaborationProvider = ({ children }) => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
 
         try {
-            // FIX: Simplified the query to use only one 'where' clause to avoid
-            // the need for a composite index. Filtering for 'read === false'
-            // will now happen on the client side.
             const notificationsQuery = query(
                 collection(db, "notifications"),
                 where("userId", "==", currentUser.uid)
@@ -46,19 +42,10 @@ export const CollaborationProvider = ({ children }) => {
                     id: doc.id,
                     ...doc.data()
                 }));
-
-                // Filter for unread notifications on the client
                 const unreadNotifications = allUserNotifications.filter(n => n.read === false);
-                
                 unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                
                 setNotifications(unreadNotifications);
-
-                unreadNotifications.forEach(notification => {
-                    if (notification.type === 'takeOver') {
-                        handleTakeOverNotification(notification);
-                    }
-                });
+                unreadNotifications.forEach(handleTakeOverNotification);
             });
         } catch (error) {
             console.error('Error setting up notification listener:', error);
@@ -79,27 +66,17 @@ export const CollaborationProvider = ({ children }) => {
         const manager = collaborationManagerRef.current;
         if (manager && appState.activeRundownId) {
             manager.startPresenceTracking(appState.activeRundownId);
-
-            const setupListener = async () => {
-                const unsubscribe = await manager.listenToPresence(
-                    appState.activeRundownId,
-                    (users) => {
-                        setActiveUsers(users);
-                        updateEditingSessions(users);
-                    }
-                );
-                presenceUnsubscribeRef.current = unsubscribe;
-            };
-
-            setupListener();
+            manager.listenToPresence(
+                appState.activeRundownId,
+                (users) => {
+                    setActiveUsers(users);
+                    updateEditingSessions(users);
+                }
+            );
         }
 
+        // The cleanup function now only needs to call the manager's stop method.
         return () => {
-            if (presenceUnsubscribeRef.current) {
-                presenceUnsubscribeRef.current();
-                presenceUnsubscribeRef.current = null;
-            }
-            // Ensure manager exists before trying to call stopPresenceTracking
             if (collaborationManagerRef.current) {
                 collaborationManagerRef.current.stopPresenceTracking();
             }
@@ -129,10 +106,7 @@ export const CollaborationProvider = ({ children }) => {
                 editingStoryTakenOverBy: notification.message.match(/(.+) has taken over/)?.[1] || 'another user',
                 editingStoryIsOwner: false
             }));
-
-            setTimeout(() => {
-                markNotificationAsRead(notification.id);
-            }, 3000);
+            setTimeout(() => markNotificationAsRead(notification.id), 3000);
         }
     };
 
@@ -148,9 +122,7 @@ export const CollaborationProvider = ({ children }) => {
     const startEditingStory = async (itemId, storyData) => {
         const manager = collaborationManagerRef.current;
         if (!manager) return;
-
         const existingEditor = editingSessions.get(itemId);
-        
         if (existingEditor && existingEditor.userId !== currentUser.uid) {
             setAppState(prev => ({
                 ...prev,
@@ -163,7 +135,6 @@ export const CollaborationProvider = ({ children }) => {
             }));
         } else {
             await manager.setEditingItem(itemId);
-            
             setAppState(prev => ({
                 ...prev,
                 activeTab: 'storyEdit',
@@ -182,7 +153,6 @@ export const CollaborationProvider = ({ children }) => {
         if (manager) {
             await manager.setEditingItem(null);
         }
-        
         setAppState(prev => ({
             ...prev,
             editingStoryId: null,
@@ -196,7 +166,6 @@ export const CollaborationProvider = ({ children }) => {
     const takeOverStory = async (itemId, previousUserId) => {
         const manager = collaborationManagerRef.current;
         if (!manager) return false;
-
         try {
             await manager.sendTakeOverNotification(itemId, previousUserId);
             await manager.setEditingItem(itemId);
@@ -240,23 +209,20 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const setEditingItem = async (itemId) => {
-        const manager = collaborationManagerRef.current;
-        if (manager) {
-            await manager.setEditingItem(itemId);
+        if (collaborationManagerRef.current) {
+            await collaborationManagerRef.current.setEditingItem(itemId);
         }
     };
 
     const clearEditingItem = async () => {
-        const manager = collaborationManagerRef.current;
-        if (manager) {
-            await manager.setEditingItem(null);
+        if (collaborationManagerRef.current) {
+            await collaborationManagerRef.current.setEditingItem(null);
         }
     };
 
     const safeUpdateRundown = async (rundownId, updateFunction) => {
-        const manager = collaborationManagerRef.current;
-        if (manager) {
-            return await manager.safeUpdateRundown(rundownId, updateFunction);
+        if (collaborationManagerRef.current) {
+            return await collaborationManagerRef.current.safeUpdateRundown(rundownId, updateFunction);
         }
     };
 
