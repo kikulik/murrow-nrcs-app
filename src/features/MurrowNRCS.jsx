@@ -14,26 +14,17 @@ import LiveModeTab from './rundown/LiveModeTab';
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
 import { ActiveUsersPanel } from '../components/collaboration/UserPresenceIndicator';
-import ConflictResolutionModal from '../components/collaboration/ConflictResolutionModal';
 import { collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 const MurrowNRCS = () => {
     const { currentUser, logout, db } = useAuth();
     const { appState, setAppState } = useAppContext();
-    const { conflictItems, activeUsers } = useCollaboration();
-    const [currentConflict, setCurrentConflict] = useState(null);
+    const { activeUsers } = useCollaboration();
+
     const userPermissions = getUserPermissions(currentUser.role);
 
     const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
     const liveMode = useLiveMode(activeRundown, appState.activeRundownId);
-
-    // Handle conflicts
-    useEffect(() => {
-        if (conflictItems.size > 0 && !currentConflict) {
-            const firstConflict = conflictItems.values().next().value;
-            setCurrentConflict(firstConflict);
-        }
-    }, [conflictItems, currentConflict]);
 
     const handleSendMessage = async (text) => {
         if (!db || !currentUser) return;
@@ -58,15 +49,10 @@ const MurrowNRCS = () => {
         }
     };
 
-    const handleConflictResolve = (strategy) => {
-        setCurrentConflict(null);
-        // The conflict resolution is handled by the CollaborationContext
-    };
-
     const tabs = [
         { id: 'stories', label: 'Stories', icon: 'stories', permission: true },
         { id: 'rundown', label: 'Rundown', icon: 'rundown', permission: true },
-        { id: 'assignments', label: 'Assignments', icon: 'assignments', permission: true },
+        { id: 'assignments', label: 'Assignments', icon: 'assignments', permission: userPermissions.canCreateAssignments || appState.assignments.some(a => a.assigneeId === currentUser.uid) },
         { id: 'admin', label: 'Admin', icon: 'admin', permission: userPermissions.canManageUsers },
         { id: 'live', label: 'Live Mode', icon: 'golive', permission: liveMode.isLive },
     ];
@@ -91,7 +77,7 @@ const MurrowNRCS = () => {
                                         {activeUsers.slice(0, 3).map(user => (
                                             <div
                                                 key={user.id}
-                                                className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold border-2 border-white"
+                                                className="w-6 h-6 rounded-full bg-sky-500 flex items-center justify-center text-white text-xs font-bold border-2 border-white"
                                                 title={user.userName}
                                             >
                                                 {user.userName.charAt(0)}
@@ -101,14 +87,7 @@ const MurrowNRCS = () => {
                                     {activeUsers.length > 3 && (
                                         <span className="text-xs">+{activeUsers.length - 3} more</span>
                                     )}
-                                </div>
-                            )}
-
-                            {/* Conflict indicator */}
-                            {conflictItems.size > 0 && (
-                                <div className="flex items-center space-x-1 text-red-600">
-                                    <CustomIcon name="notification" size={20} />
-                                    <span className="text-sm font-medium">{conflictItems.size} conflicts</span>
+                                    <span className="text-xs">online</span>
                                 </div>
                             )}
 
@@ -133,7 +112,7 @@ const MurrowNRCS = () => {
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${appState.activeTab === tab.id
-                                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                        ? 'border-sky-500 text-sky-600 dark:text-sky-400'
                                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                         }`}
                                 >
@@ -157,7 +136,7 @@ const MurrowNRCS = () => {
             {/* Active users panel */}
             <ActiveUsersPanel />
 
-            {/* Chat component */}
+            {/* Chat component with sky blue theme */}
             <Chatbox
                 messages={appState.messages}
                 onSendMessage={handleSendMessage}
@@ -167,15 +146,6 @@ const MurrowNRCS = () => {
 
             {/* Modal manager */}
             <ModalManager />
-
-            {/* Conflict resolution modal */}
-            {currentConflict && (
-                <ConflictResolutionModal
-                    conflict={currentConflict}
-                    onResolve={handleConflictResolve}
-                    onCancel={() => setCurrentConflict(null)}
-                />
-            )}
         </div>
     );
 };
