@@ -7,14 +7,18 @@ const CollaborationContext = createContext();
 
 export const CollaborationProvider = ({ children }) => {
     const { currentUser, db } = useAuth();
-    const { appState } = useAppContext();
+    const { appState, setAppState } = useAppContext();
     const [activeUsers, setActiveUsers] = useState([]);
+    const [editingSessions, setEditingSessions] = useState(new Map());
+    const [notifications, setNotifications] = useState([]);
     const collaborationManager = useRef(null);
     const presenceUnsubscribe = useRef(null);
+    const notificationsUnsubscribe = useRef(null);
 
     useEffect(() => {
         if (db && currentUser) {
             collaborationManager.current = new CollaborationManager(db, currentUser);
+            setupNotificationListener();
         }
 
         return () => {
@@ -23,6 +27,9 @@ export const CollaborationProvider = ({ children }) => {
             }
             if (presenceUnsubscribe.current) {
                 presenceUnsubscribe.current();
+            }
+            if (notificationsUnsubscribe.current) {
+                notificationsUnsubscribe.current();
             }
         };
     }, [db, currentUser]);
@@ -34,7 +41,10 @@ export const CollaborationProvider = ({ children }) => {
             const setupListener = async () => {
                 const unsubscribe = await collaborationManager.current.listenToPresence(
                     appState.activeRundownId,
-                    setActiveUsers
+                    (users) => {
+                        setActiveUsers(users);
+                        updateEditingSessions(users);
+                    }
                 );
                 presenceUnsubscribe.current = unsubscribe;
             };
@@ -49,6 +59,185 @@ export const CollaborationProvider = ({ children }) => {
         }
     }, [appState.activeRundownId]);
 
+    const setupNotificationListener = async () => {
+        if (!db || !currentUser) return;
+
+        try {
+            const { collection, query, where, onSnapshot, orderBy } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+            const notificationsQuery = query(
+                collection(db, "notifications"),
+                where("userId", "==", currentUser.uid),
+                where("read", "==", false),
+                orderBy("timestamp", "desc")
+            );
+
+            notificationsUnsubscribe.current = onSnapshot(notificationsQuery, (snapshot) => {
+                const newNotifications = [];
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    newNotifications.push({
+                        id: doc.id,
+                        ...data
+                    });
+                });
+                setNotifications(newNotifications);
+
+                newNotifications.forEach(notification => {
+                    if (notification.type === 'takeOver') {
+                        handleTakeOverNotification(notification);
+                    }
+                });
+            });
+        } catch (error) {
+            console.error('Error setting up notification listener:', error);
+        }
+    };
+
+    const updateEditingSessions = (users) => {
+        const sessions = new Map();
+        users.forEach(user => {
+            if (user.editingItem) {
+                sessions.set(user.editingItem, {
+                    userId: user.userId,
+                    userName: user.userName,
+                    timestamp: Date.now()
+                });
+            }
+        });
+        setEditingSessions(sessions);
+    };
+
+    const handleTakeOverNotification = (notification) => {
+        if (notification.type === 'takeOver') {
+            setAppState(prev => ({
+                ...prev,
+                notifications: [...(prev.notifications || []), {
+                    id: notification.id,
+                    message: notification.message,
+                    type: 'warning',
+                    timestamp: notification.timestamp,
+                    itemId: notification.itemId
+                }]
+            }));
+
+            if (appState.editingStoryId === notification.itemId) {
+                setAppState(prev => ({
+                    ...prev,
+                    editingStoryTakenOver: true,
+                    editingStoryTakenOverBy: notification.message.match(/by (.+)$/)?.[1] || 'another user'
+                }));
+            }
+
+            setTimeout(() => {
+                markNotificationAsRead(notification.id);
+            }, 5000);
+        }
+    };
+
+    const markNotificationAsRead = async (notificationId) => {
+        if (!db) return;
+        try {
+            const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            await updateDoc(doc(db, "notifications", notificationId), { read: true });
+        } catch (error) {
+            console.error('Error marking notification as read:', error);
+        }
+    };
+
+    const startEditingStory = async (itemId, storyData) => {
+        const existingEditor = editingSessions.get(itemId);
+        
+        if (existingEditor && existingEditor.userId !== currentUser.uid) {
+            const shouldTakeOver = confirm(
+                `${existingEditor.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`
+            );
+            
+            if (!shouldTakeOver) {
+                return false;
+            }
+
+            const success = await takeOverStory(itemId, existingEditor.userId);
+            if (!success) {
+                alert('Failed to take over the story. Please try again.');
+                return false;
+            }
+        }
+
+        await collaborationManager.current?.setEditingItem(itemId);
+        
+        setAppState(prev => ({
+            ...prev,
+            activeTab: 'storyEdit',
+            editingStoryId: itemId,
+            editingStoryData: storyData,
+            editingStoryTakenOver: false,
+            editingStoryTakenOverBy: null
+        }));
+
+        return true;
+    };
+
+    const stopEditingStory = async () => {
+        await collaborationManager.current?.setEditingItem(null);
+        
+        setAppState(prev => ({
+            ...prev,
+            editingStoryId: null,
+            editingStoryData: null,
+            editingStoryTakenOver: false,
+            editingStoryTakenOverBy: null
+        }));
+    };
+
+    const takeOverStory = async (itemId, previousUserId) => {
+        if (!collaborationManager.current) return false;
+
+        try {
+            const success = await collaborationManager.current.takeOverItem(itemId, previousUserId);
+            return success;
+        } catch (error) {
+            console.error('Error taking over story:', error);
+            return false;
+        }
+    };
+
+    const saveStoryProgress = async (itemId, storyData) => {
+        if (!db || !itemId) return;
+
+        try {
+            const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            
+            await setDoc(doc(db, "storyDrafts", `${itemId}_${currentUser.uid}`), {
+                itemId,
+                userId: currentUser.uid,
+                storyData: storyData,
+                timestamp: new Date().toISOString(),
+                autoSaved: true
+            });
+        } catch (error) {
+            console.error('Error saving story progress:', error);
+        }
+    };
+
+    const getStoryProgress = async (itemId) => {
+        if (!db || !itemId) return null;
+
+        try {
+            const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            
+            const draftDoc = await getDoc(doc(db, "storyDrafts", `${itemId}_${currentUser.uid}`));
+            
+            if (draftDoc.exists()) {
+                return draftDoc.data().storyData;
+            }
+            return null;
+        } catch (error) {
+            console.error('Error getting story progress:', error);
+            return null;
+        }
+    };
+
     const setEditingItem = async (itemId) => {
         if (collaborationManager.current) {
             await collaborationManager.current.setEditingItem(itemId);
@@ -61,13 +250,6 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
-    const takeOverItem = async (itemId, previousUserId) => {
-        if (collaborationManager.current) {
-            return await collaborationManager.current.takeOverItem(itemId, previousUserId);
-        }
-        return false;
-    };
-
     const safeUpdateRundown = async (rundownId, updateFunction) => {
         if (collaborationManager.current) {
             return await collaborationManager.current.safeUpdateRundown(rundownId, updateFunction);
@@ -75,26 +257,29 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const getUserEditingItem = (itemId) => {
-        return activeUsers.find(user => user.editingItem === itemId);
+        return editingSessions.get(itemId);
     };
 
     const isItemBeingEdited = (itemId) => {
-        return activeUsers.some(user => user.editingItem === itemId);
-    };
-
-    const resolveConflict = async (itemId, strategy) => {
-        console.log('Resolving conflict for item:', itemId, 'with strategy:', strategy);
+        const session = editingSessions.get(itemId);
+        return session && session.userId !== currentUser.uid;
     };
 
     const value = {
         activeUsers,
+        editingSessions,
+        notifications,
+        startEditingStory,
+        stopEditingStory,
+        takeOverStory,
+        saveStoryProgress,
+        getStoryProgress,
         setEditingItem,
         clearEditingItem,
-        takeOverItem,
         safeUpdateRundown,
         getUserEditingItem,
         isItemBeingEdited,
-        resolveConflict,
+        markNotificationAsRead,
         CollaborationManager
     };
 
