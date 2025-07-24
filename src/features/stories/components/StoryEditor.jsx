@@ -9,8 +9,16 @@ import SelectField from '../../../components/ui/SelectField';
 import { RUNDOWN_ITEM_TYPES, VIDEO_ITEM_TYPES } from '../../../lib/constants';
 import { generateMediaId } from '../../../media/MediaManager';
 import { calculateReadingTime, getWordCount } from '../../../utils/textDurationCalculator';
+import {
+    generateDateFolder,
+    createStoryFolder,
+    getFoldersByDate,
+    sortFoldersByDate,
+    validateFolderName,
+    sanitizeFolderName
+} from '../../../utils/folderHelpers';
 
-const StoryEditor = ({ story = null, onCancel }) => {
+const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
     const { currentUser, db } = useAuth();
     const { appState } = useAppContext();
 
@@ -20,7 +28,8 @@ const StoryEditor = ({ story = null, onCancel }) => {
         authorId: story?.authorId || currentUser.uid,
         platform: story?.platform || 'broadcast',
         tags: story?.tags?.join(', ') || '',
-        duration: story?.duration || '01:00'
+        duration: story?.duration || '01:00',
+        folder: story?.folder || defaultFolder || generateDateFolder()
     });
 
     const [selectedTypes, setSelectedTypes] = useState(
@@ -28,6 +37,28 @@ const StoryEditor = ({ story = null, onCancel }) => {
     );
 
     const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
+    const [showCreateFolder, setShowCreateFolder] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
+
+    // Get existing folders
+    const existingFolders = React.useMemo(() => {
+        const folderMap = getFoldersByDate(appState.stories);
+        const folders = new Set();
+
+        // Add date folders
+        folderMap.forEach((subFolders, dateFolder) => {
+            folders.add(dateFolder);
+            // Add subfolders
+            subFolders.forEach(subFolder => {
+                folders.add(createStoryFolder(dateFolder, subFolder));
+            });
+        });
+
+        // Always include current date
+        folders.add(generateDateFolder());
+
+        return Array.from(folders).sort();
+    }, [appState.stories]);
 
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
@@ -54,6 +85,19 @@ const StoryEditor = ({ story = null, onCancel }) => {
         setFormData({ ...formData, content });
     };
 
+    const handleCreateFolder = () => {
+        if (!validateFolderName(newFolderName)) {
+            alert('Please enter a valid folder name');
+            return;
+        }
+
+        const currentDate = generateDateFolder();
+        const newFolder = createStoryFolder(currentDate, sanitizeFolderName(newFolderName));
+        setFormData({ ...formData, folder: newFolder });
+        setNewFolderName('');
+        setShowCreateFolder(false);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -66,7 +110,8 @@ const StoryEditor = ({ story = null, onCancel }) => {
                 authorId: currentUser.uid,
                 status: story?.status || 'draft',
                 created: story?.created || new Date().toISOString(),
-                comments: story?.comments || []
+                comments: story?.comments || [],
+                types: selectedTypes // Store selected types
             };
 
             // Add video fields if video types are selected
@@ -101,6 +146,67 @@ const StoryEditor = ({ story = null, onCancel }) => {
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                     required
                 />
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Folder
+                    </label>
+                    <div className="flex gap-2">
+                        <select
+                            value={formData.folder}
+                            onChange={(e) => setFormData({ ...formData, folder: e.target.value })}
+                            className="flex-1 form-input"
+                        >
+                            {existingFolders.map(folder => (
+                                <option key={folder} value={folder}>{folder}</option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            onClick={() => setShowCreateFolder(true)}
+                            className="btn-secondary"
+                            title="Create new subfolder"
+                        >
+                            <CustomIcon name="add story" size={20} />
+                        </button>
+                    </div>
+
+                    {showCreateFolder && (
+                        <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <div className="flex gap-2">
+                                <InputField
+                                    label="New Subfolder Name"
+                                    value={newFolderName}
+                                    onChange={(e) => setNewFolderName(e.target.value)}
+                                    placeholder="Enter folder name..."
+                                />
+                                <div className="flex flex-col justify-end gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleCreateFolder}
+                                        disabled={!newFolderName.trim()}
+                                        className="btn-primary text-sm"
+                                    >
+                                        Create
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowCreateFolder(false);
+                                            setNewFolderName('');
+                                        }}
+                                        className="btn-secondary text-sm"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Will be created as: {createStoryFolder(generateDateFolder(), newFolderName)}
+                            </p>
+                        </div>
+                    )}
+                </div>
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -151,7 +257,7 @@ const StoryEditor = ({ story = null, onCancel }) => {
                         </label>
                         {wordCount > 0 && (
                             <p className="text-xs text-gray-500 mt-1">
-                                {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                                {wordCount} words • Est. {calculatedDuration} reading time
                             </p>
                         )}
                     </div>
