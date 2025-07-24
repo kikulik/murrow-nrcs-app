@@ -64,7 +64,7 @@ const LiveModeTab = ({ liveMode }) => {
 
                     <div className="flex items-center justify-center gap-4">
                         <button onClick={liveMode.handleNextLiveItem} className="btn-primary text-lg px-8 py-4 w-full">
-                            Next Item <CustomIcon name="close" size={36} />
+                            Next Item <CustomIcon name="nextitem" size={36} />
                         </button>
                         <button
                             onClick={liveMode.handleEndLive}
