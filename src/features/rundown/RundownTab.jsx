@@ -1,5 +1,5 @@
 // src/features/rundown/RundownTab.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -12,6 +12,7 @@ const RundownTab = ({ liveMode }) => {
     const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
     const [selectedItems, setSelectedItems] = useState([]);
+    const [copiedItems, setCopiedItems] = useState([]);
 
     const userPermissions = getUserPermissions(currentUser.role);
 
@@ -19,6 +20,24 @@ const RundownTab = ({ liveMode }) => {
     const totalDuration = calculateTotalDuration(currentRundown?.items || []);
     const availableRundowns = appState.rundowns.filter(r => appState.showArchived || !r.archived);
     const isRundownLocked = liveMode.isLive && liveMode.liveRundownId === appState.activeRundownId;
+
+    // Keyboard shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'c' && selectedItems.length > 0) {
+                    e.preventDefault();
+                    handleCopyItems();
+                } else if (e.key === 'v' && copiedItems.length > 0 && currentRundown) {
+                    e.preventDefault();
+                    handlePasteItems();
+                }
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [selectedItems, copiedItems, currentRundown]);
 
     const formatAirDate = (airDate) => {
         if (!airDate) return 'No air date set';
@@ -42,6 +61,26 @@ const RundownTab = ({ liveMode }) => {
         }));
     };
 
+    const handleArchiveRundown = async () => {
+        if (!currentRundown || !db) return;
+
+        const confirmArchive = confirm(`Are you sure you want to archive "${currentRundown.name}"?`);
+        if (!confirmArchive) return;
+
+        try {
+            const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const rundownRef = doc(db, "rundowns", currentRundown.id);
+            await updateDoc(rundownRef, { archived: true });
+
+            // Clear active rundown if archived
+            setAppState(prev => ({ ...prev, activeRundownId: null }));
+            setSelectedItems([]);
+        } catch (error) {
+            console.error("Failed to archive rundown:", error);
+            alert("Failed to archive rundown. Please try again.");
+        }
+    };
+
     const handleRundownItemUpdate = async (updatedItems) => {
         if (!db || !currentRundown) return;
         const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
@@ -57,7 +96,7 @@ const RundownTab = ({ liveMode }) => {
         const value = e.target.value;
         if (value === '') return;
         setAppState(prev => ({ ...prev, activeRundownId: value }));
-        setSelectedItems([]); // Clear selection when changing rundown
+        setSelectedItems([]);
     };
 
     const openNewRundown = () => {
@@ -96,41 +135,48 @@ const RundownTab = ({ liveMode }) => {
     };
 
     const handleCopyItems = () => {
-        if (selectedItems.length === 0) {
-            alert('Please select items to copy');
-            return;
-        }
+        if (selectedItems.length === 0) return;
 
         const selectedRundownItems = currentRundown.items.filter(item =>
             selectedItems.includes(item.id)
         );
 
+        setCopiedItems(selectedRundownItems);
+
+        // Also store in localStorage for cross-session persistence
         localStorage.setItem('copiedRundownItems', JSON.stringify(selectedRundownItems));
-        alert(`Copied ${selectedItems.length} item(s) to clipboard`);
     };
 
     const handlePasteItems = async () => {
-        const copiedItems = localStorage.getItem('copiedRundownItems');
-        if (!copiedItems) {
-            alert('No items in clipboard');
-            return;
+        let itemsToPaste = copiedItems;
+
+        // If no items in memory, try localStorage
+        if (itemsToPaste.length === 0) {
+            const storedItems = localStorage.getItem('copiedRundownItems');
+            if (storedItems) {
+                try {
+                    itemsToPaste = JSON.parse(storedItems);
+                } catch (error) {
+                    console.error('Error parsing stored items:', error);
+                    return;
+                }
+            }
         }
 
+        if (itemsToPaste.length === 0) return;
+
         try {
-            const items = JSON.parse(copiedItems);
-            const newItems = items.map(item => ({
+            const newItems = itemsToPaste.map(item => ({
                 ...item,
-                id: Date.now() + Math.random(), // Generate new ID
-                storyId: null, // Remove story reference
+                id: Date.now() + Math.random(),
+                storyId: null,
                 storyStatus: 'Ready for Air'
             }));
 
             const updatedItems = [...(currentRundown?.items || []), ...newItems];
             await handleRundownItemUpdate(updatedItems);
-            alert(`Pasted ${newItems.length} item(s)`);
         } catch (error) {
             console.error('Error pasting items:', error);
-            alert('Error pasting items');
         }
     };
 
@@ -156,8 +202,6 @@ const RundownTab = ({ liveMode }) => {
                     type: 'system'
                 });
             }
-
-            console.log(`${currentUser.name} took over item ${itemId} from user ${previousUserId}`);
         } catch (error) {
             console.error('Error sending take-over notification:', error);
         }
@@ -183,6 +227,21 @@ const RundownTab = ({ liveMode }) => {
                                 </option>
                             ))}
                         </select>
+
+                        {/* Archive button */}
+                        {currentRundown && !currentRundown.archived && userPermissions.canDeleteAnything && (
+                            <button
+                                onClick={handleArchiveRundown}
+                                disabled={isRundownLocked}
+                                className={`p-2 text-gray-500 hover:text-orange-600 rounded ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                    }`}
+                                title="Archive Rundown"
+                            >
+                                <CustomIcon name="time" size={20} />
+                            </button>
+                        )}
+
+                        {/* Delete button */}
                         {currentRundown && userPermissions.canDeleteAnything && (
                             <button
                                 onClick={handleDeleteRundown}
@@ -195,6 +254,7 @@ const RundownTab = ({ liveMode }) => {
                             </button>
                         )}
                     </div>
+
                     <button
                         onClick={openNewRundown}
                         disabled={isRundownLocked || !userPermissions.canCreateRundowns}
@@ -204,6 +264,7 @@ const RundownTab = ({ liveMode }) => {
                         <CustomIcon name="add story" size={20} />
                         <span>New</span>
                     </button>
+
                     <label className="flex items-center gap-2 text-sm">
                         <input
                             type="checkbox"
@@ -214,6 +275,7 @@ const RundownTab = ({ liveMode }) => {
                         Show Archived
                     </label>
                 </div>
+
                 <div className="flex items-center gap-4">
                     <PrintDropdown
                         rundown={currentRundown}
@@ -235,41 +297,6 @@ const RundownTab = ({ liveMode }) => {
                 </div>
             </div>
 
-            {/* Selection Controls */}
-            {selectedItems.length > 0 && (
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <span className="font-medium text-blue-800 dark:text-blue-200">
-                                {selectedItems.length} item(s) selected
-                            </span>
-                            <button
-                                onClick={() => setSelectedItems([])}
-                                className="text-blue-600 hover:text-blue-700 text-sm hover:underline"
-                            >
-                                Clear selection
-                            </button>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={handleCopyItems}
-                                className="btn-secondary text-sm"
-                            >
-                                <CustomIcon name="stories" size={16} />
-                                <span>Copy</span>
-                            </button>
-                            <button
-                                onClick={handleSendSelectedToStories}
-                                className="btn-primary text-sm"
-                            >
-                                <CustomIcon name="send" size={16} />
-                                <span>Send to Stories</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {currentRundown && (
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4">
                     <div className="flex items-center justify-between">
@@ -287,15 +314,31 @@ const RundownTab = ({ liveMode }) => {
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            <button
-                                onClick={handlePasteItems}
-                                disabled={isRundownLocked || currentRundown.archived}
-                                className={`btn-secondary text-sm ${(isRundownLocked || currentRundown.archived) ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
-                            >
-                                <CustomIcon name="stories" size={20} />
-                                <span>Paste</span>
-                            </button>
+                            {/* Keyboard shortcut indicators */}
+                            {selectedItems.length > 0 && (
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mr-4">
+                                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">Ctrl+C</kbd>
+                                    <span>Copy</span>
+                                    {copiedItems.length > 0 && (
+                                        <>
+                                            <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded ml-2">Ctrl+V</kbd>
+                                            <span>Paste</span>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Send to Stories button - only show when items selected */}
+                            {selectedItems.length > 0 && (
+                                <button
+                                    onClick={handleSendSelectedToStories}
+                                    className="btn-primary text-sm"
+                                >
+                                    <CustomIcon name="send" size={16} />
+                                    <span>Send to Stories ({selectedItems.length})</span>
+                                </button>
+                            )}
+
                             <button
                                 onClick={openAddStoryModal}
                                 disabled={isRundownLocked || currentRundown.archived || !userPermissions.canCreateRundownItems}
