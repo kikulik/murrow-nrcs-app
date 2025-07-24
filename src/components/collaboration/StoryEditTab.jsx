@@ -1,12 +1,12 @@
-// src/features/collaboration/StoryEditTab.jsx
+// src/components/collaboration/StoryEditTab.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import CustomIcon from '../../components/ui/CustomIcon';
+import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
 import { useCollaboration } from '../../context/CollaborationContext';
-import InputField from '../../components/ui/InputField';
-import CollaborativeTextEditor from '../../components/collaboration/CollaborativeTextEditor';
-import UserPresenceIndicator from '../../components/collaboration/UserPresenceIndicator';
+import InputField from '../ui/InputField';
+import CollaborativeTextEditor from './CollaborativeTextEditor';
+import UserPresenceIndicator from './UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
 
