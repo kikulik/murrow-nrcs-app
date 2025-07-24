@@ -1,10 +1,6 @@
 /*
 ================================================================================
 File: murrow-nrcs-app.git/src/context/CollaborationContext.jsx
-Description: FIX - The main change is ensuring that the CollaborationManager
-and listeners are only initialized when `db` and `currentUser` are confirmed
-to be available from the `useAuth` hook. This prevents race conditions where
-the manager tries to use a null `db` object.
 ================================================================================
 */
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
