@@ -180,7 +180,7 @@ const SendMultipleToStoriesModal = ({ rundownItems, onCancel }) => {
                         className="btn-primary"
                         disabled={sending || !selectedFolder}
                     >
-                        <CustomIcon name="send" size={32} />
+                        <CustomIcon name="send" size={20} />
                         <span>{sending ? 'Sending...' : `Send ${rundownItems.length} Items`}</span>
                     </button>
                 </div>
