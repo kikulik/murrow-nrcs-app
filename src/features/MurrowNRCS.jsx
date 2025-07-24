@@ -1,6 +1,10 @@
 /*
 ================================================================================
 File: murrow-nrcs-app.git/src/features/MurrowNRCS.jsx
+Description: FIX - A new `handleLogout` function has been created. It gets the
+`collaborationManager` instance from the context and calls its cleanup method
+*before* calling the main `logout` function. This ensures all real-time
+listeners are gracefully closed while the user is still authenticated.
 ================================================================================
 */
 import React from 'react';
