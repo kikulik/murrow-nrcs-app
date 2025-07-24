@@ -1,8 +1,4 @@
 // src/services/CollaborationManager.js
-// FIX: This file has been refactored to use consistent, dynamic imports for
-// all Firebase Firestore functions. All imports now use 'firebase/firestore'
-// instead of the CDN URL. Document and collection references are created more
-// explicitly to prevent errors related to invalid db instances.
 
 export class CollaborationManager {
     constructor(db, currentUser) {
@@ -11,9 +7,10 @@ export class CollaborationManager {
         this.presenceRef = null;
         this.currentEditingItem = null;
         this.presenceInterval = null;
+        this.presenceListenerUnsubscribe = null; // To hold the listener's unsubscribe function
         this.lastUpdate = 0;
         this.updateThrottle = 2000;
-        this.cleanup = () => {}; // Initialize cleanup
+        this.cleanup = () => {};
     }
 
     async startPresenceTracking(rundownId) {
@@ -21,9 +18,9 @@ export class CollaborationManager {
 
         try {
             const { doc, setDoc, collection } = await import("firebase/firestore");
-
             const presenceCollection = collection(this.db, "presence");
             const presenceDoc = doc(presenceCollection, `${rundownId}_${this.currentUser.uid}`);
+            this.presenceRef = presenceDoc;
 
             const presenceData = {
                 userId: this.currentUser.uid,
@@ -33,17 +30,14 @@ export class CollaborationManager {
                 isActive: true,
                 editingItem: null
             };
-
-            await setDoc(presenceDoc, presenceData);
+            await setDoc(this.presenceRef, presenceData);
 
             this.presenceInterval = setInterval(async () => {
+                if (!this.presenceRef) return;
                 const now = Date.now();
-                if (now - this.lastUpdate < this.updateThrottle) {
-                    return;
-                }
-
+                if (now - this.lastUpdate < this.updateThrottle) return;
                 try {
-                    await setDoc(presenceDoc, {
+                    await setDoc(this.presenceRef, {
                         lastSeen: new Date().toISOString(),
                         editingItem: this.currentEditingItem || null
                     }, { merge: true });
@@ -53,16 +47,10 @@ export class CollaborationManager {
                 }
             }, 3000);
 
-            const handleBeforeUnload = () => {
-                this.stopPresenceTracking();
-            };
-
+            const handleBeforeUnload = () => this.stopPresenceTracking();
             window.addEventListener('beforeunload', handleBeforeUnload);
+            this.cleanup = () => window.removeEventListener('beforeunload', handleBeforeUnload);
 
-            this.presenceRef = presenceDoc;
-            this.cleanup = () => {
-                window.removeEventListener('beforeunload', handleBeforeUnload);
-            };
         } catch (error) {
             console.error('Error starting presence tracking:', error);
         }
@@ -74,13 +62,21 @@ export class CollaborationManager {
             this.presenceInterval = null;
         }
 
+        // Unsubscribe from the listener first
+        if (this.presenceListenerUnsubscribe) {
+            this.presenceListenerUnsubscribe();
+            this.presenceListenerUnsubscribe = null;
+        }
+
         if (this.presenceRef) {
             try {
                 const { deleteDoc } = await import("firebase/firestore");
                 await deleteDoc(this.presenceRef);
                 this.presenceRef = null;
             } catch (error) {
-                console.error('Error stopping presence tracking:', error);
+                // It's possible the doc is already gone or permissions are lost on logout.
+                // Log the error but don't throw, as this is a cleanup operation.
+                console.warn('Could not delete presence document on cleanup:', error.message);
             }
         }
 
@@ -91,7 +87,6 @@ export class CollaborationManager {
 
     async setEditingItem(itemId) {
         this.currentEditingItem = itemId;
-
         if (this.presenceRef) {
             try {
                 const { updateDoc } = await import("firebase/firestore");
@@ -107,10 +102,9 @@ export class CollaborationManager {
     }
 
     async sendTakeOverNotification(itemId, previousUserId) {
-        if (!previousUserId) return; // Don't send notification if there's no previous user
+        if (!previousUserId) return;
         try {
             const { collection, addDoc } = await import("firebase/firestore");
-
             await addDoc(collection(this.db, "notifications"), {
                 userId: previousUserId,
                 type: 'takeOver',
@@ -125,40 +119,36 @@ export class CollaborationManager {
     }
 
     async listenToPresence(rundownId, callback) {
-        if (!this.db) return () => {};
-
+        if (!this.db) return;
+        // If there's an existing listener, stop it before starting a new one.
+        if (this.presenceListenerUnsubscribe) {
+            this.presenceListenerUnsubscribe();
+        }
         try {
             const { collection, query, where, onSnapshot } = await import("firebase/firestore");
-
             const presenceQuery = query(
                 collection(this.db, "presence"),
                 where("rundownId", "==", rundownId)
             );
-
-            return onSnapshot(presenceQuery, (snapshot) => {
-                const activeUsers = [];
-                const now = new Date();
-
-                snapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    if (!data.lastSeen) return;
-
-                    const lastSeen = new Date(data.lastSeen);
-                    const minutesAgo = (now - lastSeen) / (1000 * 60);
-
-                    if (minutesAgo < 5 && data.userId !== this.currentUser.uid) {
-                        activeUsers.push({
-                            userId: data.userId,
-                            userName: data.userName,
-                            editingItem: data.editingItem
-                        });
-                    }
-                });
+            // Store the unsubscribe function on the instance
+            this.presenceListenerUnsubscribe = onSnapshot(presenceQuery, (snapshot) => {
+                const activeUsers = snapshot.docs
+                    .map(doc => doc.data())
+                    .filter(data => {
+                        if (!data.lastSeen) return false;
+                        const lastSeen = new Date(data.lastSeen);
+                        const minutesAgo = (new Date() - lastSeen) / (1000 * 60);
+                        return minutesAgo < 5 && data.userId !== this.currentUser.uid;
+                    })
+                    .map(data => ({
+                        userId: data.userId,
+                        userName: data.userName,
+                        editingItem: data.editingItem
+                    }));
                 callback(activeUsers);
             });
         } catch (error) {
             console.error('Error setting up presence listener:', error);
-            return () => {};
         }
     }
 
@@ -203,9 +193,7 @@ export class CollaborationManager {
                 const { doc, getDoc, updateDoc } = await import("firebase/firestore");
                 const rundownRef = doc(this.db, "rundowns", rundownId);
                 const rundownDoc = await getDoc(rundownRef);
-                if (!rundownDoc.exists()) {
-                    throw new Error("Rundown not found");
-                }
+                if (!rundownDoc.exists()) throw new Error("Rundown not found");
                 const currentData = rundownDoc.data();
                 const updatedData = updateFunction(currentData);
                 const versionedData = {
@@ -217,9 +205,7 @@ export class CollaborationManager {
                 await updateDoc(rundownRef, versionedData);
                 return versionedData;
             } catch (error) {
-                if (attempt === retryCount - 1) {
-                    throw error;
-                }
+                if (attempt === retryCount - 1) throw error;
                 await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
             }
         }
