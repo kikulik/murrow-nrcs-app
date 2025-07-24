@@ -239,7 +239,7 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                                 </label>
                                 {wordCount > 0 && (
                                     <p className="text-xs text-gray-500 mt-1">
-                                        {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                                        {wordCount} words • Est. {calculatedDuration} reading time
                                     </p>
                                 )}
                             </div>
