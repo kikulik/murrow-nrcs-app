@@ -35,12 +35,27 @@ const RundownDraggableItem = ({
     } = useCollaboration();
     const ref = useRef(null);
     const [localItem, setLocalItem] = useState(item);
+    const [showTakeOverConfirm, setShowTakeOverConfirm] = useState(false);
 
     const userPermissions = getUserPermissions(currentUser.role);
 
     useEffect(() => {
         setLocalItem(item);
     }, [item]);
+
+    useEffect(() => {
+        const handleForcedTakeOver = (event) => {
+            if (event.detail.itemId === item.id && isEditing) {
+                onSave(item.id, localItem);
+                onCancel();
+            }
+        };
+
+        window.addEventListener('forcedTakeOver', handleForcedTakeOver);
+        return () => {
+            window.removeEventListener('forcedTakeOver', handleForcedTakeOver);
+        };
+    }, [item.id, isEditing, localItem, onSave, onCancel]);
 
     const [{ handlerId }, drop] = useDrop({
         accept: 'rundownItem',
@@ -115,10 +130,7 @@ const RundownDraggableItem = ({
     const handleEdit = async () => {
         if (isBeingEditedByOther) {
             if (userPermissions.canTakeOverStories) {
-                const result = confirm(`${editingUser.userName} is currently editing this item. Do you want to take over?`);
-                if (result && onTakeOverItem) {
-                    await onTakeOverItem(item.id, editingUser.userId);
-                }
+                setShowTakeOverConfirm(true);
             }
             return;
         }
@@ -138,13 +150,20 @@ const RundownDraggableItem = ({
         }
     };
 
-    const handleTakeOver = async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
+    const handleConfirmTakeOver = async () => {
         if (onTakeOverItem && editingUser && userPermissions.canTakeOverStories) {
-            await onTakeOverItem(item.id, editingUser.userId);
+            const success = await onTakeOverItem(item.id, editingUser.userId);
+            if (success) {
+                setShowTakeOverConfirm(false);
+                setTimeout(() => {
+                    onToggleEdit(item.id);
+                }, 500);
+            }
         }
+    };
+
+    const handleCancelTakeOver = () => {
+        setShowTakeOverConfirm(false);
     };
 
     if (isEditing) {
@@ -167,115 +186,137 @@ const RundownDraggableItem = ({
     `;
 
     return (
-        <div
-            ref={ref}
-            data-handler-id={handlerId}
-            className={itemClasses}
-            onClick={handleClick}
-        >
-            <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 min-h-[44px] relative">
-                <div className="col-span-1 flex justify-center">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'
-                        }`}>
-                        {index + 1}
+        <>
+            <div
+                ref={ref}
+                data-handler-id={handlerId}
+                className={itemClasses}
+                onClick={handleClick}
+            >
+                <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 min-h-[44px] relative">
+                    <div className="col-span-1 flex justify-center">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'
+                            }`}>
+                            {index + 1}
+                        </div>
                     </div>
-                </div>
 
-                <div className="col-span-4 overflow-hidden">
-                    <h4 className="font-medium text-sm break-words overflow-wrap-anywhere">
-                        {item.title}
-                        {isLocked && <CustomIcon name="lock" size={32} className="text-red-500 inline ml-2" />}
-                    </h4>
-                </div>
+                    <div className="col-span-4 overflow-hidden">
+                        <h4 className="font-medium text-sm break-words overflow-wrap-anywhere">
+                            {item.title}
+                            {isLocked && <CustomIcon name="lock" size={32} className="text-red-500 inline ml-2" />}
+                        </h4>
+                    </div>
 
-                <div className="col-span-1 flex justify-center">
-                    {isBeingEditedByOther ? (
-                        <div className="flex items-center justify-center">
-                            {userPermissions.canTakeOverStories ? (
-                                <button
-                                    onClick={handleTakeOver}
-                                    className="p-1 bg-orange-500 hover:bg-orange-600 rounded transition-colors"
-                                    title={`Take over from ${editingUser.userName}`}
-                                >
-                                    <CustomIcon name="lock" size={32} className="text-white" />
-                                </button>
-                            ) : (
+                    <div className="col-span-1 flex justify-center">
+                        {isBeingEditedByOther ? (
+                            <div className="flex items-center justify-center">
                                 <div
-                                    className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
+                                    className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold animate-pulse"
                                     title={`${editingUser.userName} is editing`}
                                 >
                                     {editingUser.userName.charAt(0)}
                                 </div>
-                            )}
-                        </div>
-                    ) : null}
-                </div>
+                            </div>
+                        ) : null}
+                    </div>
 
-                <div className="col-span-2 flex gap-1 justify-start flex-wrap">
-                    {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
-                        <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
-                            {t}
-                        </span>
-                    ))}
-                </div>
+                    <div className="col-span-2 flex gap-1 justify-start flex-wrap">
+                        {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
+                            <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
+                                {t}
+                            </span>
+                        ))}
+                    </div>
 
-                <div className="col-span-1">
-                    <select
-                        value={item.storyStatus || 'Ready for Air'}
-                        onChange={(e) => handleStatusChange(e.target.value)}
-                        disabled={isLocked || isBeingEditedByOther}
-                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${(isLocked || isBeingEditedByOther) ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                        onClick={e => e.stopPropagation()}
-                        title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : ''}
-                    >
-                        {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                </div>
+                    <div className="col-span-1">
+                        <select
+                            value={item.storyStatus || 'Ready for Air'}
+                            onChange={(e) => handleStatusChange(e.target.value)}
+                            disabled={isLocked || isBeingEditedByOther}
+                            className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${(isLocked || isBeingEditedByOther) ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                            onClick={e => e.stopPropagation()}
+                            title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : ''}
+                        >
+                            {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </div>
 
-                <div className="col-span-1 text-center">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">{item.duration}</span>
-                </div>
+                    <div className="col-span-1 text-center">
+                        <span className="text-xs text-gray-600 dark:text-gray-400">{item.duration}</span>
+                    </div>
 
-                <div className="col-span-2 text-left overflow-hidden">
-                    {author ? (
-                        <span className="text-xs text-gray-500 truncate block" title={author.name}>
-                            {author.name.length > 10 ? author.name.substring(0, 10) + '...' : author.name}
-                        </span>
-                    ) : (
-                        <span className="text-xs text-gray-400">No Author</span>
-                    )}
-                </div>
+                    <div className="col-span-2 text-left overflow-hidden">
+                        {author ? (
+                            <span className="text-xs text-gray-500 truncate block" title={author.name}>
+                                {author.name.length > 10 ? author.name.substring(0, 10) + '...' : author.name}
+                            </span>
+                        ) : (
+                            <span className="text-xs text-gray-400">No Author</span>
+                        )}
+                    </div>
 
-                <div className="col-span-1 flex justify-end">
-                    {!isLocked && (
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {!isBeingEditedByOther && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleEdit(); }}
-                                    className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
-                                    title="Edit item"
-                                >
-                                    <CustomIcon name="edit" size={32} />
-                                </button>
-                            )}
+                    <div className="col-span-1 flex justify-end">
+                        {!isLocked && (
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {!isBeingEditedByOther && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleEdit(); }}
+                                        className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
+                                        title="Edit item"
+                                    >
+                                        <CustomIcon name="edit" size={32} />
+                                    </button>
+                                )}
 
-                            {userPermissions.canDeleteAnything && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
-                                    disabled={isBeingEditedByOther}
-                                    className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'
-                                        }`}
-                                    title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Delete item'}
-                                >
-                                    <CustomIcon name="delete" size={32} />
-                                </button>
-                            )}
-                        </div>
-                    )}
+                                {userPermissions.canDeleteAnything && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
+                                        disabled={isBeingEditedByOther}
+                                        className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'
+                                            }`}
+                                        title={isBeingEditedByOther ? `Being edited by ${editingUser.userName}` : 'Delete item'}
+                                    >
+                                        <CustomIcon name="delete" size={32} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
-        </div>
+
+            {showTakeOverConfirm && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+                        <div className="flex items-center space-x-3 mb-4">
+                            <CustomIcon name="notification" size={40} className="text-orange-500" />
+                            <h3 className="text-lg font-semibold">Take Over Editing</h3>
+                        </div>
+                        <p className="text-gray-600 dark:text-gray-300 mb-6">
+                            {editingUser?.userName} is currently editing this item. Taking over will save their work and close their editor. Do you want to continue?
+                        </p>
+                        <div className="flex justify-end space-x-3">
+                            <button
+                                onClick={handleCancelTakeOver}
+                                className="btn-secondary"
+                            >
+                                <CustomIcon name="cancel" size={32} />
+                                <span>Cancel</span>
+                            </button>
+                            <button
+                                onClick={handleConfirmTakeOver}
+                                className="btn-primary bg-orange-600 hover:bg-orange-700"
+                            >
+                                <CustomIcon name="lock" size={32} />
+                                <span>Take Over</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 
