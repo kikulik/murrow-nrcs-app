@@ -40,8 +40,8 @@ const StoryEditTab = () => {
     const itemId = appState.editingStoryId;
     const lockInfo = getItemLockInfo(itemId);
     const isOwner = isCurrentUserOwner(itemId);
-    const isReadOnly = !isOwner && lockInfo.locked;
-    const otherEditor = getUserEditingItem(itemId);
+    const isReadOnly = lockInfo.locked && !lockInfo.ownedByCurrentUser;
+    const otherEditor = !isOwner && lockInfo.locked ? lockInfo.owner : null;
 
     useEffect(() => {
         if (appState.editingStoryData) {
@@ -150,7 +150,13 @@ const StoryEditTab = () => {
         if (!confirmed) return;
 
         const success = await takeOverStory(itemId, otherEditor.userId);
-        if (!success) {
+        if (success) {
+            setAppState(prev => ({
+                ...prev,
+                editingStoryIsOwner: true,
+                editingStoryTakenOver: false
+            }));
+        } else {
             alert('Failed to take over the story. Please try again.');
         }
     };
