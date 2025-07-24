@@ -1,3 +1,9 @@
+/*
+================================================================================
+File: murrow-nrcs-app.git/src/index.jsx
+Description: Main entry point for the application.
+================================================================================
+*/
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AppWrapper from './App';
