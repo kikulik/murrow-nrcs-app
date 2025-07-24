@@ -1,6 +1,5 @@
 // src/features/rundown/components/RundownDraggableItem.jsx
-
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAppContext } from '../../../context/AppContext';
@@ -21,20 +20,17 @@ const RundownDraggableItem = ({
     onSelect
 }) => {
     const { appState } = useAppContext();
-    const { db, currentUser } = useAuth();
+    const { currentUser } = useAuth();
     const {
         safeUpdateRundown,
         getUserEditingItem,
-        getItemLockInfo,
-        isCurrentUserOwner,
         startEditingStory
     } = useCollaboration();
     const ref = useRef(null);
 
     const userPermissions = getUserPermissions(currentUser.role);
-    const lockInfo = getItemLockInfo(item.id);
-    const isOwner = isCurrentUserOwner(item.id);
-    const isBeingEditedByOther = lockInfo.locked && !lockInfo.ownedByCurrentUser;
+    const editingUser = getUserEditingItem(item.id);
+    const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
 
     const [{ handlerId }, drop] = useDrop({
         accept: 'rundownItem',
@@ -88,13 +84,7 @@ const RundownDraggableItem = ({
                 ...rundownData,
                 items: rundownData.items.map(rundownItem =>
                     rundownItem.id === item.id
-                        ? {
-                            ...rundownItem,
-                            storyStatus: newStatus,
-                            version: (rundownItem.version || 1) + 1,
-                            lastModified: new Date().toISOString(),
-                            lastModifiedBy: currentUser.uid
-                        }
+                        ? { ...rundownItem, storyStatus: newStatus }
                         : rundownItem
                 )
             }));
@@ -104,21 +94,13 @@ const RundownDraggableItem = ({
     };
 
     const handleEdit = async () => {
-        const success = await startEditingStory(item.id, item);
-        if (!success) {
-            console.log('Could not start editing story');
-        }
+        await startEditingStory(item.id, item);
     };
 
     const handleClick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-
-        if (e.ctrlKey || e.metaKey) {
-            onSelect(item.id, true);
-        } else {
-            onSelect(item.id, false);
-        }
+        onSelect(item.id, e.ctrlKey || e.metaKey);
     };
 
     const itemClasses = `
@@ -131,97 +113,49 @@ const RundownDraggableItem = ({
     `;
 
     return (
-        <div
-            ref={ref}
-            data-handler-id={handlerId}
-            className={itemClasses}
-            onClick={handleClick}
-        >
+        <div ref={ref} data-handler-id={handlerId} className={itemClasses} onClick={handleClick}>
             <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 min-h-[44px] relative">
-                <div className="col-span-1 flex justify-center">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'
-                        }`}>
-                        {index + 1}
-                    </div>
-                </div>
-
+                <div className="col-span-1 flex justify-center">{index + 1}</div>
                 <div className="col-span-4 overflow-hidden">
-                    <h4 className="font-medium text-sm break-words overflow-wrap-anywhere">
-                        {item.title}
-                        {isLocked && <CustomIcon name="lock" size={32} className="text-red-500 inline ml-2" />}
-                    </h4>
+                    <h4 className="font-medium text-sm break-words">{item.title}</h4>
                 </div>
-
                 <div className="col-span-1 flex justify-center">
-                    {isBeingEditedByOther ? (
-                        <div className="flex items-center justify-center">
-                            <div
-                                className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
-                                title={`${lockInfo.owner?.userName} is editing`}
-                            >
-                                {lockInfo.owner?.userName?.charAt(0)}
-                            </div>
+                    {isBeingEditedByOther && (
+                        <div title={`${editingUser.userName} is editing`} className="w-4 h-4 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center">
+                            {editingUser.userName?.charAt(0)}
                         </div>
-                    ) : null}
+                    )}
                 </div>
-
-                <div className="col-span-2 flex gap-1 justify-start flex-wrap">
+                <div className="col-span-2 flex gap-1 flex-wrap">
                     {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
-                        <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
-                            {t}
-                        </span>
+                        <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>{t}</span>
                     ))}
                 </div>
-
                 <div className="col-span-1">
                     <select
                         value={item.storyStatus || 'Ready for Air'}
                         onChange={(e) => handleStatusChange(e.target.value)}
                         disabled={isLocked || isBeingEditedByOther}
-                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${(isLocked || isBeingEditedByOther) ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
+                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${isLocked || isBeingEditedByOther ? 'opacity-50' : ''}`}
                         onClick={e => e.stopPropagation()}
-                        title={isBeingEditedByOther ? `Being edited by ${lockInfo.owner?.userName}` : ''}
                     >
                         {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                 </div>
-
-                <div className="col-span-1 text-center">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">{item.duration}</span>
+                <div className="col-span-1 text-center text-xs text-gray-600 dark:text-gray-400">{item.duration}</div>
+                <div className="col-span-2 text-left overflow-hidden text-xs text-gray-500 truncate" title={author?.name}>
+                    {author?.name || 'No Author'}
                 </div>
-
-                <div className="col-span-2 text-left overflow-hidden">
-                    {author ? (
-                        <span className="text-xs text-gray-500 truncate block" title={author.name}>
-                            {author.name.length > 10 ? author.name.substring(0, 10) + '...' : author.name}
-                        </span>
-                    ) : (
-                        <span className="text-xs text-gray-400">No Author</span>
-                    )}
-                </div>
-
                 <div className="col-span-1 flex justify-end">
                     {!isLocked && (
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
                             {!isBeingEditedByOther && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleEdit(); }}
-                                    className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
-                                    title="Edit item"
-                                >
+                                <button onClick={(e) => { e.stopPropagation(); handleEdit(); }} className="p-1 text-gray-400 hover:text-blue-600 rounded" title="Edit item">
                                     <CustomIcon name="edit" size={32} />
                                 </button>
                             )}
-
                             {userPermissions.canDeleteAnything && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
-                                    disabled={isBeingEditedByOther}
-                                    className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'
-                                        }`}
-                                    title={isBeingEditedByOther ? `Being edited by ${lockInfo.owner?.userName}` : 'Delete item'}
-                                >
+                                <button onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }} disabled={isBeingEditedByOther} className={`p-1 rounded ${isBeingEditedByOther ? 'text-gray-300' : 'text-gray-400 hover:text-red-600'}`} title="Delete item">
                                     <CustomIcon name="delete" size={32} />
                                 </button>
                             )}
