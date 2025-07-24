@@ -1,4 +1,3 @@
-// src/features/rundown/components/RundownItemEditor.jsx
 import React, { useState, useEffect } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import InputField from '../../../components/ui/InputField';
@@ -6,20 +5,22 @@ import CollaborativeTextEditor from '../../../components/collaboration/Collabora
 import UserPresenceIndicator from '../../../components/collaboration/UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../../lib/constants';
 import { useCollaboration } from '../../../context/CollaborationContext';
+import { useAuth } from '../../../context/AuthContext';
 import { calculateReadingTime, getWordCount } from '../../../utils/textDurationCalculator';
 
 const RundownItemEditor = ({ item, onSave, onCancel }) => {
+    const { currentUser } = useAuth();
     const { setEditingItem, clearEditingItem, isItemBeingEdited } = useCollaboration();
     const [formData, setFormData] = useState(item);
     const [showConflictWarning, setShowConflictWarning] = useState(false);
     const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
 
     const wordCount = getWordCount(formData.content);
     const calculatedDuration = calculateReadingTime(formData.content);
 
     useEffect(() => {
         setFormData(item);
-
         setEditingItem(item.id);
 
         if (isItemBeingEdited(item.id)) {
@@ -40,23 +41,30 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
         }
     }, [calculatedDuration, useCalculatedDuration]);
 
-    const handleSave = (e) => {
+    const handleSave = async (e) => {
         e.stopPropagation();
+        setIsSaving(true);
 
-        const updatedItem = {
-            ...formData,
-            version: (item.version || 1) + 1,
-            lastModified: new Date().toISOString(),
-            lastModifiedBy: 'current-user-id'
-        };
+        try {
+            const updatedItem = {
+                ...formData,
+                version: (item.version || 1) + 1,
+                lastModified: new Date().toISOString(),
+                lastModifiedBy: currentUser.uid
+            };
 
-        onSave(item.id, updatedItem);
-        clearEditingItem();
+            await onSave(item.id, updatedItem);
+            await clearEditingItem();
+        } catch (error) {
+            console.error('Error saving item:', error);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    const handleCancel = (e) => {
+    const handleCancel = async (e) => {
         e.stopPropagation();
-        clearEditingItem();
+        await clearEditingItem();
         onCancel();
     };
 
@@ -173,13 +181,13 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-4 border-t">
-                    <button onClick={handleCancel} className="btn-secondary">
+                    <button onClick={handleCancel} className="btn-secondary" disabled={isSaving}>
                         <CustomIcon name="cancel" size={16} />
                         <span>Cancel</span>
                     </button>
-                    <button onClick={handleSave} className="btn-primary">
+                    <button onClick={handleSave} className="btn-primary" disabled={isSaving}>
                         <CustomIcon name="save" size={16} />
-                        <span>Save</span>
+                        <span>{isSaving ? 'Saving...' : 'Save'}</span>
                     </button>
                 </div>
             </div>
