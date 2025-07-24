@@ -1,5 +1,4 @@
 // src/features/admin/components/TemplateEditor.jsx
-// Rundown template editor component
 import React, { useState } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import InputField from '../../../components/ui/InputField';
