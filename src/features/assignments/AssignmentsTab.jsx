@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../lib/permissions';
 import { getStatusColor } from '../../utils/styleHelpers';
 import AssignmentEditor from './components/AssignmentEditor';
+import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
 
 const AssignmentsTab = () => {
     const { currentUser, db } = useAuth();
@@ -16,13 +17,10 @@ const AssignmentsTab = () => {
     const userPermissions = getUserPermissions(currentUser.role);
     const getUserById = (id) => appState.users.find(u => u.id === id || u.uid === id);
 
-    // Filter assignments based on permissions
     const visibleAssignments = appState.assignments.filter(assignment => {
         if (userPermissions.canCreateAssignments) {
-            // Admins and Producers can see all assignments
             return true;
         } else {
-            // Other users can only see assignments assigned to them
             return assignment.assigneeId === currentUser.uid || assignment.assigneeId === currentUser.id;
         }
     });
@@ -30,8 +28,6 @@ const AssignmentsTab = () => {
     const handleSave = async (assignment) => {
         if (!db) return;
         try {
-            const { doc, updateDoc, addDoc, collection } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
             if (assignment.id) {
                 const docRef = doc(db, "assignments", assignment.id);
                 const { id, ...dataToUpdate } = assignment;
