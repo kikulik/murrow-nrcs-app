@@ -1,5 +1,4 @@
 // src/features/admin/components/UserEditor.jsx
-// Inline user editor component
 import React, { useState } from 'react';
 import { useAppContext } from '../../../context/AppContext';
 import InputField from '../../../components/ui/InputField';
