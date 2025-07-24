@@ -25,18 +25,20 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                 <div className="flex items-start justify-between mb-3 pr-40">
                     <div className="flex items-center space-x-4 flex-1 min-w-0">
                         {getPlatformIcon(story.platform)}
-                        <h3 className="text-lg font-medium truncate">{story.title}</h3>
+                        <h3 className="text-lg font-medium break-words line-clamp-2">{story.title}</h3>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(story.status)} shrink-0`}>
                             {story.status}
                         </span>
                     </div>
                     <div className="flex items-center space-x-3 text-sm text-gray-500 shrink-0">
-                        <CustomIcon name="time" size={32} />
+                        <CustomIcon name="time" size={40} />
                         <span className="min-w-[50px]">{story.duration}</span>
                     </div>
                 </div>
 
-                <p className="text-gray-600 dark:text-gray-300 mb-4 line-clamp-3 break-words">{story.content}</p>
+                <div className="mb-4 max-w-full overflow-hidden">
+                    <p className="text-gray-600 dark:text-gray-300 break-words whitespace-pre-wrap overflow-wrap-anywhere">{story.content}</p>
+                </div>
 
                 <div className="flex items-center justify-between text-sm text-gray-500">
                     <span>By {getUserById(story.authorId)?.name}</span>
@@ -56,7 +58,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                         className="btn-secondary !p-3"
                         title="Edit Story"
                     >
-                        <CustomIcon name="edit" size={32} />
+                        <CustomIcon name="edit" size={40} />
                     </button>
                 )}
                 <button
@@ -64,7 +66,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                     className="btn-secondary !p-3"
                     title="Send to Rundown"
                 >
-                    <CustomIcon name="send" size={32} />
+                    <CustomIcon name="send" size={40} />
                 </button>
                 {(canEdit || userPermissions.canDeleteAnything) && (
                     <button
@@ -72,7 +74,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                         className="btn-secondary !p-3"
                         title="Delete Story"
                     >
-                        <CustomIcon name="cancel" size={32} className="text-red-500" />
+                        <CustomIcon name="delete" size={40} className="text-red-500" />
                     </button>
                 )}
             </div>
