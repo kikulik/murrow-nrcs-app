@@ -1,5 +1,4 @@
 // src/components/common/ModalBase.jsx
-// Base modal component
 import React from 'react';
 import CustomIcon from '../ui/CustomIcon';
 
