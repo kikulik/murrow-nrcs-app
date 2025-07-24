@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useCollaboration } from '../../context/CollaborationContext';
 import { useAuth } from '../../context/AuthContext';
+import { useAppContext } from '../../context/AppContext';
 
 const CollaborativeTextEditor = ({
     value,
@@ -13,12 +14,11 @@ const CollaborativeTextEditor = ({
     rows = 4
 }) => {
     const { currentUser, db } = useAuth();
+    const { appState } = useAppContext();
     const { 
         setEditingItem, 
         clearEditingItem, 
-        CollaborationManager,
-        getItemLockInfo,
-        isCurrentUserOwner
+        CollaborationManager
     } = useCollaboration();
     
     const [localValue, setLocalValue] = useState(value || '');
@@ -28,9 +28,10 @@ const CollaborativeTextEditor = ({
     const lastValueRef = useRef(value || '');
     const operationsListener = useRef(null);
 
-    const lockInfo = getItemLockInfo(itemId);
-    const isOwner = isCurrentUserOwner(itemId);
-    const isReadOnly = lockInfo.locked && !lockInfo.ownedByCurrentUser;
+    // Use app state to determine if user can edit
+    const isOwner = appState.editingStoryIsOwner;
+    const isTakenOver = appState.editingStoryTakenOver;
+    const isReadOnly = isTakenOver && !isOwner;
 
     useEffect(() => {
         if (value !== lastValueRef.current) {
@@ -258,9 +259,9 @@ const CollaborativeTextEditor = ({
                 </div>
             )}
 
-            {isReadOnly && lockInfo.owner && (
+            {isReadOnly && appState.editingStoryTakenOverBy && (
                 <div className="absolute top-2 right-2 bg-orange-100 border border-orange-300 rounded px-2 py-1 text-xs">
-                    {lockInfo.owner.userName} is editing
+                    {appState.editingStoryTakenOverBy} is editing
                 </div>
             )}
         </div>
