@@ -1,5 +1,6 @@
 // src/features/rundown/components/RundownItemEditor.jsx
 import React, { useState, useEffect } from 'react';
+import CustomIcon from '../../../components/ui/CustomIcon';
 import InputField from '../../../components/ui/InputField';
 import CollaborativeTextEditor from '../../../components/collaboration/CollaborativeTextEditor';
 import UserPresenceIndicator from '../../../components/collaboration/UserPresenceIndicator';
@@ -19,15 +20,12 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
     useEffect(() => {
         setFormData(item);
 
-        // Set editing status when component mounts
         setEditingItem(item.id);
 
-        // Check if item is being edited by someone else
         if (isItemBeingEdited(item.id)) {
             setShowConflictWarning(true);
         }
 
-        // Clear editing status when component unmounts
         return () => {
             clearEditingItem();
         };
@@ -42,16 +40,14 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
         }
     }, [calculatedDuration, useCalculatedDuration]);
 
-
     const handleSave = (e) => {
         e.stopPropagation();
 
-        // Add version control and modification tracking
         const updatedItem = {
             ...formData,
             version: (item.version || 1) + 1,
             lastModified: new Date().toISOString(),
-            lastModifiedBy: 'current-user-id' // This should come from auth context
+            lastModifiedBy: 'current-user-id'
         };
 
         onSave(item.id, updatedItem);
@@ -69,13 +65,11 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
     };
 
     return (
-        <div className="p-4 bg-blue-50 dark:bg-gray-700/50 border-l-4 border-blue-500 relative">
-            {/* User presence indicator */}
+        <div className="p-6 bg-blue-50 dark:bg-gray-700/50 border-l-4 border-blue-500 relative min-h-[600px]">
             <div className="absolute top-2 right-2">
                 <UserPresenceIndicator itemId={item.id} />
             </div>
 
-            {/* Conflict warning */}
             {showConflictWarning && (
                 <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 rounded-md">
                     <div className="flex items-center">
@@ -95,14 +89,14 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
                                 className="text-yellow-400 hover:text-yellow-600"
                             >
                                 <span className="sr-only">Dismiss</span>
-                                Ã—
+                                ×
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="space-y-4">
+            <div className="space-y-6 h-full flex flex-col">
                 <InputField
                     label="Title"
                     value={formData.title}
@@ -129,7 +123,7 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
                         </label>
                         {wordCount > 0 && (
                             <p className="text-xs text-gray-500 mt-1">
-                                {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                                {wordCount} words • Est. {calculatedDuration} reading time
                             </p>
                         )}
                     </div>
@@ -160,7 +154,7 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
                     </div>
                 </div>
 
-                <div>
+                <div className="flex-1">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Content
                     </label>
@@ -169,18 +163,24 @@ const RundownItemEditor = ({ item, onSave, onCancel }) => {
                         onChange={handleContentChange}
                         itemId={item.id}
                         placeholder="Script or content..."
-                        rows={5}
+                        rows={12}
+                        className="min-h-[300px]"
                     />
                 </div>
 
-                {/* Version info */}
                 <div className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 p-2 rounded">
-                    Version {item.version || 1} â€¢ Last modified: {item.lastModified ? new Date(item.lastModified).toLocaleString() : 'Never'}
+                    Version {item.version || 1} • Last modified: {item.lastModified ? new Date(item.lastModified).toLocaleString() : 'Never'}
                 </div>
 
-                <div className="flex justify-end space-x-2">
-                    <button onClick={handleCancel} className="btn-secondary">Cancel</button>
-                    <button onClick={handleSave} className="btn-primary">Save Changes</button>
+                <div className="flex justify-end space-x-2 pt-4 border-t">
+                    <button onClick={handleCancel} className="btn-secondary">
+                        <CustomIcon name="cancel" size={16} />
+                        <span>Cancel</span>
+                    </button>
+                    <button onClick={handleSave} className="btn-primary">
+                        <CustomIcon name="save" size={16} />
+                        <span>Save</span>
+                    </button>
                 </div>
             </div>
         </div>
