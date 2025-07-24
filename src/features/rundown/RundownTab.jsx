@@ -1,5 +1,5 @@
 // src/features/rundown/RundownTab.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -7,11 +7,14 @@ import { getUserPermissions } from '../../lib/permissions';
 import { calculateTotalDuration, formatDuration } from '../../utils/helpers';
 import RundownList from './components/RundownList';
 import PrintDropdown from './components/PrintDropdown';
+import SendMultipleToStoriesModal from '../../components/modals/SendMultipleToStoriesModal';
 import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
 
 const RundownTab = ({ liveMode }) => {
     const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
+    const [sendToStoriesItems, setSendToStoriesItems] = useState(null);
+
     const userPermissions = getUserPermissions(currentUser.role);
 
     const currentRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
@@ -30,8 +33,6 @@ const RundownTab = ({ liveMode }) => {
         const date = new Date(airDate);
         const hours = date.getHours();
         const minutes = date.getMinutes();
-
-        // Convert to 24-hour format for printing
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     };
 
@@ -60,11 +61,55 @@ const RundownTab = ({ liveMode }) => {
     };
 
     const openNewRundown = () => {
+        if (!userPermissions.canCreateRundowns) {
+            alert('You do not have permission to create rundowns');
+            return;
+        }
         setAppState(prev => ({ ...prev, modal: { type: 'rundownEditor' } }));
     };
 
     const openAddStoryModal = () => {
+        if (!userPermissions.canCreateRundownItems) {
+            alert('You do not have permission to add rundown items');
+            return;
+        }
         setAppState(prev => ({ ...prev, modal: { type: 'addStoryToRundown' } }));
+    };
+
+    const handleSendToStories = (items) => {
+        setSendToStoriesItems(items);
+    };
+
+    const handleTakeOverItem = async (itemId, previousUserId) => {
+        try {
+            // Send take-over notification
+            if (db) {
+                const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+
+                // Create notification for the previous user
+                await addDoc(collection(db, "notifications"), {
+                    userId: previousUserId,
+                    type: 'takeOver',
+                    message: `${currentUser.name} has taken over editing the story you were working on.`,
+                    itemId: itemId,
+                    timestamp: new Date().toISOString(),
+                    read: false
+                });
+
+                // Create a system message in chat
+                await addDoc(collection(db, "messages"), {
+                    userId: 'system',
+                    userName: 'System',
+                    text: `${currentUser.name} took over editing from another user.`,
+                    timestamp: new Date().toISOString(),
+                    type: 'system'
+                });
+            }
+
+            console.log(`${currentUser.name} took over item ${itemId} from user ${previousUserId}`);
+        } catch (error) {
+            console.error('Error sending take-over notification:', error);
+        }
     };
 
     return (
@@ -99,8 +144,8 @@ const RundownTab = ({ liveMode }) => {
                     </div>
                     <button
                         onClick={openNewRundown}
-                        disabled={isRundownLocked}
-                        className={`btn-secondary text-sm ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        disabled={isRundownLocked || !userPermissions.canCreateRundowns}
+                        className={`btn-secondary text-sm ${(isRundownLocked || !userPermissions.canCreateRundowns) ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         <CustomIcon name="add story" size={32} />
                         <span>New</span>
@@ -154,8 +199,8 @@ const RundownTab = ({ liveMode }) => {
                         </div>
                         <button
                             onClick={openAddStoryModal}
-                            disabled={isRundownLocked || currentRundown.archived}
-                            className={`btn-primary flex items-center ${isRundownLocked || currentRundown.archived ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            disabled={isRundownLocked || currentRundown.archived || !userPermissions.canCreateRundownItems}
+                            className={`btn-primary flex items-center ${(isRundownLocked || currentRundown.archived || !userPermissions.canCreateRundownItems) ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             <CustomIcon name="add story" size={32} className="mr-2" />
                             <span>Add Story</span>
@@ -170,6 +215,8 @@ const RundownTab = ({ liveMode }) => {
                     isLocked={isRundownLocked}
                     userPermissions={userPermissions}
                     onItemsUpdate={handleRundownItemUpdate}
+                    onSendToStories={handleSendToStories}
+                    onTakeOverItem={handleTakeOverItem}
                 />
             ) : (
                 <div className="text-center py-12 text-gray-500">
@@ -178,6 +225,13 @@ const RundownTab = ({ liveMode }) => {
                         'This rundown is archived. Restore it to make changes.'
                     }
                 </div>
+            )}
+
+            {sendToStoriesItems && (
+                <SendMultipleToStoriesModal
+                    rundownItems={sendToStoriesItems}
+                    onCancel={() => setSendToStoriesItems(null)}
+                />
             )}
         </div>
     );
