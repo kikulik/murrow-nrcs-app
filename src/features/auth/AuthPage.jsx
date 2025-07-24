@@ -1,5 +1,4 @@
 // src/features/auth/AuthPage.jsx
-// Authentication page component
 import React, { useState } from 'react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
