@@ -10,9 +10,7 @@ import {
     getStoriesInFolder,
     sortFoldersByDate,
     generateDateFolder,
-    createStoryFolder,
-    validateFolderName,
-    sanitizeFolderName
+    createStoryFolder
 } from '../../utils/folderHelpers';
 import StoryCard from './components/StoryCard';
 import SendStoryToRundownModal from './components/SendStoryToRundownModal';
@@ -32,14 +30,17 @@ const StoriesTab = () => {
     // Organize stories by folders
     const folderStructure = useMemo(() => {
         const folderMap = getFoldersByDate(appState.stories);
-        const sortedDates = sortFoldersByDate(folderMap.keys());
+        const sortedDates = sortFoldersByDate(Array.from(folderMap.keys()));
 
         // Add current date if no stories exist yet
-        if (!folderMap.has(generateDateFolder())) {
-            folderMap.set(generateDateFolder(), new Set());
+        const currentDate = generateDateFolder();
+        if (!folderMap.has(currentDate)) {
+            folderMap.set(currentDate, new Set());
         }
 
-        return sortedDates.concat([generateDateFolder()]).filter((date, index, arr) => arr.indexOf(date) === index).map(dateFolder => ({
+        const allDates = [...new Set([...sortedDates, currentDate])];
+
+        return allDates.map(dateFolder => ({
             dateFolder,
             subFolders: Array.from(folderMap.get(dateFolder) || []).sort(),
             stories: getStoriesInFolder(appState.stories, dateFolder)
@@ -114,39 +115,43 @@ const StoriesTab = () => {
 
     const renderFolderTree = () => {
         return (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4 max-h-96 overflow-y-auto">
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium text-sm">Story Folders</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border overflow-hidden">
+                <div className="p-3 border-b bg-gray-50 dark:bg-gray-700 flex items-center justify-between">
+                    <h3 className="font-medium text-sm flex items-center gap-2">
+                        <CustomIcon name="stories" size={16} />
+                        Story Folders
+                    </h3>
                     <button
                         onClick={() => setShowCreateFolder(true)}
-                        className="p-1 text-gray-500 hover:text-blue-600 rounded"
+                        className="p-1 text-gray-500 hover:text-blue-600 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
                         title="Create new folder"
                     >
                         <CustomIcon name="add story" size={16} />
                     </button>
                 </div>
 
-                <div className="space-y-0.5 text-sm">
+                <div className="max-h-96 overflow-y-auto">
                     {/* All Stories option */}
-                    <div className="flex items-center">
-                        <div className="w-4"></div>
-                        <button
-                            onClick={() => selectFolder('')}
-                            className={`flex-1 text-left px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-1 ${selectedFolder === '' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' : ''
-                                }`}
-                        >
-                            <span>📁</span>
-                            <span>All Stories ({appState.stories.length})</span>
-                        </button>
+                    <div
+                        className={`flex items-center px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer ${selectedFolder === '' ? 'bg-blue-100 dark:bg-blue-900 border-r-2 border-blue-500' : ''
+                            }`}
+                        onClick={() => selectFolder('')}
+                    >
+                        <div className="w-4 mr-2"></div>
+                        <CustomIcon name="stories" size={16} className="mr-2 text-blue-600" />
+                        <span className="text-sm font-medium">All Stories ({appState.stories.length})</span>
                     </div>
 
                     {folderStructure.map(({ dateFolder, subFolders, stories }) => (
                         <div key={dateFolder}>
                             {/* Date folder */}
-                            <div className="flex items-center">
+                            <div
+                                className={`flex items-center px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 ${selectedFolder === dateFolder ? 'bg-blue-100 dark:bg-blue-900 border-r-2 border-blue-500' : ''
+                                    }`}
+                            >
                                 <button
                                     onClick={() => toggleFolder(dateFolder)}
-                                    className="w-4 h-4 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                    className="w-4 h-4 mr-2 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                                 >
                                     {expandedFolders.has(dateFolder) ? (
                                         <span className="text-xs">▼</span>
@@ -154,14 +159,14 @@ const StoriesTab = () => {
                                         <span className="text-xs">▶</span>
                                     )}
                                 </button>
-                                <button
+                                <div
+                                    className="flex items-center flex-1 cursor-pointer"
                                     onClick={() => selectFolder(dateFolder)}
-                                    className={`flex-1 text-left px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-1 ${selectedFolder === dateFolder ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' : ''
-                                        }`}
                                 >
-                                    <span>📅</span>
-                                    <span>{dateFolder} ({stories.length})</span>
-                                </button>
+                                    <CustomIcon name="time" size={16} className="mr-2 text-orange-600" />
+                                    <span className="text-sm">{dateFolder}</span>
+                                    <span className="ml-auto text-xs text-gray-500">({stories.length})</span>
+                                </div>
                             </div>
 
                             {/* Subfolders */}
@@ -170,16 +175,16 @@ const StoriesTab = () => {
                                 const subFolderStories = getStoriesInFolder(appState.stories, fullPath);
 
                                 return (
-                                    <div key={fullPath} className="flex items-center ml-4">
-                                        <div className="w-4"></div>
-                                        <button
-                                            onClick={() => selectFolder(fullPath)}
-                                            className={`flex-1 text-left px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-1 ${selectedFolder === fullPath ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' : ''
-                                                }`}
-                                        >
-                                            <span>📂</span>
-                                            <span>{subFolder} ({subFolderStories.length})</span>
-                                        </button>
+                                    <div
+                                        key={fullPath}
+                                        className={`flex items-center px-3 py-2 pl-8 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer ${selectedFolder === fullPath ? 'bg-blue-100 dark:bg-blue-900 border-r-2 border-blue-500' : ''
+                                            }`}
+                                        onClick={() => selectFolder(fullPath)}
+                                    >
+                                        <div className="w-4 mr-2"></div>
+                                        <CustomIcon name="add story" size={16} className="mr-2 text-green-600" />
+                                        <span className="text-sm">{subFolder}</span>
+                                        <span className="ml-auto text-xs text-gray-500">({subFolderStories.length})</span>
                                     </div>
                                 );
                             })}
@@ -218,17 +223,17 @@ const StoriesTab = () => {
                 </div>
                 <div className="flex items-center space-x-3">
                     <div className="relative">
-                        <CustomIcon name="search" size={32} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <CustomIcon name="search" size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
                             placeholder="Search stories..."
                             value={appState.searchTerm}
                             onChange={(e) => updateSearchTerm(e.target.value)}
-                            className="pl-16 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                            className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm w-64"
                         />
                     </div>
                     <button onClick={() => openStoryEditor()} className="btn-primary">
-                        <CustomIcon name="add story" size={32} />
+                        <CustomIcon name="add story" size={20} />
                         <span>New Story</span>
                     </button>
                 </div>
@@ -243,12 +248,17 @@ const StoriesTab = () => {
                 {/* Stories content */}
                 <div className="lg:col-span-3">
                     {selectedFolder && (
-                        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                             <div className="flex items-center justify-between">
-                                <span className="font-medium">Viewing: {selectedFolder}</span>
+                                <div className="flex items-center gap-2">
+                                    <CustomIcon name="add story" size={16} className="text-blue-600" />
+                                    <span className="font-medium text-blue-800 dark:text-blue-200">
+                                        Viewing: {selectedFolder}
+                                    </span>
+                                </div>
                                 <button
                                     onClick={() => setSelectedFolder('')}
-                                    className="text-blue-600 hover:text-blue-700 text-sm"
+                                    className="text-blue-600 hover:text-blue-700 text-sm hover:underline"
                                 >
                                     Clear filter
                                 </button>
@@ -337,7 +347,7 @@ const AssignmentCard = ({ assignment }) => {
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
             <div className="flex items-center flex-wrap gap-x-3 mb-2">
-                <CustomIcon name="assignments" size={32} className="text-purple-500" />
+                <CustomIcon name="assignments" size={24} className="text-purple-500" />
                 <h3 className="text-lg font-medium">{assignment.title}</h3>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(assignment.status)}`}>
                     {assignment.status}
