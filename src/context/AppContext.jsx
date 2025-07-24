@@ -1,6 +1,11 @@
 /*
 ================================================================================
 File: murrow-nrcs-app.git/src/context/AppContext.jsx
+Description: This file manages the global application state.
+FIX: The useEffect hook has been restructured to correctly handle the async
+`setupFirestoreListeners` function. An async function is now defined and called
+inside the hook, ensuring the cleanup function is returned correctly. This
+solves the primary issue of data listeners not being attached.
 ================================================================================
 */
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -10,7 +15,7 @@ import { setupFirestoreListeners } from '../hooks/useFirestoreData';
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-    const { db, currentUser } = useAuth(); // Get db and currentUser from AuthContext
+    const { db, currentUser } = useAuth();
     const [appState, setAppState] = useState({
         users: [],
         groups: [],
@@ -39,12 +44,25 @@ export const AppProvider = ({ children }) => {
     });
 
     useEffect(() => {
-        // Only set up listeners if db and a user are present.
-        if (db && currentUser) {
-            const unsubscribe = setupFirestoreListeners(db, setAppState);
-            return () => unsubscribe();
-        }
-    }, [db, currentUser]); // Rerun effect if db or currentUser changes
+        let unsubscribeFromListeners;
+
+        const initializeListeners = async () => {
+            if (db && currentUser) {
+                // setupFirestoreListeners is async, so we await its result
+                unsubscribeFromListeners = await setupFirestoreListeners(db, setAppState);
+            }
+        };
+
+        initializeListeners();
+
+        // The cleanup function will be called when the component unmounts
+        // or when dependencies change.
+        return () => {
+            if (unsubscribeFromListeners) {
+                unsubscribeFromListeners();
+            }
+        };
+    }, [db, currentUser]);
 
     return (
         <AppContext.Provider value={{ appState, setAppState }}>
