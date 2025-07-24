@@ -1,4 +1,3 @@
-// src/features/stories/components/StoryEditor.jsx
 import React, { useState, useEffect } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAuth } from '../../../context/AuthContext';
@@ -41,11 +40,9 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
     const [showCreateFolder, setShowCreateFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
 
-    // Get existing folders
     const existingFolders = React.useMemo(() => {
         const folderMap = getFoldersByDate(appState.stories);
 
-        // Also include folders that were created but are empty
         (appState.createdFolders || []).forEach(folderPath => {
             const { dateFolder, subFolder } = parseFolderPath(folderPath);
             if (!folderMap.has(dateFolder)) {
@@ -65,7 +62,6 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
             });
         });
 
-        // Always include current date
         folders.add(generateDateFolder());
 
         return Array.from(folders).sort();
@@ -126,10 +122,9 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                 status: story?.status || 'draft',
                 created: story?.created || new Date().toISOString(),
                 comments: story?.comments || [],
-                types: selectedTypes // Store selected types
+                types: selectedTypes
             };
 
-            // Add video fields if video types are selected
             const isVideoStory = selectedTypes.some(type => VIDEO_ITEM_TYPES.includes(type));
             if (isVideoStory) {
                 const videoType = selectedTypes.find(type => VIDEO_ITEM_TYPES.includes(type)) || 'PKG';
@@ -182,7 +177,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                             className="btn-secondary"
                             title="Create new subfolder"
                         >
-                            <CustomIcon name="add story" size={20} />
+                            <CustomIcon name="add story" size={40} />
                         </button>
                     </div>
 
@@ -302,7 +297,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                 <div className="flex items-center justify-end space-x-3 pt-4">
                     <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
                     <button type="submit" className="btn-primary">
-                        <CustomIcon name="save" size={32} />
+                        <CustomIcon name="save" size={40} />
                         <span>Save Story</span>
                     </button>
                 </div>
