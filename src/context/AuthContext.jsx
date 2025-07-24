@@ -1,4 +1,6 @@
+// Alternative approach using script tags and global Firebase
 // src/context/AuthContext.jsx
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { nameToUsername } from '../utils/helpers';
 
@@ -16,6 +18,44 @@ const firebaseConfig = {
   measurementId: "G-DY9MGNYTJC"
 };
 
+// Function to load Firebase from CDN using script tags
+const loadFirebaseFromCDN = () => {
+  return new Promise((resolve, reject) => {
+    // Check if Firebase is already loaded
+    if (window.firebase) {
+      resolve(window.firebase);
+      return;
+    }
+
+    // Create script elements for Firebase
+    const scripts = [
+      'https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js',
+      'https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js',
+      'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js'
+    ];
+
+    let loadedScripts = 0;
+
+    scripts.forEach(src => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => {
+        loadedScripts++;
+        if (loadedScripts === scripts.length) {
+          // All scripts loaded, initialize Firebase
+          if (window.firebase) {
+            resolve(window.firebase);
+          } else {
+            reject(new Error('Firebase not available after loading scripts'));
+          }
+        }
+      };
+      script.onerror = () => reject(new Error(`Failed to load ${src}`));
+      document.head.appendChild(script);
+    });
+  });
+};
+
 export const AuthProvider = ({ children }) => {
   const [authServices, setAuthServices] = useState({
     currentUser: null,
@@ -29,47 +69,23 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const initialize = async () => {
       try {
-        // Import Firebase modules one by one to avoid destructuring issues
-        const appModule = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js");
-        const authModule = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js");
-        const firestoreModule = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
-        // Check if the modules were imported correctly
-        console.log('App module:', appModule);
-        console.log('Auth module:', authModule);
-        console.log('Firestore module:', firestoreModule);
-
-        // Use default export or try different destructuring patterns
-        const initializeApp = appModule.initializeApp || appModule.default?.initializeApp;
-        const getAuth = authModule.getAuth || authModule.default?.getAuth;
-        const createUserWithEmailAndPassword = authModule.createUserWithEmailAndPassword || authModule.default?.createUserWithEmailAndPassword;
-        const signInWithEmailAndPassword = authModule.signInWithEmailAndPassword || authModule.default?.signInWithEmailAndPassword;
-        const onAuthStateChanged = authModule.onAuthStateChanged || authModule.default?.onAuthStateChanged;
-        const signOut = authModule.signOut || authModule.default?.signOut;
+        // Load Firebase from CDN
+        const firebase = await loadFirebaseFromCDN();
         
-        const getFirestore = firestoreModule.getFirestore || firestoreModule.default?.getFirestore;
-        const doc = firestoreModule.doc || firestoreModule.default?.doc;
-        const getDoc = firestoreModule.getDoc || firestoreModule.default?.getDoc;
-        const setDoc = firestoreModule.setDoc || firestoreModule.default?.setDoc;
-
-        // Verify all functions are available
-        if (!initializeApp || !getAuth || !getFirestore) {
-          throw new Error('Failed to import required Firebase functions');
-        }
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        // Initialize Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
 
         // This listener is the key: it waits for Firebase to check the auth state
-        onAuthStateChanged(auth, async (user) => {
+        auth.onAuthStateChanged(async (user) => {
           if (user) {
             try {
-              const userDoc = await getDoc(doc(db, "users", user.uid));
+              const userDoc = await db.collection("users").doc(user.uid).get();
               // Once the user is found (or not), set loading to false
               setAuthServices(prev => ({ 
                 ...prev, 
-                currentUser: userDoc.exists() ? { uid: user.uid, ...userDoc.data() } : null, 
+                currentUser: userDoc.exists ? { uid: user.uid, ...userDoc.data() } : null, 
                 loading: false 
               }));
             } catch (error) {
@@ -82,10 +98,10 @@ export const AuthProvider = ({ children }) => {
           }
         });
 
-        const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
+        const login = (email, password) => auth.signInWithEmailAndPassword(email, password);
         
         const register = async (email, password, name, role) => {
-          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          const userCredential = await auth.createUserWithEmailAndPassword(email, password);
           const newUser = {
             name, 
             email, 
@@ -93,11 +109,11 @@ export const AuthProvider = ({ children }) => {
             username: nameToUsername(name),
             groupId: null
           };
-          await setDoc(doc(db, "users", userCredential.user.uid), newUser);
+          await db.collection("users").doc(userCredential.user.uid).set(newUser);
           return userCredential;
         };
         
-        const logout = () => signOut(auth);
+        const logout = () => auth.signOut();
 
         setAuthServices(prev => ({
           ...prev,
