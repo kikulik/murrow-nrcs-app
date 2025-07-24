@@ -1,4 +1,3 @@
-// src/context/CollaborationContext.jsx
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useAppContext } from './AppContext';
@@ -30,10 +29,8 @@ export const CollaborationProvider = ({ children }) => {
 
     useEffect(() => {
         if (collaborationManager.current && appState.activeRundownId) {
-            // Start presence tracking for current rundown
             collaborationManager.current.startPresenceTracking(appState.activeRundownId);
 
-            // Listen to other users' presence
             const setupListener = async () => {
                 const unsubscribe = await collaborationManager.current.listenToPresence(
                     appState.activeRundownId,
@@ -85,6 +82,10 @@ export const CollaborationProvider = ({ children }) => {
         return activeUsers.some(user => user.editingItem === itemId);
     };
 
+    const resolveConflict = async (itemId, strategy) => {
+        console.log('Resolving conflict for item:', itemId, 'with strategy:', strategy);
+    };
+
     const value = {
         activeUsers,
         setEditingItem,
@@ -93,6 +94,7 @@ export const CollaborationProvider = ({ children }) => {
         safeUpdateRundown,
         getUserEditingItem,
         isItemBeingEdited,
+        resolveConflict,
         CollaborationManager
     };
 
