@@ -1,4 +1,3 @@
-// src/services/CollaborationManager.js
 export class CollaborationManager {
     constructor(db, currentUser) {
         this.db = db;
@@ -8,7 +7,7 @@ export class CollaborationManager {
         this.currentEditingItem = null;
         this.presenceInterval = null;
         this.lastUpdate = 0;
-        this.updateThrottle = 2000; // Throttle updates to prevent rapid changes
+        this.updateThrottle = 2000;
     }
 
     static addVersionControl(item) {
@@ -121,9 +120,26 @@ export class CollaborationManager {
 
     async takeOverItem(itemId, previousUserId) {
         try {
-            const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { collection, addDoc, query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
 
             await this.setEditingItem(itemId);
+
+            const presenceQuery = query(
+                collection(this.db, "presence"),
+                where("userId", "==", previousUserId)
+            );
+
+            const presenceSnapshot = await getDocs(presenceQuery);
+
+            if (!presenceSnapshot.empty) {
+                const { updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+                presenceSnapshot.forEach(async (docSnapshot) => {
+                    await updateDoc(doc(this.db, "presence", docSnapshot.id), {
+                        editingItem: null,
+                        lastSeen: new Date().toISOString()
+                    });
+                });
+            }
 
             await addDoc(collection(this.db, "notifications"), {
                 userId: previousUserId,
