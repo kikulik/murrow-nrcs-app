@@ -1,6 +1,6 @@
 // src/services/FirebaseService.js
 // Service layer for Firebase operations
-import { useAuth } from '../context/AuthContext';
+// FIX: Standardized dynamic import to use 'firebase/firestore'
 
 export class FirebaseService {
     constructor(db) {
@@ -9,7 +9,7 @@ export class FirebaseService {
 
     async saveItem(item, collectionName) {
         try {
-            const { collection, doc, updateDoc, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { collection, doc, updateDoc, addDoc } = await import("firebase/firestore");
 
             if (item.id) {
                 const docRef = doc(this.db, collectionName, item.id);
@@ -32,7 +32,7 @@ export class FirebaseService {
 
     async deleteItem(id, collectionName) {
         try {
-            const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { doc, deleteDoc } = await import("firebase/firestore");
             await deleteDoc(doc(this.db, collectionName, id));
         } catch (error) {
             console.error(`Error deleting from collection '${collectionName}':`, error);
@@ -42,7 +42,7 @@ export class FirebaseService {
 
     async sendMessage(userId, userName, text) {
         try {
-            const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { collection, addDoc } = await import("firebase/firestore");
             const newMessage = {
                 userId,
                 userName,
@@ -58,7 +58,7 @@ export class FirebaseService {
 
     async sendStoryToRundown(storyId, rundownId, stories, rundowns) {
         try {
-            const { doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
+            const { doc, getDoc, updateDoc } = await import("firebase/firestore");
 
             const story = stories.find(s => s.id === storyId);
             if (!story) {
