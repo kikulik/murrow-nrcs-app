@@ -5,6 +5,7 @@ import { useAppContext } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import ModalBase from '../../../components/common/ModalBase';
 import SelectField from '../../../components/ui/SelectField';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 const SendStoryToRundownModal = ({ story, onCancel }) => {
     const { appState } = useAppContext();
@@ -25,8 +26,6 @@ const SendStoryToRundownModal = ({ story, onCancel }) => {
 
         setSending(true);
         try {
-            const { doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-
             const rundownRef = doc(db, "rundowns", selectedRundownId);
             const rundownDoc = await getDoc(rundownRef);
 
