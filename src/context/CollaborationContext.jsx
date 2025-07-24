@@ -1,11 +1,13 @@
 /*
 ================================================================================
 File: murrow-nrcs-app.git/src/context/CollaborationContext.jsx
-Description: FIX - Removed orderBy from a query to prevent index error and
-standardized all Firebase imports to v9.
+Description: FIX - The main change is ensuring that the CollaborationManager
+and listeners are only initialized when `db` and `currentUser` are confirmed
+to be available from the `useAuth` hook. This prevents race conditions where
+the manager tries to use a null `db` object.
 ================================================================================
 */
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { useAppContext } from './AppContext';
@@ -19,72 +21,35 @@ export const CollaborationProvider = ({ children }) => {
     const [activeUsers, setActiveUsers] = useState([]);
     const [editingSessions, setEditingSessions] = useState(new Map());
     const [notifications, setNotifications] = useState([]);
-    const collaborationManager = useRef(null);
-    const presenceUnsubscribe = useRef(null);
-    const notificationsUnsubscribe = useRef(null);
+    const collaborationManagerRef = useRef(null);
+    const presenceUnsubscribeRef = useRef(null);
+    const notificationsUnsubscribeRef = useRef(null);
 
+    // Initialize CollaborationManager only when db and currentUser are ready
     useEffect(() => {
         if (db && currentUser) {
-            collaborationManager.current = new CollaborationManager(db, currentUser);
-            setupNotificationListener();
+            if (!collaborationManagerRef.current) {
+                collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+            }
         }
-
-        return () => {
-            if (collaborationManager.current) {
-                collaborationManager.current.stopPresenceTracking();
-            }
-            if (presenceUnsubscribe.current) {
-                presenceUnsubscribe.current();
-            }
-            if (notificationsUnsubscribe.current) {
-                notificationsUnsubscribe.current();
-            }
-        };
     }, [db, currentUser]);
 
-    useEffect(() => {
-        if (collaborationManager.current && appState.activeRundownId) {
-            collaborationManager.current.startPresenceTracking(appState.activeRundownId);
-
-            const setupListener = async () => {
-                const unsubscribe = await collaborationManager.current.listenToPresence(
-                    appState.activeRundownId,
-                    (users) => {
-                        setActiveUsers(users);
-                        updateEditingSessions(users);
-                    }
-                );
-                presenceUnsubscribe.current = unsubscribe;
-            };
-
-            setupListener();
-
-            return () => {
-                if (presenceUnsubscribe.current) {
-                    presenceUnsubscribe.current();
-                }
-            };
-        }
-    }, [appState.activeRundownId]);
-
-    const setupNotificationListener = async () => {
-        if (!db || !currentUser) return;
+    const setupNotificationListener = useCallback(async () => {
+        if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
 
         try {
-            // FIX: Removed orderBy("timestamp") to prevent query failure without a composite index.
             const notificationsQuery = query(
                 collection(db, "notifications"),
                 where("userId", "==", currentUser.uid),
                 where("read", "==", false)
             );
 
-            notificationsUnsubscribe.current = onSnapshot(notificationsQuery, (snapshot) => {
+            notificationsUnsubscribeRef.current = onSnapshot(notificationsQuery, (snapshot) => {
                 const newNotifications = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data()
                 }));
                 
-                // FIX: Sorting is now done on the client-side to preserve order.
                 newNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                 
                 setNotifications(newNotifications);
@@ -98,7 +63,49 @@ export const CollaborationProvider = ({ children }) => {
         } catch (error) {
             console.error('Error setting up notification listener:', error);
         }
-    };
+    }, [db, currentUser]);
+
+    useEffect(() => {
+        setupNotificationListener();
+        return () => {
+            if (notificationsUnsubscribeRef.current) {
+                notificationsUnsubscribeRef.current();
+                notificationsUnsubscribeRef.current = null;
+            }
+        };
+    }, [setupNotificationListener]);
+    
+    // Manage presence tracking based on active rundown and manager availability
+    useEffect(() => {
+        const manager = collaborationManagerRef.current;
+        if (manager && appState.activeRundownId) {
+            manager.startPresenceTracking(appState.activeRundownId);
+
+            const setupListener = async () => {
+                const unsubscribe = await manager.listenToPresence(
+                    appState.activeRundownId,
+                    (users) => {
+                        setActiveUsers(users);
+                        updateEditingSessions(users);
+                    }
+                );
+                presenceUnsubscribeRef.current = unsubscribe;
+            };
+
+            setupListener();
+        }
+
+        return () => {
+            if (presenceUnsubscribeRef.current) {
+                presenceUnsubscribeRef.current();
+                presenceUnsubscribeRef.current = null;
+            }
+            if (manager) {
+                manager.stopPresenceTracking();
+            }
+        };
+    }, [appState.activeRundownId, db, currentUser]);
+
 
     const updateEditingSessions = (users) => {
         const sessions = new Map();
@@ -139,6 +146,9 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const startEditingStory = async (itemId, storyData) => {
+        const manager = collaborationManagerRef.current;
+        if (!manager) return;
+
         const existingEditor = editingSessions.get(itemId);
         
         if (existingEditor && existingEditor.userId !== currentUser.uid) {
@@ -152,7 +162,7 @@ export const CollaborationProvider = ({ children }) => {
                 editingStoryIsOwner: false
             }));
         } else {
-            await collaborationManager.current?.setEditingItem(itemId);
+            await manager.setEditingItem(itemId);
             
             setAppState(prev => ({
                 ...prev,
@@ -168,7 +178,10 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const stopEditingStory = async () => {
-        await collaborationManager.current?.setEditingItem(null);
+        const manager = collaborationManagerRef.current;
+        if (manager) {
+            await manager.setEditingItem(null);
+        }
         
         setAppState(prev => ({
             ...prev,
@@ -181,10 +194,12 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const takeOverStory = async (itemId, previousUserId) => {
-        if (!collaborationManager.current) return false;
+        const manager = collaborationManagerRef.current;
+        if (!manager) return false;
+
         try {
-            await collaborationManager.current.sendTakeOverNotification(itemId, previousUserId);
-            await collaborationManager.current.setEditingItem(itemId);
+            await manager.sendTakeOverNotification(itemId, previousUserId);
+            await manager.setEditingItem(itemId);
             setAppState(prev => ({
                 ...prev,
                 editingStoryTakenOver: false,
@@ -225,20 +240,23 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const setEditingItem = async (itemId) => {
-        if (collaborationManager.current) {
-            await collaborationManager.current.setEditingItem(itemId);
+        const manager = collaborationManagerRef.current;
+        if (manager) {
+            await manager.setEditingItem(itemId);
         }
     };
 
     const clearEditingItem = async () => {
-        if (collaborationManager.current) {
-            await collaborationManager.current.setEditingItem(null);
+        const manager = collaborationManagerRef.current;
+        if (manager) {
+            await manager.setEditingItem(null);
         }
     };
 
     const safeUpdateRundown = async (rundownId, updateFunction) => {
-        if (collaborationManager.current) {
-            return await collaborationManager.current.safeUpdateRundown(rundownId, updateFunction);
+        const manager = collaborationManagerRef.current;
+        if (manager) {
+            return await manager.safeUpdateRundown(rundownId, updateFunction);
         }
     };
 
@@ -266,7 +284,7 @@ export const CollaborationProvider = ({ children }) => {
         getUserEditingItem,
         isItemBeingEdited,
         markNotificationAsRead,
-        CollaborationManager: CollaborationManager
+        CollaborationManager: collaborationManagerRef.current ? CollaborationManager : null
     };
 
     return (
