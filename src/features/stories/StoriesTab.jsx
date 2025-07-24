@@ -10,70 +10,39 @@ import {
     sortFoldersByDate,
     generateDateFolder,
     createStoryFolder,
-    parseFolderPath
+    parseFolderPath,
+    getPersistedFolders,
+    persistFolder
 } from '../../utils/folderHelpers';
 import StoryCard from './components/StoryCard';
 import SendStoryToRundownModal from './components/SendStoryToRundownModal';
 import CreateFolderModal from './components/CreateFolderModal';
 
 const StoriesTab = () => {
-    const { currentUser, db } = useAuth();
+    const { currentUser } = useAuth();
     const { appState, setAppState } = useAppContext();
     const [view, setView] = useState('all');
     const [sendToRundownModalStory, setSendToRundownModalStory] = useState(null);
     const [selectedFolder, setSelectedFolder] = useState('');
     const [expandedFolders, setExpandedFolders] = useState(new Set([generateDateFolder()]));
     const [showCreateFolder, setShowCreateFolder] = useState(false);
+    const [persistedFolders, setPersistedFolders] = useState([]);
 
     const userPermissions = getUserPermissions(currentUser.role);
 
     useEffect(() => {
-        const saveCreatedFolders = async () => {
-            if (appState.createdFolders && appState.createdFolders.length > 0 && db) {
-                try {
-                    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-                    const userFoldersRef = doc(db, "userFolders", currentUser.uid);
-                    await setDoc(userFoldersRef, {
-                        folders: appState.createdFolders,
-                        lastUpdated: new Date().toISOString()
-                    }, { merge: true });
-                } catch (error) {
-                    console.error('Error saving folders:', error);
-                }
-            }
-        };
-
-        saveCreatedFolders();
-    }, [appState.createdFolders, db, currentUser.uid]);
-
-    useEffect(() => {
-        const loadCreatedFolders = async () => {
-            if (db && currentUser.uid) {
-                try {
-                    const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js");
-                    const userFoldersRef = doc(db, "userFolders", currentUser.uid);
-                    const folderDoc = await getDoc(userFoldersRef);
-                    
-                    if (folderDoc.exists()) {
-                        const data = folderDoc.data();
-                        setAppState(prev => ({
-                            ...prev,
-                            createdFolders: data.folders || []
-                        }));
-                    }
-                } catch (error) {
-                    console.error('Error loading folders:', error);
-                }
-            }
-        };
-
-        loadCreatedFolders();
-    }, [db, currentUser.uid, setAppState]);
+        const folders = getPersistedFolders();
+        setPersistedFolders(folders);
+        setAppState(prev => ({
+            ...prev,
+            createdFolders: folders
+        }));
+    }, [setAppState]);
 
     const folderStructure = useMemo(() => {
         const folderMap = getFoldersByDate(appState.stories);
 
-        (appState.createdFolders || []).forEach(folderPath => {
+        [...(appState.createdFolders || []), ...persistedFolders].forEach(folderPath => {
             const { dateFolder, subFolder } = parseFolderPath(folderPath);
             if (!folderMap.has(dateFolder)) {
                 folderMap.set(dateFolder, new Set());
@@ -95,7 +64,7 @@ const StoriesTab = () => {
             subFolders: Array.from(folderMap.get(dateFolder) || []).sort(),
             stories: getStoriesInFolder(appState.stories, dateFolder)
         }));
-    }, [appState.stories, appState.createdFolders]);
+    }, [appState.stories, appState.createdFolders, persistedFolders]);
 
     const filteredStories = useMemo(() => {
         let stories = appState.stories;
@@ -160,6 +129,19 @@ const StoriesTab = () => {
         setSelectedFolder(selectedFolder === folderPath ? '' : folderPath);
     };
 
+    const handleCreateFolder = () => {
+        setShowCreateFolder(true);
+    };
+
+    const handleFolderCreated = (newFolderPath) => {
+        const updatedFolders = persistFolder(newFolderPath);
+        setPersistedFolders(updatedFolders);
+        setAppState(prev => ({
+            ...prev,
+            createdFolders: updatedFolders
+        }));
+    };
+
     const renderFolderTree = () => {
         return (
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border overflow-hidden">
@@ -169,7 +151,7 @@ const StoriesTab = () => {
                         Story Folders
                     </h3>
                     <button
-                        onClick={() => setShowCreateFolder(true)}
+                        onClick={handleCreateFolder}
                         className="p-1 text-gray-500 hover:text-blue-600 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
                         title="Create new folder"
                     >
@@ -222,8 +204,8 @@ const StoriesTab = () => {
                                         onClick={() => selectFolder(fullPath)}
                                     >
                                         <div className="w-4 mr-2"></div>
-                                        <CustomIcon name="add story" size={32} className="mr-2 text-green-600" />
-                                        <span className="text-sm">{subFolder}</span>
+                                        <CustomIcon name="folder" size={32} className="mr-2 text-green-600" />
+                                        <span className="text-sm break-words">{subFolder}</span>
                                         <span className="ml-auto text-xs text-gray-500">({subFolderStories.length})</span>
                                     </div>
                                 );
@@ -273,7 +255,7 @@ const StoriesTab = () => {
                         />
                     </div>
                     <button onClick={() => openStoryEditor()} className="btn-primary">
-                        <CustomIcon name="add story" size={32} />
+                        <CustomIcon name="add story" size={40} />
                         <span>New Story</span>
                     </button>
                 </div>
@@ -289,8 +271,8 @@ const StoriesTab = () => {
                         <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                    <CustomIcon name="add story" size={32} className="text-blue-600" />
-                                    <span className="font-medium text-blue-800 dark:text-blue-200">
+                                    <CustomIcon name="folder" size={32} className="text-blue-600" />
+                                    <span className="font-medium text-blue-800 dark:text-blue-200 break-words">
                                         Viewing: {selectedFolder}
                                     </span>
                                 </div>
@@ -375,6 +357,7 @@ const StoriesTab = () => {
             {showCreateFolder && (
                 <CreateFolderModal
                     onCancel={() => setShowCreateFolder(false)}
+                    onFolderCreated={handleFolderCreated}
                 />
             )}
         </div>
@@ -386,12 +369,14 @@ const AssignmentCard = ({ assignment }) => {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
             <div className="flex items-center flex-wrap gap-x-3 mb-2">
                 <CustomIcon name="assignments" size={40} className="text-purple-500" />
-                <h3 className="text-lg font-medium">{assignment.title}</h3>
+                <h3 className="text-lg font-medium break-words">{assignment.title}</h3>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(assignment.status)}`}>
                     {assignment.status}
                 </span>
             </div>
-            <p className="text-gray-600 dark:text-gray-300 mb-2 text-sm">{assignment.details}</p>
+            <div className="mb-2 overflow-hidden">
+                <p className="text-gray-600 dark:text-gray-300 text-sm break-words whitespace-pre-wrap">{assignment.details}</p>
+            </div>
             <div className="flex flex-wrap items-center gap-x-4 text-sm text-gray-500">
                 <span>Deadline: {new Date(assignment.deadline).toLocaleString()}</span>
                 {assignment.storyId && (
