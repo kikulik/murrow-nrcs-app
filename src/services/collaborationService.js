@@ -1,5 +1,5 @@
 import { doc, getDoc, onSnapshot, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from '../firebase';
+import { db } from '../FirebaseService';
 import { FirebaseService } from './FirebaseService';
 
 const firebaseService = new FirebaseService(db);
