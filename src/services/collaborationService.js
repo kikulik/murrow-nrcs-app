@@ -1,26 +1,19 @@
-import { db } from '../firebase'; // Your firebase config
-import {
-    doc,
-    getDoc,
-    setDoc,
-    updateDoc,
-    onSnapshot,
-    serverTimestamp
-} from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db } from '../firebase';
+import { FirebaseService } from './FirebaseService';
+
+const firebaseService = new FirebaseService(db);
 
 export const getEditingInfo = async (itemId) => {
-    const docRef = doc(db, 'editingStatus', itemId);
-    const snapshot = await getDoc(docRef);
-    if (snapshot.exists()) {
-        return snapshot.data();
-    }
-    return null;
+    const ref = doc(db, 'editingStatus', itemId);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
 };
 
 export const requestTakeOver = async (itemId, previousUserId) => {
-    const docRef = doc(db, 'editingStatus', itemId);
+    const ref = doc(db, 'editingStatus', itemId);
     try {
-        await updateDoc(docRef, {
+        await updateDoc(ref, {
             userId: null,
             userName: null,
             takenOverBy: previousUserId,
@@ -34,8 +27,8 @@ export const requestTakeOver = async (itemId, previousUserId) => {
 };
 
 export const stopEditingRundownItem = async (itemId) => {
-    const docRef = doc(db, 'editingStatus', itemId);
-    await updateDoc(docRef, {
+    const ref = doc(db, 'editingStatus', itemId);
+    await updateDoc(ref, {
         userId: null,
         userName: null,
         timestamp: serverTimestamp()
@@ -43,43 +36,40 @@ export const stopEditingRundownItem = async (itemId) => {
 };
 
 export const subscribeToEditingData = (itemId, callback) => {
-    const docRef = doc(db, 'rundownItems', itemId);
-    const unsubscribe = onSnapshot(docRef, (snapshot) => {
-        if (snapshot.exists()) {
-            callback(snapshot.data());
+    const ref = doc(db, 'rundownItems', itemId);
+    return onSnapshot(ref, (snap) => {
+        if (snap.exists()) {
+            callback(snap.data());
         }
     });
-    return unsubscribe;
 };
 
 export const saveRundownItem = async (itemId, data) => {
-    const docRef = doc(db, 'rundownItems', itemId);
-    await setDoc(docRef, {
+    const ref = doc(db, 'rundownItems', itemId);
+    await setDoc(ref, {
         ...data,
         lastModified: serverTimestamp()
     }, { merge: true });
 };
 
 export const subscribeToContentChanges = (itemId, callback) => {
-    const docRef = doc(db, 'rundownContent', itemId);
-    const unsubscribe = onSnapshot(docRef, (snapshot) => {
-        if (snapshot.exists()) {
-            callback(snapshot.data().content || '');
+    const ref = doc(db, 'rundownContent', itemId);
+    return onSnapshot(ref, (snap) => {
+        if (snap.exists()) {
+            callback(snap.data().content || '');
         }
     });
-    return unsubscribe;
 };
 
 export const sendContentUpdate = async (itemId, content) => {
-    const docRef = doc(db, 'rundownContent', itemId);
-    await setDoc(docRef, {
+    const ref = doc(db, 'rundownContent', itemId);
+    await setDoc(ref, {
         content,
         updatedAt: serverTimestamp()
     }, { merge: true });
 };
 
 export const saveTextDiff = async (itemId, prev, next) => {
-    // Optional: Store diff for history/auditing
     const diffRef = doc(db, 'rundownDiffs', `${itemId}_${Date.now()}`);
     await setDoc(diffRef, {
         itemId,
