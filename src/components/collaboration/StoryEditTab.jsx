@@ -22,7 +22,7 @@ const StoryEditTab = ({ itemId }) => {
         getUserEditingItem
     } = useCollaboration();
 
-    // FIXED: Better way to find the tab and story data
+    // FIXED: Better way to find the tab and get ownership info
     const tab = appState.editingStoryTabs.find(t => t.itemId === itemId);
     const storyData = tab?.storyData;
 
@@ -75,10 +75,12 @@ const StoryEditTab = ({ itemId }) => {
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    const isOwner = tab?.isOwner;
-    const isTakenOver = tab?.takenOver;
+    const isOwner = tab?.isOwner !== undefined ? tab.isOwner : true; // Default to true if not set
+    const isTakenOver = tab?.takenOver || false;
     const takenOverBy = tab?.takenOverBy;
     const isReadOnly = isTakenOver && !isOwner;
+
+    console.log('Ownership status:', { isOwner, isTakenOver, takenOverBy, tab });
 
     // FIXED: Initialize form data from rundownItem
     useEffect(() => {
