@@ -1,8 +1,4 @@
-/*
-================================================================================
-File: murrow-nrcs-app.git/src/context/CollaborationContext.jsx
-================================================================================
-*/
+// src/context/CollaborationContext.jsx
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -13,21 +9,19 @@ const CollaborationContext = createContext();
 
 export const CollaborationProvider = ({ children }) => {
     const { currentUser, db } = useAuth();
-    const { appState, setAppState } = useAppContext();
+    const { appState, setAppState, openStoryTab, updateStoryTab, forceCloseStoryTab } = useAppContext();
     const [activeUsers, setActiveUsers] = useState([]);
     const [editingSessions, setEditingSessions] = useState(new Map());
     const [notifications, setNotifications] = useState([]);
     const collaborationManagerRef = useRef(null);
     const notificationsUnsubscribeRef = useRef(null);
 
-    // Initialize collaboration manager
     useEffect(() => {
         if (db && currentUser) {
             if (!collaborationManagerRef.current) {
                 collaborationManagerRef.current = new CollaborationManager(db, currentUser);
             }
         } else {
-            // Clear the manager when user logs out
             if (collaborationManagerRef.current) {
                 collaborationManagerRef.current.stopPresenceTracking();
                 collaborationManagerRef.current = null;
@@ -35,10 +29,8 @@ export const CollaborationProvider = ({ children }) => {
         }
     }, [db, currentUser]);
 
-    // Clean up when user logs out
     useEffect(() => {
         if (!currentUser) {
-            // User logged out - clean up everything
             if (collaborationManagerRef.current) {
                 collaborationManagerRef.current.stopPresenceTracking();
                 collaborationManagerRef.current = null;
@@ -53,7 +45,6 @@ export const CollaborationProvider = ({ children }) => {
                 notificationsUnsubscribeRef.current = null;
             }
 
-            // Reset state
             setActiveUsers([]);
             setEditingSessions(new Map());
             setNotifications([]);
@@ -83,7 +74,6 @@ export const CollaborationProvider = ({ children }) => {
                 },
                 (error) => {
                     console.error('Notifications listener error:', error);
-                    // Don't retry immediately to avoid infinite loops
                 }
             );
         } catch (error) {
@@ -143,14 +133,12 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const handleTakeOverNotification = (notification) => {
-        if (notification.type === 'takeOver' && appState.editingStoryId === notification.itemId) {
-            setAppState(prev => ({
-                ...prev,
-                editingStoryTakenOver: true,
-                editingStoryTakenOverBy: notification.message.match(/(.+) has taken over/)?.[1] || 'another user',
-                editingStoryIsOwner: false
-            }));
-            setTimeout(() => markNotificationAsRead(notification.id), 3000);
+        if (notification.type === 'takeOver') {
+            const tabToClose = appState.editingStoryTabs.find(tab => tab.itemId === notification.itemId);
+            if (tabToClose) {
+                setTimeout(() => markNotificationAsRead(notification.id), 3000);
+                forceCloseStoryTab(notification.itemId);
+            }
         }
     };
 
@@ -166,45 +154,32 @@ export const CollaborationProvider = ({ children }) => {
     const startEditingStory = async (itemId, storyData) => {
         const manager = collaborationManagerRef.current;
         if (!manager) return;
+
         const existingEditor = editingSessions.get(itemId);
         if (existingEditor && existingEditor.userId !== currentUser.uid) {
-            setAppState(prev => ({
-                ...prev,
-                activeTab: 'storyEdit',
-                editingStoryId: itemId,
-                editingStoryData: storyData,
-                editingStoryTakenOver: true,
-                editingStoryTakenOverBy: existingEditor.userName,
-                editingStoryIsOwner: false
-            }));
+            openStoryTab(itemId, storyData);
+            updateStoryTab(itemId, {
+                isOwner: false,
+                takenOver: true,
+                takenOverBy: existingEditor.userName
+            });
         } else {
             await manager.setEditingItem(itemId);
-            setAppState(prev => ({
-                ...prev,
-                activeTab: 'storyEdit',
-                editingStoryId: itemId,
-                editingStoryData: storyData,
-                editingStoryTakenOver: false,
-                editingStoryTakenOverBy: null,
-                editingStoryIsOwner: true
-            }));
+            openStoryTab(itemId, storyData);
+            updateStoryTab(itemId, {
+                isOwner: true,
+                takenOver: false,
+                takenOverBy: null
+            });
         }
         return true;
     };
 
-    const stopEditingStory = async () => {
+    const stopEditingStory = async (itemId) => {
         const manager = collaborationManagerRef.current;
         if (manager) {
             await manager.setEditingItem(null);
         }
-        setAppState(prev => ({
-            ...prev,
-            editingStoryId: null,
-            editingStoryData: null,
-            editingStoryTakenOver: false,
-            editingStoryTakenOverBy: null,
-            editingStoryIsOwner: false
-        }));
     };
 
     const takeOverStory = async (itemId, previousUserId) => {
@@ -213,12 +188,11 @@ export const CollaborationProvider = ({ children }) => {
         try {
             await manager.sendTakeOverNotification(itemId, previousUserId);
             await manager.setEditingItem(itemId);
-            setAppState(prev => ({
-                ...prev,
-                editingStoryTakenOver: false,
-                editingStoryTakenOverBy: null,
-                editingStoryIsOwner: true
-            }));
+            updateStoryTab(itemId, {
+                isOwner: true,
+                takenOver: false,
+                takenOverBy: null
+            });
             return true;
         } catch (error) {
             console.error('Error taking over story:', error);
@@ -227,7 +201,7 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const saveStoryProgress = async (itemId, storyData) => {
-        if (!db || !itemId || !appState.editingStoryIsOwner) return;
+        if (!db || !itemId) return;
         try {
             await setDoc(doc(db, "storyDrafts", `${itemId}_${currentUser.uid}`), {
                 itemId,
@@ -294,7 +268,7 @@ export const CollaborationProvider = ({ children }) => {
         getUserEditingItem,
         isItemBeingEdited,
         markNotificationAsRead,
-        CollaborationManager: collaborationManagerRef.current // Expose the instance
+        CollaborationManager: collaborationManagerRef.current
     };
 
     return (
