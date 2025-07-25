@@ -116,27 +116,32 @@ export const AppProvider = ({ children }) => {
     const openStoryTab = (itemId, storyData) => {
         console.log('Opening story tab for item:', itemId, 'with data:', storyData); // DEBUG
         setAppState(prev => {
-            const existingTab = prev.editingStoryTabs.find(tab => tab.itemId === itemId);
+            const existingTab = prev.editingStoryTabs.find(tab => tab.itemId.toString() === itemId.toString());
             if (existingTab) {
-                console.log('Tab already exists, switching to it'); // DEBUG
+                console.log('Tab already exists, updating and switching to it'); // DEBUG
                 return {
                     ...prev,
+                    editingStoryTabs: prev.editingStoryTabs.map(tab =>
+                        tab.itemId.toString() === itemId.toString()
+                            ? { ...tab, storyData: storyData || tab.storyData }
+                            : tab
+                    ),
                     activeTab: `storyEdit-${itemId}`
                 };
             }
-
+    
             const newTab = {
-                itemId,
-                storyData,
+                itemId: itemId.toString(), // FIXED: Ensure string consistency
+                storyData: storyData || null,
                 tabId: `storyEdit-${itemId}`,
                 title: storyData?.title || 'Untitled Story',
                 isOwner: true,
                 takenOver: false,
                 takenOverBy: null
             };
-
+    
             console.log('Creating new tab:', newTab); // DEBUG
-
+    
             return {
                 ...prev,
                 editingStoryTabs: [...prev.editingStoryTabs, newTab],
@@ -144,12 +149,13 @@ export const AppProvider = ({ children }) => {
             };
         });
     };
-
+    
     const closeStoryTab = (itemId) => {
+        console.log('Closing story tab for item:', itemId); // DEBUG
         setAppState(prev => {
-            const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId !== itemId);
+            const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId.toString() !== itemId.toString());
             let newActiveTab = prev.activeTab;
-
+    
             if (prev.activeTab === `storyEdit-${itemId}`) {
                 if (updatedTabs.length > 0) {
                     newActiveTab = updatedTabs[updatedTabs.length - 1].tabId;
@@ -157,7 +163,9 @@ export const AppProvider = ({ children }) => {
                     newActiveTab = 'rundown';
                 }
             }
-
+    
+            console.log('Updated tabs after close:', updatedTabs.length, 'New active tab:', newActiveTab); // DEBUG
+    
             return {
                 ...prev,
                 editingStoryTabs: updatedTabs,
@@ -165,12 +173,13 @@ export const AppProvider = ({ children }) => {
             };
         });
     };
-
+    
     const updateStoryTab = (itemId, updates) => {
+        console.log('Updating story tab for item:', itemId, 'with updates:', updates); // DEBUG
         setAppState(prev => ({
             ...prev,
             editingStoryTabs: prev.editingStoryTabs.map(tab =>
-                tab.itemId === itemId ? { ...tab, ...updates } : tab
+                tab.itemId.toString() === itemId.toString() ? { ...tab, ...updates } : tab
             )
         }));
     };
