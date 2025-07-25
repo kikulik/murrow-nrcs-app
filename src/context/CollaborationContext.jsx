@@ -157,23 +157,25 @@ export const CollaborationProvider = ({ children }) => {
     
         console.log('startEditingStory called with:', { itemId, storyData }); // DEBUG
     
-        const existingEditor = editingSessions.get(itemId);
+        const existingEditor = editingSessions.get(itemId.toString());
         if (existingEditor && existingEditor.userId !== currentUser.uid) {
             console.log('Item being edited by another user:', existingEditor); // DEBUG
             openStoryTab(itemId, storyData);
             updateStoryTab(itemId, {
                 isOwner: false,
                 takenOver: true,
-                takenOverBy: existingEditor.userName
+                takenOverBy: existingEditor.userName,
+                storyData: storyData // FIXED: Ensure story data is passed
             });
         } else {
             console.log('Taking ownership of item:', itemId); // DEBUG
-            await manager.setEditingItem(itemId);
+            await manager.setEditingItem(itemId.toString());
             openStoryTab(itemId, storyData);
             updateStoryTab(itemId, {
                 isOwner: true,
                 takenOver: false,
-                takenOverBy: null
+                takenOverBy: null,
+                storyData: storyData // FIXED: Ensure story data is passed
             });
         }
         return true;
