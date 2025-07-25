@@ -4,7 +4,18 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
-const firebaseConfig = { ... };
+// Your web app's Firebase configuration
+const firebaseConfig = {
+    apiKey: "AIzaSyABPQCCJYON6b1MBJsnCGHFjLjLCK3WBOo",
+    authDomain: "murrow-82a95.firebaseapp.com",
+    databaseURL: "https://murrow-82a95-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "murrow-82a95",
+    storageBucket: "murrow-82a95.firebasestorage.app",
+    messagingSenderId: "177504964658",
+    appId: "1:177504964658:web:1ed07d9588c1675fabec2b",
+    measurementId: "G-DY9MGNYTJC"
+};
+
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
