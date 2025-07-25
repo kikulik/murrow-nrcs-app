@@ -10,16 +10,20 @@ import UserPresenceIndicator from './UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
 
-const StoryEditTab = () => {
+const StoryEditTab = ({ itemId }) => {
     const { currentUser } = useAuth();
-    const { appState, setAppState } = useAppContext();
-    const { 
-        stopEditingStory, 
-        saveStoryProgress, 
+    const { appState, closeStoryTab, updateStoryTab } = useAppContext();
+    const {
+        stopEditingStory,
+        saveStoryProgress,
         getStoryProgress,
         safeUpdateRundown,
         takeOverStory,
+        getUserEditingItem
     } = useCollaboration();
+
+    const tab = appState.editingStoryTabs.find(t => t.itemId === itemId);
+    const storyData = tab?.storyData;
 
     const [formData, setFormData] = useState({
         title: '',
@@ -31,63 +35,36 @@ const StoryEditTab = () => {
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [realTimeContent, setRealTimeContent] = useState('');
 
-    const itemId = appState.editingStoryId;
-    const isOwner = appState.editingStoryIsOwner;
-    const isTakenOver = appState.editingStoryTakenOver;
-    const takenOverBy = appState.editingStoryTakenOverBy;
+    const isOwner = tab?.isOwner;
+    const isTakenOver = tab?.takenOver;
+    const takenOverBy = tab?.takenOverBy;
     const isReadOnly = isTakenOver && !isOwner;
 
     useEffect(() => {
-        if (appState.editingStoryData) {
+        if (storyData) {
             const data = {
-                title: appState.editingStoryData.title || '',
-                content: appState.editingStoryData.content || '',
-                duration: appState.editingStoryData.duration || '01:00',
-                type: Array.isArray(appState.editingStoryData.type) ? appState.editingStoryData.type : [appState.editingStoryData.type || 'STD']
+                title: storyData.title || '',
+                content: storyData.content || '',
+                duration: storyData.duration || '01:00',
+                type: Array.isArray(storyData.type) ? storyData.type : [storyData.type || 'STD']
             };
             setFormData(data);
-            setRealTimeContent(data.content);
         }
-    }, [appState.editingStoryData]);
+    }, [storyData]);
 
     useEffect(() => {
         const loadSavedProgress = async () => {
-            if (itemId) {
+            if (itemId && isOwner) {
                 const savedData = await getStoryProgress(itemId);
-                if (savedData && isOwner) {
+                if (savedData) {
                     setFormData(savedData);
-                    setRealTimeContent(savedData.content);
                     setLastSaved(new Date());
                 }
             }
         };
         loadSavedProgress();
     }, [itemId, getStoryProgress, isOwner]);
-
-    useEffect(() => {
-        if (!isOwner && !isReadOnly) {
-            const interval = setInterval(async () => {
-                if (itemId && appState.editingStoryData) {
-                    const rundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
-                    const currentData = rundown?.items?.find(item => item.id === itemId);
-                    
-                    if (currentData && currentData.content !== realTimeContent) {
-                        setRealTimeContent(currentData.content || '');
-                        setFormData(prev => ({
-                            ...prev,
-                            content: currentData.content || '',
-                            title: currentData.title || prev.title,
-                            duration: currentData.duration || prev.duration
-                        }));
-                    }
-                }
-            }, 5000);
-
-            return () => clearInterval(interval);
-        }
-    }, [itemId, isOwner, isReadOnly, appState.rundowns, appState.activeRundownId, realTimeContent]);
 
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
@@ -120,18 +97,14 @@ const StoryEditTab = () => {
 
     const handleFormChange = (field, value) => {
         if (!isOwner) return;
-        
+
         setFormData(prev => ({ ...prev, [field]: value }));
         setHasUnsavedChanges(true);
-        
-        if (field === 'content') {
-            setRealTimeContent(value);
-        }
     };
 
     const handleTypeChange = (type) => {
         if (!isOwner) return;
-        
+
         const newTypes = formData.type.includes(type)
             ? formData.type.filter(t => t !== type)
             : [...formData.type, type];
@@ -140,18 +113,18 @@ const StoryEditTab = () => {
 
     const handleTakeOver = async () => {
         if (!takenOverBy || !itemId) return;
-        
+
+        const editingUser = getUserEditingItem(itemId);
         const confirmed = window.confirm(`${takenOverBy} is currently editing this story. Do you want to take over? Their progress will be saved.`);
         if (!confirmed) return;
 
-        const success = await takeOverStory(itemId, null); // We don't have the previous user's ID here, but the backend logic can handle it
+        const success = await takeOverStory(itemId, editingUser?.userId);
         if (success) {
-            setAppState(prev => ({
-                ...prev,
-                editingStoryIsOwner: true,
-                editingStoryTakenOver: false,
-                editingStoryTakenOverBy: null
-            }));
+            updateStoryTab(itemId, {
+                isOwner: true,
+                takenOver: false,
+                takenOverBy: null
+            });
         } else {
             alert('Failed to take over the story. Please try again.');
         }
@@ -199,14 +172,14 @@ const StoryEditTab = () => {
             }
         }
 
-        await stopEditingStory();
-        setAppState(prev => ({ ...prev, activeTab: 'rundown' }));
+        await stopEditingStory(itemId);
+        closeStoryTab(itemId);
     };
 
-    if (!itemId) {
+    if (!itemId || !storyData) {
         return (
             <div className="flex items-center justify-center h-64">
-                <p className="text-gray-500">No story selected for editing</p>
+                <p className="text-gray-500">Story not found</p>
             </div>
         );
     }
@@ -339,7 +312,7 @@ const StoryEditTab = () => {
                         {isReadOnly ? (
                             <div className="min-h-[300px] p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md">
                                 <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300">
-                                    {realTimeContent || 'No content available'}
+                                    {formData.content || 'No content available'}
                                 </div>
                             </div>
                         ) : (
@@ -356,7 +329,7 @@ const StoryEditTab = () => {
 
                     <div className="flex items-center justify-between pt-4 border-t">
                         <div className="text-xs text-gray-500">
-                            {isOwner ? 'Auto-save every 5 seconds' : 'Real-time updates every 5 seconds'} • Version {appState.editingStoryData?.version || 1}
+                            {isOwner ? 'Auto-save every 5 seconds' : 'Real-time updates every 5 seconds'} • Version {storyData?.version || 1}
                         </div>
                         {isOwner && (
                             <div className="flex gap-3">
