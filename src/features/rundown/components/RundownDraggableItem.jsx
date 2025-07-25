@@ -97,6 +97,8 @@ const RundownDraggableItem = ({
 
     // FIXED: Better edit handler that properly opens collaboration tab
     const handleEdit = async () => {
+        console.log('handleEdit called for item:', item.id, item); // DEBUG
+        
         if (isBeingEditedByOther && !canTakeOver) {
             alert(`${editingUser.userName} is currently editing this item. You don't have permission to take over.`);
             return;
@@ -114,6 +116,7 @@ const RundownDraggableItem = ({
             }
 
             // Start editing and open the collaboration tab
+            console.log('Calling startEditingStory with:', item.id, item); // DEBUG
             await startEditingStory(item.id, item);
         } catch (error) {
             console.error('Error starting edit:', error);
