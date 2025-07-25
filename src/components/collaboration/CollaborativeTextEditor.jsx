@@ -10,7 +10,8 @@ const CollaborativeTextEditor = ({
     itemId,
     className = '',
     placeholder = '',
-    rows = 4
+    rows = 4,
+    isOwner = true // ACCEPT isOwner as prop with default true
 }) => {
     const { currentUser, db } = useAuth();
     const { appState } = useAppContext();
@@ -27,9 +28,11 @@ const CollaborativeTextEditor = ({
     const lastValueRef = useRef(value || '');
     const operationsListener = useRef(null);
 
-    const isOwner = appState.editingStoryIsOwner;
+    // FIXED: Use the passed isOwner prop instead of AppState
     const isTakenOver = appState.editingStoryTakenOver;
     const isReadOnly = isTakenOver && !isOwner;
+
+    console.log('CollaborativeTextEditor props:', { isOwner, itemId, hasValue: !!value }); // DEBUG
 
     useEffect(() => {
         if (value !== lastValueRef.current) {
