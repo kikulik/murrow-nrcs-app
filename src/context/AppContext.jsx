@@ -28,7 +28,7 @@ export const AppProvider = ({ children }) => {
         currentLiveItemIndex: 0,
         liveRundownId: null,
         editingStoryTabs: [],
-        quickEditItem: null
+        quickEditItem: null // ENSURE THIS IS INITIALIZED
     });
     const unsubscribeRef = useRef(null);
     const cleanupTimeoutRef = useRef(null);
@@ -114,6 +114,7 @@ export const AppProvider = ({ children }) => {
     };
 
     const openStoryTab = (itemId, storyData) => {
+        console.log('Opening story tab for item:', itemId); // DEBUG
         setAppState(prev => {
             const existingTab = prev.editingStoryTabs.find(tab => tab.itemId === itemId);
             if (existingTab) {
@@ -192,29 +193,45 @@ export const AppProvider = ({ children }) => {
         });
     };
 
+    // FIXED: Enhanced setQuickEditItem with debugging
     const setQuickEditItem = (item) => {
-        setAppState(prev => ({
-            ...prev,
-            quickEditItem: item
-        }));
+        console.log('setQuickEditItem called with:', item); // DEBUG
+        setAppState(prev => {
+            console.log('Previous quickEditItem:', prev.quickEditItem); // DEBUG
+            const newState = {
+                ...prev,
+                quickEditItem: item
+            };
+            console.log('New quickEditItem:', newState.quickEditItem); // DEBUG
+            return newState;
+        });
     };
 
+    const contextValue = {
+        appState,
+        setAppState,
+        cleanupDataListeners,
+        openStoryTab,
+        closeStoryTab,
+        updateStoryTab,
+        forceCloseStoryTab,
+        setQuickEditItem
+    };
+
+    // DEBUG: Log context value to ensure setQuickEditItem is included
+    console.log('AppContext value:', Object.keys(contextValue));
+
     return (
-        <AppContext.Provider value={{
-            appState,
-            setAppState,
-            cleanupDataListeners,
-            openStoryTab,
-            closeStoryTab,
-            updateStoryTab,
-            forceCloseStoryTab,
-            setQuickEditItem
-        }}>
+        <AppContext.Provider value={contextValue}>
             {children}
         </AppContext.Provider>
     );
 };
 
 export const useAppContext = () => {
-    return useContext(AppContext);
+    const context = useContext(AppContext);
+    if (!context) {
+        throw new Error('useAppContext must be used within an AppProvider');
+    }
+    return context;
 };
