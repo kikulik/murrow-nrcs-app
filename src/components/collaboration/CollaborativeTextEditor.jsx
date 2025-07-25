@@ -1,13 +1,8 @@
-/*
-================================================================================
-File: murrow-nrcs-app.git/src/components/collaboration/CollaborativeTextEditor.jsx
-================================================================================
-*/
+// src/components/collaboration/CollaborativeTextEditor.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useCollaboration } from '../../context/CollaborationContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
-import { collection, query, where, onSnapshot, addDoc, doc, setDoc } from 'firebase/firestore';
 
 const CollaborativeTextEditor = ({
     value,
@@ -43,57 +38,94 @@ const CollaborativeTextEditor = ({
         }
     }, [value]);
 
+    // Simplified Firebase operations with better error handling
     useEffect(() => {
-        if (!db || !itemId || !isOwner) return;
+        if (!db || !itemId || !isOwner || !CollaborationManager) {
+            console.log('Skipping Firebase setup:', { db: !!db, itemId, isOwner, CollaborationManager: !!CollaborationManager });
+            return;
+        }
 
-        // FIX: Removed orderBy("timestamp") to prevent query failure without a composite index.
-        const operationsQuery = query(
-            collection(db, "textOperations"),
-            where("itemId", "==", itemId)
-        );
-
-        operationsListener.current = onSnapshot(operationsQuery, (snapshot) => {
-            const operations = [];
-            snapshot.docs.forEach(doc => {
-                const data = doc.data();
-                if (data.userId !== currentUser.uid) {
-                    operations.push({
-                        id: doc.id,
-                        ...data
-                    });
-                }
-            });
-            
-            // FIX: Sorting is now done on the client-side to preserve order.
-            operations.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-            if (operations.length > 0 && isOwner) {
-                const newValue = CollaborationManager.applyTextTransform(
-                    lastValueRef.current,
-                    operations
+        const setupFirebaseListener = async () => {
+            try {
+                const { collection, query, where, onSnapshot } = await import('firebase/firestore');
+                
+                // Simplified query without orderBy to avoid index issues
+                const operationsQuery = query(
+                    collection(db, "textOperations"),
+                    where("itemId", "==", itemId)
                 );
-                setLocalValue(newValue);
-                lastValueRef.current = newValue;
-                onChange(newValue);
+
+                operationsListener.current = onSnapshot(
+                    operationsQuery,
+                    (snapshot) => {
+                        const operations = [];
+                        snapshot.docs.forEach(doc => {
+                            const data = doc.data();
+                            if (data.userId !== currentUser.uid) {
+                                operations.push({
+                                    id: doc.id,
+                                    ...data
+                                });
+                            }
+                        });
+                        
+                        // Sort operations by timestamp on client side
+                        operations.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+                        if (operations.length > 0 && isOwner && CollaborationManager) {
+                            try {
+                                const newValue = CollaborationManager.applyTextTransform(
+                                    lastValueRef.current,
+                                    operations
+                                );
+                                setLocalValue(newValue);
+                                lastValueRef.current = newValue;
+                                onChange(newValue);
+                            } catch (error) {
+                                console.error('Error applying text transform:', error);
+                            }
+                        }
+                    },
+                    (error) => {
+                        console.error('Firebase listener error:', error);
+                        // Don't break the component, just log the error
+                    }
+                );
+            } catch (error) {
+                console.error('Error setting up Firebase listener:', error);
             }
-        });
+        };
+
+        setupFirebaseListener();
 
         return () => {
             if (operationsListener.current) {
-                operationsListener.current();
+                try {
+                    operationsListener.current();
+                } catch (error) {
+                    console.warn('Error cleaning up listener:', error);
+                }
             }
         };
-    }, [db, itemId, currentUser.uid, onChange, CollaborationManager, isOwner]);
+    }, [db, itemId, currentUser?.uid, onChange, CollaborationManager, isOwner]);
 
     const handleFocus = useCallback(async () => {
-        if (isOwner) {
-            await setEditingItem(itemId);
+        if (isOwner && setEditingItem) {
+            try {
+                await setEditingItem(itemId);
+            } catch (error) {
+                console.error('Error setting editing item:', error);
+            }
         }
     }, [setEditingItem, itemId, isOwner]);
 
     const handleBlur = useCallback(async () => {
-        if (isOwner) {
-            await clearEditingItem();
+        if (isOwner && clearEditingItem) {
+            try {
+                await clearEditingItem();
+            } catch (error) {
+                console.error('Error clearing editing item:', error);
+            }
         }
     }, [clearEditingItem, isOwner]);
 
@@ -105,21 +137,27 @@ const CollaborativeTextEditor = ({
 
         setLocalValue(newValue);
 
-        const operations = CollaborationManager.generateTextOperations(oldValue, newValue);
-
-        if (operations.length > 0 && db) {
+        // Only try to save operations if we have all required dependencies
+        if (CollaborationManager && db && currentUser) {
             try {
-                for (const operation of operations) {
-                    await addDoc(collection(db, "textOperations"), {
-                        ...operation,
-                        itemId,
-                        userId: currentUser.uid,
-                        userName: currentUser.name,
-                        timestamp: new Date().toISOString()
-                    });
+                const operations = CollaborationManager.generateTextOperations(oldValue, newValue);
+
+                if (operations.length > 0) {
+                    const { collection, addDoc } = await import('firebase/firestore');
+                    
+                    for (const operation of operations) {
+                        await addDoc(collection(db, "textOperations"), {
+                            ...operation,
+                            itemId,
+                            userId: currentUser.uid,
+                            userName: currentUser.name,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
                 }
             } catch (error) {
                 console.error('Error saving text operations:', error);
+                // Don't prevent local editing if Firebase fails
             }
         }
 
@@ -128,62 +166,84 @@ const CollaborativeTextEditor = ({
     }, [localValue, db, itemId, currentUser, onChange, CollaborationManager, isOwner]);
 
     const handleCursorChange = useCallback(async (e) => {
-        if (!isOwner) return;
+        if (!isOwner || !db || !currentUser) return;
 
         const textarea = e.target;
         const cursorPosition = textarea.selectionStart;
 
-        if (db && itemId) {
-            try {
-                await setDoc(doc(db, "cursors", `${itemId}_${currentUser.uid}`), {
-                    itemId,
-                    userId: currentUser.uid,
-                    userName: currentUser.name,
-                    position: cursorPosition,
-                    timestamp: new Date().toISOString()
-                });
-            } catch (error) {
-                console.error('Error updating cursor position:', error);
-            }
+        try {
+            const { doc, setDoc } = await import('firebase/firestore');
+            await setDoc(doc(db, "cursors", `${itemId}_${currentUser.uid}`), {
+                itemId,
+                userId: currentUser.uid,
+                userName: currentUser.name,
+                position: cursorPosition,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error updating cursor position:', error);
+            // Don't break editing if cursor sync fails
         }
     }, [db, itemId, currentUser, isOwner]);
 
+    // Simplified cursor tracking
     useEffect(() => {
-        if (!db || !itemId || !isOwner) return;
+        if (!db || !itemId || !isOwner || !currentUser) return;
 
-        const cursorsQuery = query(
-            collection(db, "cursors"),
-            where("itemId", "==", itemId)
-        );
+        const setupCursorListener = async () => {
+            try {
+                const { collection, query, where, onSnapshot } = await import('firebase/firestore');
+                
+                const cursorsQuery = query(
+                    collection(db, "cursors"),
+                    where("itemId", "==", itemId)
+                );
 
-        const unsubscribe = onSnapshot(cursorsQuery, (snapshot) => {
-            const positions = new Map();
-            const now = new Date();
+                const unsubscribe = onSnapshot(
+                    cursorsQuery,
+                    (snapshot) => {
+                        const positions = new Map();
+                        const now = new Date();
 
-            snapshot.docs.forEach(doc => {
-                const data = doc.data();
-                const timestamp = new Date(data.timestamp);
-                const secondsAgo = (now - timestamp) / 1000;
+                        snapshot.docs.forEach(doc => {
+                            const data = doc.data();
+                            const timestamp = new Date(data.timestamp);
+                            const secondsAgo = (now - timestamp) / 1000;
 
-                if (secondsAgo < 10 && data.userId !== currentUser.uid) {
-                    positions.set(data.userId, {
-                        ...data,
-                        id: doc.id
-                    });
-                }
-            });
+                            if (secondsAgo < 10 && data.userId !== currentUser.uid) {
+                                positions.set(data.userId, {
+                                    ...data,
+                                    id: doc.id
+                                });
+                            }
+                        });
 
-            setCursorPositions(positions);
+                        setCursorPositions(positions);
+                    },
+                    (error) => {
+                        console.error('Cursor listener error:', error);
+                    }
+                );
+
+                return unsubscribe;
+            } catch (error) {
+                console.error('Error setting up cursor listener:', error);
+                return () => {};
+            }
+        };
+
+        setupCursorListener().then(unsubscribe => {
+            if (unsubscribe) {
+                return unsubscribe;
+            }
         });
-
-        return unsubscribe;
-    }, [db, itemId, currentUser.uid, isOwner]);
+    }, [db, itemId, currentUser?.uid, isOwner]);
 
     const renderCursorIndicators = () => {
-        if (!isOwner) return null;
+        if (!isOwner || cursorPositions.size === 0) return null;
         
         const textarea = textareaRef.current;
-        if (!textarea || cursorPositions.size === 0) return null;
+        if (!textarea) return null;
 
         const indicators = [];
         cursorPositions.forEach((cursor, userId) => {
