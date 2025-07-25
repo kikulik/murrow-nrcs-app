@@ -20,6 +20,7 @@ export const CollaborationProvider = ({ children }) => {
     const collaborationManagerRef = useRef(null);
     const notificationsUnsubscribeRef = useRef(null);
 
+    // Initialize collaboration manager
     useEffect(() => {
         if (db && currentUser) {
             if (!collaborationManagerRef.current) {
@@ -34,6 +35,31 @@ export const CollaborationProvider = ({ children }) => {
         }
     }, [db, currentUser]);
 
+    // Clean up when user logs out
+    useEffect(() => {
+        if (!currentUser) {
+            // User logged out - clean up everything
+            if (collaborationManagerRef.current) {
+                collaborationManagerRef.current.stopPresenceTracking();
+                collaborationManagerRef.current = null;
+            }
+
+            if (notificationsUnsubscribeRef.current) {
+                try {
+                    notificationsUnsubscribeRef.current();
+                } catch (error) {
+                    console.warn('Error cleaning up notifications listener:', error);
+                }
+                notificationsUnsubscribeRef.current = null;
+            }
+
+            // Reset state
+            setActiveUsers([]);
+            setEditingSessions(new Map());
+            setNotifications([]);
+        }
+    }, [currentUser]);
+
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
 
@@ -43,34 +69,48 @@ export const CollaborationProvider = ({ children }) => {
                 where("userId", "==", currentUser.uid)
             );
 
-            notificationsUnsubscribeRef.current = onSnapshot(notificationsQuery, (snapshot) => {
-                const allUserNotifications = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                const unreadNotifications = allUserNotifications.filter(n => n.read === false);
-                unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                setNotifications(unreadNotifications);
-                unreadNotifications.forEach(handleTakeOverNotification);
-            });
+            notificationsUnsubscribeRef.current = onSnapshot(
+                notificationsQuery,
+                (snapshot) => {
+                    const allUserNotifications = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    const unreadNotifications = allUserNotifications.filter(n => n.read === false);
+                    unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    setNotifications(unreadNotifications);
+                    unreadNotifications.forEach(handleTakeOverNotification);
+                },
+                (error) => {
+                    console.error('Notifications listener error:', error);
+                    // Don't retry immediately to avoid infinite loops
+                }
+            );
         } catch (error) {
             console.error('Error setting up notification listener:', error);
         }
     }, [db, currentUser]);
 
     useEffect(() => {
-        setupNotificationListener();
+        if (currentUser && db) {
+            setupNotificationListener();
+        }
+
         return () => {
             if (notificationsUnsubscribeRef.current) {
-                notificationsUnsubscribeRef.current();
+                try {
+                    notificationsUnsubscribeRef.current();
+                } catch (error) {
+                    console.warn('Error cleaning up notifications listener on unmount:', error);
+                }
                 notificationsUnsubscribeRef.current = null;
             }
         };
-    }, [setupNotificationListener]);
-    
+    }, [setupNotificationListener, currentUser, db]);
+
     useEffect(() => {
         const manager = collaborationManagerRef.current;
-        if (manager && appState.activeRundownId) {
+        if (manager && appState.activeRundownId && currentUser) {
             manager.startPresenceTracking(appState.activeRundownId);
             manager.listenToPresence(
                 appState.activeRundownId,
@@ -87,7 +127,6 @@ export const CollaborationProvider = ({ children }) => {
             }
         };
     }, [appState.activeRundownId, db, currentUser]);
-
 
     const updateEditingSessions = (users) => {
         const sessions = new Map();
@@ -255,7 +294,7 @@ export const CollaborationProvider = ({ children }) => {
         getUserEditingItem,
         isItemBeingEdited,
         markNotificationAsRead,
-        collaborationManager: collaborationManagerRef.current // Expose the instance
+        CollaborationManager: collaborationManagerRef.current // Expose the instance
     };
 
     return (
