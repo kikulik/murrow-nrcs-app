@@ -9,10 +9,11 @@ import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCollaboration } from '../../context/CollaborationContext';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
+import { doc, updateDoc } from 'firebase/firestore';
 
 const QuickEditModal = () => {
     const { appState, setQuickEditItem } = useAppContext();
-    const { currentUser } = useAuth();
+    const { currentUser, db } = useAuth();
     const { safeUpdateRundown } = useCollaboration();
 
     const [formData, setFormData] = useState({
@@ -27,15 +28,8 @@ const QuickEditModal = () => {
 
     const item = appState.quickEditItem;
 
-    // DEBUG: Log when component mounts/unmounts
-    useEffect(() => {
-        console.log('QuickEditModal mounted, item:', item);
-        return () => console.log('QuickEditModal unmounted');
-    }, []);
-
     useEffect(() => {
         if (item) {
-            console.log('Setting form data for item:', item); // DEBUG
             setFormData({
                 title: item.title || '',
                 content: item.content || '',
@@ -68,15 +62,12 @@ const QuickEditModal = () => {
     };
 
     const handleSave = async () => {
-        if (!appState.activeRundownId || !item) {
-            console.error('No active rundown or item to save'); // DEBUG
-            return;
-        }
+        if (!appState.activeRundownId || !item) return;
 
-        console.log('Saving item:', item.id, 'with data:', formData); // DEBUG
         setSaving(true);
         try {
-            await safeUpdateRundown(appState.activeRundownId, (rundownData) => ({
+            // FIX: Update both the rundown item and the story document
+            const rundownUpdatePromise = safeUpdateRundown(appState.activeRundownId, (rundownData) => ({
                 ...rundownData,
                 items: rundownData.items.map(rundownItem =>
                     rundownItem.id === item.id
@@ -87,15 +78,26 @@ const QuickEditModal = () => {
                             duration: formData.duration,
                             type: formData.type,
                             authorId: formData.authorId,
-                            version: (rundownItem.version || 1) + 1,
-                            lastModified: new Date().toISOString(),
-                            lastModifiedBy: currentUser.uid
                         }
                         : rundownItem
                 )
             }));
 
-            console.log('Save successful, closing modal'); // DEBUG
+            let storyUpdatePromise = Promise.resolve();
+            if (item.storyId) {
+                const storyRef = doc(db, "stories", item.storyId);
+                const storyUpdates = {
+                    title: formData.title,
+                    content: formData.content,
+                    duration: formData.duration,
+                    tags: formData.type,
+                    authorId: formData.authorId,
+                };
+                storyUpdatePromise = updateDoc(storyRef, storyUpdates);
+            }
+
+            await Promise.all([rundownUpdatePromise, storyUpdatePromise]);
+
             handleCancel();
         } catch (error) {
             console.error('Error updating item:', error);
@@ -106,17 +108,12 @@ const QuickEditModal = () => {
     };
 
     const handleCancel = () => {
-        console.log('Canceling quick edit'); // DEBUG
         setQuickEditItem(null);
     };
 
-    // Don't render if no item is selected
     if (!item) {
-        console.log('No item to edit, not rendering modal'); // DEBUG
         return null;
     }
-
-    console.log('Rendering QuickEditModal for item:', item.id); // DEBUG
 
     return (
         <ModalBase onCancel={handleCancel} title="Quick Edit" maxWidth="max-w-2xl">
