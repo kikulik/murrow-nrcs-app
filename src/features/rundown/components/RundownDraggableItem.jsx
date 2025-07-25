@@ -19,18 +19,20 @@ const RundownDraggableItem = ({
     isSelected,
     onSelect
 }) => {
-    const { appState, setQuickEditItem, openStoryTab } = useAppContext(); // ADD openStoryTab
+    const { appState, setQuickEditItem, openStoryTab } = useAppContext();
     const { currentUser } = useAuth();
     const {
         safeUpdateRundown,
-        getUserEditingItem,
+        editingSessions, // Use editingSessions from the context
         startEditingStory,
         takeOverStory
     } = useCollaboration();
     const ref = useRef(null);
 
     const userPermissions = getUserPermissions(currentUser.role);
-    const editingUser = getUserEditingItem(item.id);
+    
+    // FIX: Get the editing user directly from the reliable editingSessions map.
+    const editingUser = editingSessions.get(item.id.toString());
     const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
     const canTakeOver = userPermissions.canTakeOverStories;
 
@@ -95,17 +97,13 @@ const RundownDraggableItem = ({
         }
     };
 
-    // FIXED: Better edit handler that properly opens collaboration tab
     const handleEdit = async () => {
-        console.log('handleEdit called for item:', item.id, item); // DEBUG
-        
         if (isBeingEditedByOther && !canTakeOver) {
             alert(`${editingUser.userName} is currently editing this item. You don't have permission to take over.`);
             return;
         }
 
         try {
-            // If someone else is editing and we can take over, ask for confirmation
             if (isBeingEditedByOther && canTakeOver) {
                 const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`);
                 if (confirmed) {
@@ -114,9 +112,6 @@ const RundownDraggableItem = ({
                     return;
                 }
             }
-
-            // Start editing and open the collaboration tab
-            console.log('Calling startEditingStory with:', item.id, item); // DEBUG
             await startEditingStory(item.id, item);
         } catch (error) {
             console.error('Error starting edit:', error);
@@ -138,7 +133,6 @@ const RundownDraggableItem = ({
         }
     };
 
-    // FIXED: Double click handler that properly opens quick edit
     const handleDoubleClick = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -153,7 +147,6 @@ const RundownDraggableItem = ({
             return;
         }
         
-        console.log('Double click - opening quick edit for item:', item.id); // DEBUG
         setQuickEditItem(item);
     };
 
@@ -193,6 +186,7 @@ const RundownDraggableItem = ({
                     </h4>
                 </div>
                 <div className="col-span-1 flex justify-center">
+                    {/* FIX: Display the user icon when another user is editing. */}
                     {isBeingEditedByOther && (
                         <div title={`${editingUser.userName} is editing`} className="w-4 h-4 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center">
                             {editingUser.userName?.charAt(0)}
