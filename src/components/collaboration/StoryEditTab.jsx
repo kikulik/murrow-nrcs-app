@@ -22,8 +22,20 @@ const StoryEditTab = ({ itemId }) => {
         getUserEditingItem
     } = useCollaboration();
 
+    // FIXED: Better way to find the tab and story data
     const tab = appState.editingStoryTabs.find(t => t.itemId === itemId);
     const storyData = tab?.storyData;
+
+    // FIXED: Also try to find the item in the current rundown if not in tab
+    const rundownItem = React.useMemo(() => {
+        if (storyData) return storyData;
+        
+        const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
+        const foundItem = activeRundown?.items?.find(item => item.id === itemId);
+        
+        console.log('Looking for rundown item:', itemId, 'found:', foundItem); // DEBUG
+        return foundItem;
+    }, [storyData, appState.rundowns, appState.activeRundownId, itemId]);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -41,17 +53,20 @@ const StoryEditTab = ({ itemId }) => {
     const takenOverBy = tab?.takenOverBy;
     const isReadOnly = isTakenOver && !isOwner;
 
+    // FIXED: Initialize form data from rundownItem
     useEffect(() => {
-        if (storyData) {
+        console.log('Initializing form data with:', rundownItem); // DEBUG
+        if (rundownItem) {
             const data = {
-                title: storyData.title || '',
-                content: storyData.content || '',
-                duration: storyData.duration || '01:00',
-                type: Array.isArray(storyData.type) ? storyData.type : [storyData.type || 'STD']
+                title: rundownItem.title || '',
+                content: rundownItem.content || '',
+                duration: rundownItem.duration || '01:00',
+                type: Array.isArray(rundownItem.type) ? rundownItem.type : [rundownItem.type || 'STD']
             };
+            console.log('Setting form data:', data); // DEBUG
             setFormData(data);
         }
-    }, [storyData]);
+    }, [rundownItem]);
 
     useEffect(() => {
         const loadSavedProgress = async () => {
@@ -176,10 +191,29 @@ const StoryEditTab = ({ itemId }) => {
         closeStoryTab(itemId);
     };
 
-    if (!itemId || !storyData) {
+    // FIXED: Better error handling
+    if (!itemId) {
         return (
             <div className="flex items-center justify-center h-64">
-                <p className="text-gray-500">Story not found</p>
+                <p className="text-gray-500">No item ID provided</p>
+            </div>
+        );
+    }
+
+    if (!rundownItem) {
+        console.error('Story/Item not found for ID:', itemId); // DEBUG
+        console.log('Available rundowns:', appState.rundowns); // DEBUG
+        console.log('Active rundown ID:', appState.activeRundownId); // DEBUG
+        console.log('Editing tabs:', appState.editingStoryTabs); // DEBUG
+        
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <p className="text-gray-500 mb-4">Story not found (ID: {itemId})</p>
+                    <button onClick={handleClose} className="btn-secondary">
+                        Close Tab
+                    </button>
+                </div>
             </div>
         );
     }
@@ -329,7 +363,7 @@ const StoryEditTab = ({ itemId }) => {
 
                     <div className="flex items-center justify-between pt-4 border-t">
                         <div className="text-xs text-gray-500">
-                            {isOwner ? 'Auto-save every 5 seconds' : 'Real-time updates every 5 seconds'} • Version {storyData?.version || 1}
+                            {isOwner ? 'Auto-save every 5 seconds' : 'Real-time updates every 5 seconds'} • Version {rundownItem?.version || 1}
                         </div>
                         {isOwner && (
                             <div className="flex gap-3">
