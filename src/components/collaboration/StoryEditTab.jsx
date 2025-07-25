@@ -8,12 +8,15 @@ import UserPresenceIndicator from './UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
 import { useDirectRundownCollaboration } from '../../hooks/useDirectRundownCollaboration';
-import { useSimpleCollaboration } from '../../hooks/useSimpleCollaboration';
 import CollaborativeTextEditor from './CollaborativeTextEditor';
 
 const StoryEditTab = ({ itemId }) => {
     const { currentUser } = useAuth();
     const { appState, closeStoryTab, updateStoryTab, setAppState } = useAppContext();
+
+    // FIX: Get the initial story data directly from the tab state in AppContext
+    const tab = appState.editingStoryTabs.find(t => t.itemId === itemId);
+    const initialData = tab?.storyData || {};
 
     const {
         isOwner,
@@ -22,29 +25,26 @@ const StoryEditTab = ({ itemId }) => {
         handleTakeOver,
         saveChanges,
         stopEditing,
-        editingData
+        editingData // This will receive real-time updates from other users
     } = useDirectRundownCollaboration(itemId);
 
-    const {
-        content,
-        setContent,
-        saveTextOperation
-    } = useSimpleCollaboration(itemId, isOwner);
-
+    // FIX: Initialize formData with the initialData from the context
     const [formData, setFormData] = useState({
-        title: '',
-        content: '',
-        duration: '01:00',
-        type: ['STD']
+        title: initialData.title || '',
+        content: initialData.content || '',
+        duration: initialData.duration || '01:00',
+        type: Array.isArray(initialData.type) ? initialData.type : [initialData.type || 'STD']
     });
+
     const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [notification, setNotification] = useState(null);
 
+    // This effect will merge incoming real-time data from other collaborators
     useEffect(() => {
-        if (editingData) {
+        if (editingData && !isOwner) { // Only apply incoming changes if not the owner
             setFormData({
                 title: editingData.title || '',
                 content: editingData.content || '',
@@ -52,10 +52,10 @@ const StoryEditTab = ({ itemId }) => {
                 type: Array.isArray(editingData.type) ? editingData.type : [editingData.type || 'STD']
             });
         }
-    }, [editingData]);
+    }, [editingData, isOwner]);
 
-    const calculatedDuration = calculateReadingTime(content);
-    const wordCount = getWordCount(content);
+    const calculatedDuration = calculateReadingTime(formData.content);
+    const wordCount = getWordCount(formData.content);
 
     useEffect(() => {
         if (useCalculatedDuration && isOwner) {
@@ -239,27 +239,17 @@ const StoryEditTab = ({ itemId }) => {
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
-                        {!isOwner ? (
-                            <div className="min-h-[300px] p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md">
-                                <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300">
-                                    {content || 'No content available'}
-                                </div>
-                            </div>
-                        ) : (
-                            <CollaborativeTextEditor
-                                value={content}
-                                onChange={(newText) => {
-                                    saveTextOperation(formData.content, newText);
-                                    setContent(newText);
-                                    handleFormChange('content', newText);
-                                }}
-                                itemId={itemId}
-                                isOwner={isOwner}
-                                placeholder="Enter story content..."
-                                rows={12}
-                                className="min-h-[300px]"
-                            />
-                        )}
+                        <CollaborativeTextEditor
+                            // FIX: Pass the content from the unified formData state
+                            value={formData.content}
+                            // FIX: Simplify the onChange handler
+                            onChange={(newText) => handleFormChange('content', newText)}
+                            itemId={itemId}
+                            isOwner={isOwner}
+                            placeholder="Enter story content..."
+                            rows={12}
+                            className="min-h-[300px]"
+                        />
                     </div>
 
                     {isOwner && (
