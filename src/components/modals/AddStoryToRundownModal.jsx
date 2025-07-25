@@ -8,7 +8,8 @@ import InputField from '../ui/InputField';
 import SelectField from '../ui/SelectField';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { generateDateFolder } from '../../utils/folderHelpers';
+import { doc, getDoc, updateDoc, collection, addDoc } from 'firebase/firestore';
 
 const AddStoryToRundownModal = ({ onCancel }) => {
     const { appState } = useAppContext();
@@ -111,16 +112,32 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     authorId: story.authorId
                 };
             } else {
+                // FIX: Create a new story document first
+                const newStory = {
+                    title: newStoryData.title || `New ${selectedTypes[0]} Item`,
+                    content: newStoryData.content,
+                    duration: newStoryData.duration,
+                    authorId: newStoryData.authorId || currentUser?.uid,
+                    status: 'draft',
+                    platform: 'broadcast',
+                    created: new Date().toISOString(),
+                    folder: generateDateFolder(),
+                    tags: selectedTypes,
+                    comments: []
+                };
+                const storyDocRef = await addDoc(collection(db, "stories"), newStory);
+
+                // FIX: Create the rundown item and link it to the new story
                 newRundownItem = {
                     id: Date.now(),
                     time: "00:00:00",
-                    title: newStoryData.title || `New ${selectedTypes[0]} Item`,
-                    duration: newStoryData.duration,
+                    title: newStory.title,
+                    duration: newStory.duration,
                     type: selectedTypes,
-                    content: newStoryData.content,
-                    storyId: null,
+                    content: newStory.content,
+                    storyId: storyDocRef.id, // <-- This is the crucial link
                     storyStatus: 'Ready for Air',
-                    authorId: newStoryData.authorId || currentUser?.uid
+                    authorId: newStory.authorId
                 };
             }
 
