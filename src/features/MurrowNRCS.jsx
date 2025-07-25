@@ -16,6 +16,7 @@ import AssignmentsTab from './assignments/AssignmentsTab';
 import AdminTab from './admin/AdminTab.jsx';
 import LiveModeTab from './rundown/LiveModeTab';
 import StoryEditTab from '../components/collaboration/StoryEditTab';
+import QuickEditModal from '../components/modals/QuickEditModal'; // ADD THIS IMPORT
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
 import NotificationPanel from '../components/collaboration/NotificationPanel';
@@ -25,7 +26,7 @@ import { collection, addDoc } from "firebase/firestore";
 const MurrowNRCS = () => {
     const { currentUser, logout, db } = useAuth();
     const { appState, setAppState, cleanupDataListeners } = useAppContext();
-    const { CollaborationManager } = useCollaboration(); // Get the manager instance
+    const { CollaborationManager } = useCollaboration();
 
     const userPermissions = getUserPermissions(currentUser.role);
 
@@ -85,13 +86,29 @@ const MurrowNRCS = () => {
         }
     };
 
+    // Helper function to get the active story edit tab
+    const getActiveStoryEditTab = () => {
+        if (appState.activeTab.startsWith('storyEdit-')) {
+            const itemId = appState.activeTab.replace('storyEdit-', '');
+            return appState.editingStoryTabs.find(tab => tab.itemId === itemId);
+        }
+        return null;
+    };
+
     const tabs = [
         { id: 'stories', label: 'Stories', icon: 'stories', permission: true },
         { id: 'rundown', label: 'Rundown', icon: 'rundown', permission: true },
         { id: 'assignments', label: 'Assignments', icon: 'assignments', permission: userPermissions.canCreateAssignments || appState.assignments.some(a => a.assigneeId === currentUser.uid) },
         { id: 'admin', label: 'Admin', icon: 'admin', permission: userPermissions.canManageUsers },
         { id: 'live', label: 'Live Mode', icon: 'golive', permission: liveMode.isLive },
-        { id: 'storyEdit', label: `Editing: ${appState.editingStoryData?.title || 'Story'}`, icon: 'edit', permission: !!appState.editingStoryId, isEditing: true },
+        // Dynamic story edit tabs
+        ...appState.editingStoryTabs.map(tab => ({
+            id: tab.tabId,
+            label: `Editing: ${tab.title || 'Story'}`,
+            icon: 'edit',
+            permission: true,
+            isEditing: true
+        }))
     ];
 
     return (
@@ -137,7 +154,7 @@ const MurrowNRCS = () => {
                                 >
                                     <CustomIcon name={tab.icon} size={40} />
                                     <span className={tab.isEditing ? 'max-w-[150px] truncate' : ''}>{tab.label}</span>
-                                    {tab.isEditing && appState.editingStoryTakenOver && (
+                                    {tab.isEditing && appState.editingStoryTabs.find(t => t.tabId === tab.id)?.takenOver && (
                                         <CustomIcon name="notification" size={32} className="text-red-500" />
                                     )}
                                 </button>
@@ -153,7 +170,9 @@ const MurrowNRCS = () => {
                 {appState.activeTab === 'assignments' && <AssignmentsTab />}
                 {appState.activeTab === 'admin' && <AdminTab />}
                 {appState.activeTab === 'live' && activeRundown && <LiveModeTab liveMode={liveMode} />}
-                {appState.activeTab === 'storyEdit' && <StoryEditTab />}
+                {appState.activeTab.startsWith('storyEdit-') && (
+                    <StoryEditTab itemId={appState.activeTab.replace('storyEdit-', '')} />
+                )}
             </main>
 
             <Chatbox
@@ -164,6 +183,9 @@ const MurrowNRCS = () => {
             />
 
             <ModalManager />
+            
+            {/* ADD QuickEditModal */}
+            {appState.quickEditItem && <QuickEditModal />}
         </div>
     );
 };
