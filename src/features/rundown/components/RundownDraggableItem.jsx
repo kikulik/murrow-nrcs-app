@@ -19,7 +19,7 @@ const RundownDraggableItem = ({
     isSelected,
     onSelect
 }) => {
-    const { appState, setQuickEditItem } = useAppContext();
+    const { appState, setQuickEditItem, openStoryTab } = useAppContext(); // ADD openStoryTab
     const { currentUser } = useAuth();
     const {
         safeUpdateRundown,
@@ -95,8 +95,30 @@ const RundownDraggableItem = ({
         }
     };
 
+    // FIXED: Better edit handler that properly opens collaboration tab
     const handleEdit = async () => {
-        await startEditingStory(item.id, item);
+        if (isBeingEditedByOther && !canTakeOver) {
+            alert(`${editingUser.userName} is currently editing this item. You don't have permission to take over.`);
+            return;
+        }
+
+        try {
+            // If someone else is editing and we can take over, ask for confirmation
+            if (isBeingEditedByOther && canTakeOver) {
+                const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`);
+                if (confirmed) {
+                    await takeOverStory(item.id, editingUser.userId);
+                } else {
+                    return;
+                }
+            }
+
+            // Start editing and open the collaboration tab
+            await startEditingStory(item.id, item);
+        } catch (error) {
+            console.error('Error starting edit:', error);
+            alert('Failed to start editing. Please try again.');
+        }
     };
 
     const handleTakeOver = async () => {
@@ -113,12 +135,23 @@ const RundownDraggableItem = ({
         }
     };
 
+    // FIXED: Double click handler that properly opens quick edit
     const handleDoubleClick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!isLocked && !isBeingEditedByOther) {
-            setQuickEditItem(item);
+        
+        if (isLocked) {
+            alert('Cannot edit items while rundown is live.');
+            return;
         }
+        
+        if (isBeingEditedByOther) {
+            alert(`${editingUser.userName} is currently editing this item.`);
+            return;
+        }
+        
+        console.log('Double click - opening quick edit for item:', item.id); // DEBUG
+        setQuickEditItem(item);
     };
 
     const handleClick = (e) => {
