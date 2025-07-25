@@ -201,4 +201,17 @@ const QuickEditModal = () => {
                         <span>Cancel</span>
                     </button>
                     <button
-                        onClick={handle
+                        onClick={handleSave}
+                        className="btn-primary"
+                        disabled={saving}
+                    >
+                        <CustomIcon name="save" size={32} />
+                        <span>{saving ? 'Saving...' : 'Save Changes'}</span>
+                    </button>
+                </div>
+            </div>
+        </ModalBase>
+    );
+};
+
+export default QuickEditModal;
