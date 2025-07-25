@@ -1,257 +1,198 @@
-// src/features/rundown/components/RundownDraggableItem.jsx
-import React, { useRef } from 'react';
-import { useDrag, useDrop } from 'react-dnd';
+import React, { useState, useEffect } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
-import { useAppContext } from '../../../context/AppContext';
-import { useAuth } from '../../../context/AuthContext';
+import InputField from '../../../components/ui/InputField';
+import CollaborativeTextEditor from '../../../components/collaboration/CollaborativeTextEditor';
+import UserPresenceIndicator from '../../../components/collaboration/UserPresenceIndicator';
+import { RUNDOWN_ITEM_TYPES } from '../../../lib/constants';
 import { useCollaboration } from '../../../context/CollaborationContext';
-import { getStatusColor, getRundownTypeColor } from '../../../utils/styleHelpers';
-import { RUNDOWN_STORY_STATUSES } from '../../../lib/constants';
-import { getUserPermissions } from '../../../lib/permissions';
+import { useAuth } from '../../../context/AuthContext';
+import { calculateReadingTime, getWordCount } from '../../../utils/textDurationCalculator';
 
-const RundownDraggableItem = ({
-    item,
-    index,
-    moveItem,
-    canDrag,
-    isLocked,
-    onDeleteItem,
-    isSelected,
-    onSelect
-}) => {
-    const { appState, setQuickEditItem, openStoryTab } = useAppContext(); // ADD openStoryTab
+const RundownItemEditor = ({ item, onSave, onCancel }) => {
     const { currentUser } = useAuth();
-    const {
-        safeUpdateRundown,
-        getUserEditingItem,
-        startEditingStory,
-        takeOverStory
-    } = useCollaboration();
-    const ref = useRef(null);
+    const { setEditingItem, clearEditingItem, isItemBeingEdited } = useCollaboration();
+    const [formData, setFormData] = useState(item);
+    const [showConflictWarning, setShowConflictWarning] = useState(false);
+    const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
 
-    const userPermissions = getUserPermissions(currentUser.role);
-    const editingUser = getUserEditingItem(item.id);
-    const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
-    const canTakeOver = userPermissions.canTakeOverStories;
+    const wordCount = getWordCount(formData.content);
+    const calculatedDuration = calculateReadingTime(formData.content);
 
-    const [{ handlerId }, drop] = useDrop({
-        accept: 'rundownItem',
-        collect(monitor) {
-            return { handlerId: monitor.getHandlerId() };
-        },
-        hover(draggedItem, monitor) {
-            if (!ref.current || isLocked || !userPermissions.canMoveRundownItems) return;
-            const dragIndex = draggedItem.index;
-            const hoverIndex = index;
-            if (dragIndex === hoverIndex) return;
+    useEffect(() => {
+        setFormData(item);
+        setEditingItem(item.id);
 
-            const hoverBoundingRect = ref.current?.getBoundingClientRect();
-            const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
-            const clientOffset = monitor.getClientOffset();
-            const hoverClientY = clientOffset.y - hoverBoundingRect.top;
+        if (isItemBeingEdited(item.id)) {
+            setShowConflictWarning(true);
+        }
 
-            if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) return;
-            if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) return;
+        return () => {
+            clearEditingItem();
+        };
+    }, [item, setEditingItem, clearEditingItem, isItemBeingEdited]);
 
-            moveItem(dragIndex, hoverIndex);
-            draggedItem.index = hoverIndex;
-        },
-    });
-
-    const [{ isDragging }, drag] = useDrag({
-        type: 'rundownItem',
-        item: () => ({ id: item.id, index }),
-        canDrag: canDrag && !isLocked && !isBeingEditedByOther && userPermissions.canMoveRundownItems,
-        collect: (monitor) => ({
-            isDragging: monitor.isDragging(),
-        }),
-    });
-
-    if (canDrag && !isLocked && userPermissions.canMoveRundownItems) {
-        drag(drop(ref));
-    } else {
-        drop(ref);
-    }
-
-    const story = appState.stories?.find(s => s.id === item.storyId);
-    const author = story ?
-        appState.users.find(u => u.id === story.authorId || u.uid === story.authorId) :
-        item.authorId ? appState.users.find(u => u.id === item.authorId || u.uid === item.authorId) : null;
-
-    const handleStatusChange = async (newStatus) => {
-        if (isLocked || !appState.activeRundownId || isBeingEditedByOther) return;
-
-        try {
-            await safeUpdateRundown(appState.activeRundownId, (rundownData) => ({
-                ...rundownData,
-                items: rundownData.items.map(rundownItem =>
-                    rundownItem.id === item.id
-                        ? { ...rundownItem, storyStatus: newStatus }
-                        : rundownItem
-                )
+    useEffect(() => {
+        if (useCalculatedDuration) {
+            setFormData(prev => ({
+                ...prev,
+                duration: calculatedDuration
             }));
-        } catch (error) {
-            console.error("Error updating story status:", error);
         }
-    };
+    }, [calculatedDuration, useCalculatedDuration]);
 
-    // FIXED: Better edit handler that properly opens collaboration tab
-    const handleEdit = async () => {
-        if (isBeingEditedByOther && !canTakeOver) {
-            alert(`${editingUser.userName} is currently editing this item. You don't have permission to take over.`);
-            return;
-        }
+    const handleSave = async (e) => {
+        e.stopPropagation();
+        setIsSaving(true);
 
         try {
-            // If someone else is editing and we can take over, ask for confirmation
-            if (isBeingEditedByOther && canTakeOver) {
-                const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`);
-                if (confirmed) {
-                    await takeOverStory(item.id, editingUser.userId);
-                } else {
-                    return;
-                }
-            }
+            const updatedItem = {
+                ...formData,
+                version: (item.version || 1) + 1,
+                lastModified: new Date().toISOString(),
+                lastModifiedBy: currentUser.uid
+            };
 
-            // Start editing and open the collaboration tab
-            await startEditingStory(item.id, item);
+            await onSave(item.id, updatedItem);
+            await clearEditingItem();
         } catch (error) {
-            console.error('Error starting edit:', error);
-            alert('Failed to start editing. Please try again.');
+            console.error('Error saving item:', error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
-    const handleTakeOver = async () => {
-        if (!canTakeOver || !editingUser) return;
-
-        const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`);
-        if (!confirmed) return;
-
-        const success = await takeOverStory(item.id, editingUser.userId);
-        if (success) {
-            await startEditingStory(item.id, item);
-        } else {
-            alert('Failed to take over the story. Please try again.');
-        }
-    };
-
-    // FIXED: Double click handler that properly opens quick edit
-    const handleDoubleClick = (e) => {
-        e.preventDefault();
+    const handleCancel = async (e) => {
         e.stopPropagation();
-        
-        if (isLocked) {
-            alert('Cannot edit items while rundown is live.');
-            return;
-        }
-        
-        if (isBeingEditedByOther) {
-            alert(`${editingUser.userName} is currently editing this item.`);
-            return;
-        }
-        
-        console.log('Double click - opening quick edit for item:', item.id); // DEBUG
-        setQuickEditItem(item);
+        await clearEditingItem();
+        onCancel();
     };
 
-    const handleClick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onSelect(item.id, e.ctrlKey || e.metaKey);
+    const handleContentChange = (newContent) => {
+        setFormData({ ...formData, content: newContent });
     };
-
-    const itemClasses = `
-        group relative cursor-pointer
-        ${isDragging ? 'opacity-50' : 'opacity-100'} 
-        ${isLocked ? 'opacity-75' : ''} 
-        ${isSelected ? 'bg-blue-100 dark:bg-blue-800/50 border-l-4 border-blue-500' : ''}
-        ${isBeingEditedByOther ? 'bg-orange-50 dark:bg-orange-900/10 border-l-4 border-orange-500' : ''}
-        border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors
-    `;
 
     return (
-        <div
-            ref={ref}
-            data-handler-id={handlerId}
-            className={itemClasses}
-            onClick={handleClick}
-            onDoubleClick={handleDoubleClick}
-        >
-            <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 min-h-[44px] relative">
-                <div className="col-span-1 flex justify-center">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'}`}>
-                        {index + 1}
+        <div className="p-6 bg-blue-50 dark:bg-gray-700/50 border-l-4 border-blue-500 relative min-h-[600px]">
+            <div className="absolute top-2 right-2">
+                <UserPresenceIndicator itemId={item.id} />
+            </div>
+
+            {showConflictWarning && (
+                <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 rounded-md">
+                    <div className="flex items-center">
+                        <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                        </div>
+                        <div className="ml-3">
+                            <p className="text-sm text-yellow-700">
+                                Another user is currently editing this item. Your changes may conflict with theirs.
+                            </p>
+                        </div>
+                        <div className="ml-auto pl-3">
+                            <button
+                                onClick={() => setShowConflictWarning(false)}
+                                className="text-yellow-400 hover:text-yellow-600"
+                            >
+                                <span className="sr-only">Dismiss</span>
+                                ×
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div className="col-span-4 overflow-hidden">
-                    <h4 className="font-medium text-sm break-words">
-                        {item.title}
-                        {isLocked && <CustomIcon name="lock" size={16} className="inline ml-2" />}
-                    </h4>
+            )}
+
+            <div className="space-y-6 h-full flex flex-col">
+                <InputField
+                    label="Title"
+                    value={formData.title}
+                    onChange={e => setFormData({ ...formData, title: e.target.value })}
+                />
+
+                <div className="grid grid-cols-2 gap-4">
+                    <InputField
+                        label="Duration"
+                        value={formData.duration}
+                        onChange={e => setFormData({ ...formData, duration: e.target.value })}
+                        placeholder="MM:SS"
+                        disabled={useCalculatedDuration}
+                    />
+                    <div className="flex flex-col justify-end">
+                        <label className="flex items-center space-x-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={useCalculatedDuration}
+                                onChange={e => setUseCalculatedDuration(e.target.checked)}
+                                className="rounded"
+                            />
+                            <span>Auto-calculate from text</span>
+                        </label>
+                        {wordCount > 0 && (
+                            <p className="text-xs text-gray-500 mt-1">
+                                {wordCount} words • Est. {calculatedDuration} reading time
+                            </p>
+                        )}
+                    </div>
                 </div>
-                <div className="col-span-1 flex justify-center">
-                    {isBeingEditedByOther && (
-                        <div title={`${editingUser.userName} is editing`} className="w-4 h-4 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center">
-                            {editingUser.userName?.charAt(0)}
-                        </div>
-                    )}
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Item Type(s)
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {Object.keys(RUNDOWN_ITEM_TYPES).map(abbr => (
+                            <label key={abbr} className="flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 cursor-pointer has-[:checked]:bg-blue-100 dark:has-[:checked]:bg-blue-900/50">
+                                <input
+                                    type="checkbox"
+                                    checked={Array.isArray(formData.type) && formData.type.includes(abbr)}
+                                    onChange={() => {
+                                        const currentTypes = Array.isArray(formData.type) ? formData.type : [];
+                                        const newTypes = currentTypes.includes(abbr)
+                                            ? currentTypes.filter(t => t !== abbr)
+                                            : [...currentTypes, abbr];
+                                        setFormData({ ...formData, type: newTypes });
+                                    }}
+                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm">{abbr}</span>
+                            </label>
+                        ))}
+                    </div>
                 </div>
-                <div className="col-span-2 flex gap-1 flex-wrap">
-                    {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
-                        <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>{t}</span>
-                    ))}
+
+                <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Content
+                    </label>
+                    <CollaborativeTextEditor
+                        value={formData.content}
+                        onChange={handleContentChange}
+                        itemId={item.id}
+                        placeholder="Script or content..."
+                        rows={12}
+                        className="min-h-[300px]"
+                    />
                 </div>
-                <div className="col-span-1">
-                    <select
-                        value={item.storyStatus || 'Ready for Air'}
-                        onChange={(e) => handleStatusChange(e.target.value)}
-                        disabled={isLocked || isBeingEditedByOther}
-                        className={`text-xs p-1 rounded border-none w-full ${getStatusColor(item.storyStatus || 'Ready for Air')} ${isLocked || isBeingEditedByOther ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        onClick={e => e.stopPropagation()}
-                    >
-                        {RUNDOWN_STORY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+
+                <div className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 p-2 rounded">
+                    Version {item.version || 1} • Last modified: {item.lastModified ? new Date(item.lastModified).toLocaleString() : 'Never'}
                 </div>
-                <div className="col-span-1 text-center text-xs text-gray-600 dark:text-gray-400">{item.duration}</div>
-                <div className="col-span-2 text-left overflow-hidden text-xs text-gray-500 truncate" title={author?.name}>
-                    {author?.name || 'No Author'}
-                </div>
-                <div className="col-span-1 flex justify-end">
-                    {!isLocked && (
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {isBeingEditedByOther && canTakeOver ? (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleTakeOver(); }}
-                                    className="p-1 text-orange-600 hover:text-orange-800 rounded"
-                                    title={`Take over from ${editingUser.userName}`}
-                                >
-                                    <CustomIcon name="user" size={16} />
-                                </button>
-                            ) : !isBeingEditedByOther && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleEdit(); }}
-                                    className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                                    title="Edit item"
-                                >
-                                    <CustomIcon name="edit" size={16} />
-                                </button>
-                            )}
-                            {userPermissions.canDeleteAnything && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
-                                    disabled={isBeingEditedByOther}
-                                    className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`}
-                                    title="Delete item"
-                                >
-                                    <CustomIcon name="delete" size={16} />
-                                </button>
-                            )}
-                        </div>
-                    )}
+
+                <div className="flex justify-end space-x-2 pt-4 border-t">
+                    <button onClick={handleCancel} className="btn-secondary" disabled={isSaving}>
+                        <CustomIcon name="cancel" size={16} />
+                        <span>Cancel</span>
+                    </button>
+                    <button onClick={handleSave} className="btn-primary" disabled={isSaving}>
+                        <CustomIcon name="save" size={16} />
+                        <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                    </button>
                 </div>
             </div>
         </div>
     );
 };
 
-export default React.memo(RundownDraggableItem);
+export default RundownItemEditor;
