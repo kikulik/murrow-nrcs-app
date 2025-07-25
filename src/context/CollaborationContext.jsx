@@ -154,9 +154,12 @@ export const CollaborationProvider = ({ children }) => {
     const startEditingStory = async (itemId, storyData) => {
         const manager = collaborationManagerRef.current;
         if (!manager) return;
-
+    
+        console.log('startEditingStory called with:', { itemId, storyData }); // DEBUG
+    
         const existingEditor = editingSessions.get(itemId);
         if (existingEditor && existingEditor.userId !== currentUser.uid) {
+            console.log('Item being edited by another user:', existingEditor); // DEBUG
             openStoryTab(itemId, storyData);
             updateStoryTab(itemId, {
                 isOwner: false,
@@ -164,6 +167,7 @@ export const CollaborationProvider = ({ children }) => {
                 takenOverBy: existingEditor.userName
             });
         } else {
+            console.log('Taking ownership of item:', itemId); // DEBUG
             await manager.setEditingItem(itemId);
             openStoryTab(itemId, storyData);
             updateStoryTab(itemId, {
