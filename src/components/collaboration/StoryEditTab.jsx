@@ -8,9 +8,10 @@ import InputField from '../ui/InputField';
 import UserPresenceIndicator from './UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
+import { doc, updateDoc } from 'firebase/firestore';
 
 const StoryEditTab = ({ itemId }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, db } = useAuth();
     const { appState, closeStoryTab } = useAppContext();
     const {
         safeUpdateRundown,
@@ -19,7 +20,6 @@ const StoryEditTab = ({ itemId }) => {
         clearEditingItem,
     } = useCollaboration();
 
-    // FIX: Correctly determine ownership and "taken over" state from the collaboration context.
     const editingUser = editingSessions.get(itemId?.toString());
     const isOwner = !editingUser || editingUser.userId === currentUser.uid;
     const isTakenOver = editingUser && editingUser.userId !== currentUser.uid;
@@ -56,17 +56,31 @@ const StoryEditTab = ({ itemId }) => {
     const autoSave = useCallback(async () => {
         if (itemId && hasUnsavedChanges && isOwner && appState.activeRundownId) {
             setIsSaving(true);
-            const updateFunction = (rundownData) => {
+            
+            // FIX: Update both the rundown item and the story document
+            const rundownUpdatePromise = safeUpdateRundown(appState.activeRundownId, (rundownData) => {
                 const newItems = rundownData.items.map(item =>
                     item.id.toString() === itemId.toString()
-                        ? { ...item, ...formData, id: item.id } // Ensure ID is preserved
+                        ? { ...item, ...formData, id: item.id }
                         : item
                 );
                 return { ...rundownData, items: newItems };
-            };
+            });
+
+            let storyUpdatePromise = Promise.resolve();
+            if (initialData.storyId) {
+                const storyRef = doc(db, "stories", initialData.storyId);
+                const storyUpdates = {
+                    title: formData.title,
+                    content: formData.content,
+                    duration: formData.duration,
+                    tags: formData.type,
+                };
+                storyUpdatePromise = updateDoc(storyRef, storyUpdates);
+            }
 
             try {
-                await safeUpdateRundown(appState.activeRundownId, updateFunction);
+                await Promise.all([rundownUpdatePromise, storyUpdatePromise]);
                 setLastSaved(new Date());
                 setHasUnsavedChanges(false);
             } catch (error) {
@@ -76,7 +90,7 @@ const StoryEditTab = ({ itemId }) => {
                 setIsSaving(false);
             }
         }
-    }, [itemId, formData, hasUnsavedChanges, isOwner, safeUpdateRundown, appState.activeRundownId]);
+    }, [itemId, formData, hasUnsavedChanges, isOwner, safeUpdateRundown, appState.activeRundownId, initialData.storyId, db]);
 
     useEffect(() => {
         if (isOwner && hasUnsavedChanges) {
@@ -151,7 +165,6 @@ const StoryEditTab = ({ itemId }) => {
                 <div className="flex items-center gap-4">
                     <h2 className="text-xl font-semibold">Edit Story</h2>
                     <UserPresenceIndicator itemId={itemId} />
-                    {/* FIX: Correctly show the "Take Over" button only when another user is editing. */}
                     {isTakenOver && takenOverBy && (
                         <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
                             <CustomIcon name="lock" size={32} className="text-orange-600" />
@@ -178,7 +191,6 @@ const StoryEditTab = ({ itemId }) => {
                 </div>
             </div>
 
-            {/* FIX: Correctly show the "Story is Being Edited" banner. */}
             {isTakenOver && (
                 <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
                     <div className="flex items-center space-x-2">
