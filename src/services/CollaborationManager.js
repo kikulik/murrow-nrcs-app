@@ -1,8 +1,4 @@
-/*
-================================================================================
-File: murrow-nrcs-app.git/src/services/CollaborationManager.js
-================================================================================
-*/
+// src/services/CollaborationManager.js
 export class CollaborationManager {
     constructor(db, currentUser) {
         this.db = db;
@@ -20,7 +16,6 @@ export class CollaborationManager {
     async startPresenceTracking(rundownId) {
         if (!this.db || !this.currentUser || this.isDestroyed) return;
 
-        // If we are already tracking for another rundown, stop it first.
         if (this.presenceRef) {
             await this.stopPresenceTracking();
         }
@@ -56,7 +51,6 @@ export class CollaborationManager {
                     }, { merge: true });
                     this.lastUpdate = now;
                 } catch (error) {
-                    // Check if it's an auth error (user logged out)
                     if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
                         console.warn('User appears to be logged out, stopping presence tracking');
                         this.stopPresenceTracking();
@@ -93,12 +87,11 @@ export class CollaborationManager {
 
         if (this.presenceRef) {
             const refToDelete = this.presenceRef;
-            this.presenceRef = null; // Nullify immediately to prevent multiple attempts
+            this.presenceRef = null;
             try {
                 const { deleteDoc } = await import("firebase/firestore");
                 await deleteDoc(refToDelete);
             } catch (error) {
-                // Don't log as error since this is expected during logout
                 console.warn('Could not delete presence document on cleanup (this is expected on logout):', error.message);
             }
         }
@@ -109,7 +102,7 @@ export class CollaborationManager {
             } catch (error) {
                 console.warn('Error during cleanup function:', error);
             }
-            this.cleanup = () => { }; // Ensure it only runs once
+            this.cleanup = () => { };
         }
     }
 
@@ -203,7 +196,18 @@ export class CollaborationManager {
         }
     }
 
-    static applyTextTransform(originalText, operations) {
+    generateTextOperations(oldText, newText) {
+        if (oldText === newText) return [];
+        return [{
+            type: 'replace',
+            position: 0,
+            oldLength: oldText.length,
+            newText: newText,
+            timestamp: Date.now()
+        }];
+    }
+
+    applyTextTransform(originalText, operations) {
         let result = originalText;
         let offset = 0;
         const sortedOps = [...operations].sort((a, b) => a.position - b.position);
@@ -225,17 +229,6 @@ export class CollaborationManager {
             }
         }
         return result;
-    }
-
-    static generateTextOperations(oldText, newText) {
-        if (oldText === newText) return [];
-        return [{
-            type: 'replace',
-            position: 0,
-            oldLength: oldText.length,
-            newText: newText,
-            timestamp: Date.now()
-        }];
     }
 
     async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
