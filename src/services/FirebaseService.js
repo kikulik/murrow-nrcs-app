@@ -1,6 +1,12 @@
 // src/services/FirebaseService.js
 // Service layer for Firebase operations
 // FIX: Standardized dynamic import to use 'firebase/firestore'
+import { initializeApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+
+const firebaseConfig = { ... };
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
 
 export class FirebaseService {
     constructor(db) {
