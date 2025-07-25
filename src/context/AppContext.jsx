@@ -1,14 +1,9 @@
 /*
 ================================================================================
 File: murrow-nrcs-app.git/src/context/AppContext.jsx
-Description: This file manages the global application state.
-FIX: The useEffect hook has been restructured to correctly handle the async
-`setupFirestoreListeners` function. An async function is now defined and called
-inside the hook, ensuring the cleanup function is returned correctly. This
-solves the primary issue of data listeners not being attached.
 ================================================================================
 */
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
 
@@ -42,30 +37,43 @@ export const AppProvider = ({ children }) => {
         editingStoryTakenOverBy: null,
         editingStoryIsOwner: false
     });
+    const unsubscribeRef = useRef(null); // Use a ref to hold the unsubscribe function
 
     useEffect(() => {
-        let unsubscribeFromListeners;
-
         const initializeListeners = async () => {
+            // If there are existing listeners from a previous session, unsubscribe first.
+            if (unsubscribeRef.current) {
+                unsubscribeRef.current();
+                unsubscribeRef.current = null;
+            }
+
             if (db && currentUser) {
-                // setupFirestoreListeners is async, so we await its result
-                unsubscribeFromListeners = await setupFirestoreListeners(db, setAppState);
+                // Store the new unsubscribe function in the ref
+                unsubscribeRef.current = await setupFirestoreListeners(db, setAppState);
             }
         };
 
         initializeListeners();
 
-        // The cleanup function will be called when the component unmounts
-        // or when dependencies change.
+        // This cleanup runs when the component unmounts or dependencies change.
         return () => {
-            if (unsubscribeFromListeners) {
-                unsubscribeFromListeners();
+            if (unsubscribeRef.current) {
+                unsubscribeRef.current();
+                unsubscribeRef.current = null;
             }
         };
     }, [db, currentUser]);
 
+    // This function can be called explicitly to clean up listeners, e.g., on logout.
+    const cleanupDataListeners = () => {
+        if (unsubscribeRef.current) {
+            unsubscribeRef.current();
+            unsubscribeRef.current = null;
+        }
+    };
+
     return (
-        <AppContext.Provider value={{ appState, setAppState }}>
+        <AppContext.Provider value={{ appState, setAppState, cleanupDataListeners }}>
             {children}
         </AppContext.Provider>
     );
