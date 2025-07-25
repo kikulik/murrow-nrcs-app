@@ -27,8 +27,15 @@ const QuickEditModal = () => {
 
     const item = appState.quickEditItem;
 
+    // DEBUG: Log when component mounts/unmounts
+    useEffect(() => {
+        console.log('QuickEditModal mounted, item:', item);
+        return () => console.log('QuickEditModal unmounted');
+    }, []);
+
     useEffect(() => {
         if (item) {
+            console.log('Setting form data for item:', item); // DEBUG
             setFormData({
                 title: item.title || '',
                 content: item.content || '',
@@ -61,8 +68,12 @@ const QuickEditModal = () => {
     };
 
     const handleSave = async () => {
-        if (!appState.activeRundownId || !item) return;
+        if (!appState.activeRundownId || !item) {
+            console.error('No active rundown or item to save'); // DEBUG
+            return;
+        }
 
+        console.log('Saving item:', item.id, 'with data:', formData); // DEBUG
         setSaving(true);
         try {
             await safeUpdateRundown(appState.activeRundownId, (rundownData) => ({
@@ -84,6 +95,7 @@ const QuickEditModal = () => {
                 )
             }));
 
+            console.log('Save successful, closing modal'); // DEBUG
             handleCancel();
         } catch (error) {
             console.error('Error updating item:', error);
@@ -94,10 +106,17 @@ const QuickEditModal = () => {
     };
 
     const handleCancel = () => {
+        console.log('Canceling quick edit'); // DEBUG
         setQuickEditItem(null);
     };
 
-    if (!item) return null;
+    // Don't render if no item is selected
+    if (!item) {
+        console.log('No item to edit, not rendering modal'); // DEBUG
+        return null;
+    }
+
+    console.log('Rendering QuickEditModal for item:', item.id); // DEBUG
 
     return (
         <ModalBase onCancel={handleCancel} title="Quick Edit" maxWidth="max-w-2xl">
@@ -182,17 +201,4 @@ const QuickEditModal = () => {
                         <span>Cancel</span>
                     </button>
                     <button
-                        onClick={handleSave}
-                        className="btn-primary"
-                        disabled={saving}
-                    >
-                        <CustomIcon name="save" size={32} />
-                        <span>{saving ? 'Saving...' : 'Save Changes'}</span>
-                    </button>
-                </div>
-            </div>
-        </ModalBase>
-    );
-};
-
-export default QuickEditModal;
+                        onClick={handle
