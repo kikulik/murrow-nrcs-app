@@ -1,8 +1,4 @@
-/*
-================================================================================
-File: murrow-nrcs-app.git/src/context/AppContext.jsx
-================================================================================
-*/
+// src/context/AppContext.jsx
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
@@ -31,24 +27,19 @@ export const AppProvider = ({ children }) => {
         liveTime: 0,
         currentLiveItemIndex: 0,
         liveRundownId: null,
-        editingStoryId: null,
-        editingStoryData: null,
-        editingStoryTakenOver: false,
-        editingStoryTakenOverBy: null,
-        editingStoryIsOwner: false
+        editingStoryTabs: [],
+        quickEditItem: null
     });
     const unsubscribeRef = useRef(null);
     const cleanupTimeoutRef = useRef(null);
 
     useEffect(() => {
         const initializeListeners = async () => {
-            // Clear any existing cleanup timeout
             if (cleanupTimeoutRef.current) {
                 clearTimeout(cleanupTimeoutRef.current);
                 cleanupTimeoutRef.current = null;
             }
 
-            // If there are existing listeners from a previous session, unsubscribe first.
             if (unsubscribeRef.current) {
                 try {
                     unsubscribeRef.current();
@@ -60,7 +51,6 @@ export const AppProvider = ({ children }) => {
 
             if (db && currentUser) {
                 try {
-                    // Store the new unsubscribe function in the ref
                     unsubscribeRef.current = await setupFirestoreListeners(db, setAppState);
                 } catch (error) {
                     console.error('Error setting up Firestore listeners:', error);
@@ -70,7 +60,6 @@ export const AppProvider = ({ children }) => {
 
         initializeListeners();
 
-        // This cleanup runs when the component unmounts or dependencies change.
         return () => {
             if (unsubscribeRef.current) {
                 try {
@@ -83,13 +72,10 @@ export const AppProvider = ({ children }) => {
         };
     }, [db, currentUser]);
 
-    // Watch for user logout to immediately clean up listeners
     useEffect(() => {
         if (!currentUser && unsubscribeRef.current) {
-            // User logged out - clean up immediately
             cleanupDataListeners();
 
-            // Also reset app state to initial values
             setAppState({
                 users: [],
                 groups: [],
@@ -110,16 +96,12 @@ export const AppProvider = ({ children }) => {
                 liveTime: 0,
                 currentLiveItemIndex: 0,
                 liveRundownId: null,
-                editingStoryId: null,
-                editingStoryData: null,
-                editingStoryTakenOver: false,
-                editingStoryTakenOverBy: null,
-                editingStoryIsOwner: false
+                editingStoryTabs: [],
+                quickEditItem: null
             });
         }
     }, [currentUser]);
 
-    // This function can be called explicitly to clean up listeners, e.g., on logout.
     const cleanupDataListeners = () => {
         if (unsubscribeRef.current) {
             try {
@@ -131,8 +113,103 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    const openStoryTab = (itemId, storyData) => {
+        setAppState(prev => {
+            const existingTab = prev.editingStoryTabs.find(tab => tab.itemId === itemId);
+            if (existingTab) {
+                return {
+                    ...prev,
+                    activeTab: `storyEdit-${itemId}`
+                };
+            }
+
+            const newTab = {
+                itemId,
+                storyData,
+                tabId: `storyEdit-${itemId}`,
+                title: storyData.title || 'Untitled Story',
+                isOwner: true,
+                takenOver: false,
+                takenOverBy: null
+            };
+
+            return {
+                ...prev,
+                editingStoryTabs: [...prev.editingStoryTabs, newTab],
+                activeTab: `storyEdit-${itemId}`
+            };
+        });
+    };
+
+    const closeStoryTab = (itemId) => {
+        setAppState(prev => {
+            const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId !== itemId);
+            let newActiveTab = prev.activeTab;
+
+            if (prev.activeTab === `storyEdit-${itemId}`) {
+                if (updatedTabs.length > 0) {
+                    newActiveTab = updatedTabs[updatedTabs.length - 1].tabId;
+                } else {
+                    newActiveTab = 'rundown';
+                }
+            }
+
+            return {
+                ...prev,
+                editingStoryTabs: updatedTabs,
+                activeTab: newActiveTab
+            };
+        });
+    };
+
+    const updateStoryTab = (itemId, updates) => {
+        setAppState(prev => ({
+            ...prev,
+            editingStoryTabs: prev.editingStoryTabs.map(tab =>
+                tab.itemId === itemId ? { ...tab, ...updates } : tab
+            )
+        }));
+    };
+
+    const forceCloseStoryTab = (itemId) => {
+        setAppState(prev => {
+            const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId !== itemId);
+            let newActiveTab = prev.activeTab;
+
+            if (prev.activeTab === `storyEdit-${itemId}`) {
+                if (updatedTabs.length > 0) {
+                    newActiveTab = updatedTabs[updatedTabs.length - 1].tabId;
+                } else {
+                    newActiveTab = 'rundown';
+                }
+            }
+
+            return {
+                ...prev,
+                editingStoryTabs: updatedTabs,
+                activeTab: newActiveTab
+            };
+        });
+    };
+
+    const setQuickEditItem = (item) => {
+        setAppState(prev => ({
+            ...prev,
+            quickEditItem: item
+        }));
+    };
+
     return (
-        <AppContext.Provider value={{ appState, setAppState, cleanupDataListeners }}>
+        <AppContext.Provider value={{
+            appState,
+            setAppState,
+            cleanupDataListeners,
+            openStoryTab,
+            closeStoryTab,
+            updateStoryTab,
+            forceCloseStoryTab,
+            setQuickEditItem
+        }}>
             {children}
         </AppContext.Provider>
     );
