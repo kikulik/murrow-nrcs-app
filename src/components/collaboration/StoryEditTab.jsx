@@ -12,7 +12,7 @@ import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalc
 
 const StoryEditTab = ({ itemId }) => {
     const { currentUser } = useAuth();
-    const { appState, closeStoryTab, updateStoryTab } = useAppContext();
+    const { appState, closeStoryTab, updateStoryTab, setAppState } = useAppContext(); // ADD setAppState
     const {
         stopEditingStory,
         saveStoryProgress,
@@ -77,6 +77,7 @@ const StoryEditTab = ({ itemId }) => {
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [notification, setNotification] = useState(null); // ADD notification state
 
     // FIXED: Get ownership info from tab, with fallback to true for owner
     const isOwner = tab?.isOwner !== undefined ? tab.isOwner : true; // Default to true if not set
@@ -98,6 +99,7 @@ const StoryEditTab = ({ itemId }) => {
             };
             console.log('Setting form data:', data); // DEBUG
             setFormData(data);
+            setHasUnsavedChanges(false); // Reset unsaved changes when loading new data
         }
     }, [rundownItem]);
 
@@ -174,15 +176,17 @@ const StoryEditTab = ({ itemId }) => {
                 takenOverBy: null
             });
         } else {
-            alert('Failed to take over the story. Please try again.');
+            showNotification('Failed to take over the story. Please try again.', 'error');
         }
     };
 
+    // FIXED: Better save function that updates both the rundown and local state
     const handleSave = async () => {
         if (!itemId || !appState.activeRundownId || !isOwner) return;
 
         setIsSaving(true);
         try {
+            // Update the rundown in Firebase
             await safeUpdateRundown(appState.activeRundownId, (rundownData) => ({
                 ...rundownData,
                 items: rundownData.items.map(item =>
@@ -201,27 +205,60 @@ const StoryEditTab = ({ itemId }) => {
                 )
             }));
 
+            // Update the local app state immediately to prevent reversion
+            setAppState(prev => ({
+                ...prev,
+                rundowns: prev.rundowns.map(rundown =>
+                    rundown.id === appState.activeRundownId
+                        ? {
+                            ...rundown,
+                            items: rundown.items.map(item =>
+                                item.id === itemId
+                                    ? {
+                                        ...item,
+                                        title: formData.title,
+                                        content: formData.content,
+                                        duration: formData.duration,
+                                        type: formData.type,
+                                        version: (item.version || 1) + 1,
+                                        lastModified: new Date().toISOString(),
+                                        lastModifiedBy: currentUser.uid
+                                    }
+                                    : item
+                            )
+                        }
+                        : rundown
+                )
+            }));
+
             setHasUnsavedChanges(false);
             setLastSaved(new Date());
-            alert('Story saved successfully!');
+            showNotification('Story saved successfully!', 'success');
         } catch (error) {
             console.error('Error saving story:', error);
-            alert('Failed to save story. Please try again.');
+            showNotification('Failed to save story. Please try again.', 'error');
         } finally {
             setIsSaving(false);
         }
     };
 
+    // FIXED: Better close function
     const handleClose = async () => {
         if (hasUnsavedChanges && isOwner) {
             const shouldSave = window.confirm('You have unsaved changes. Do you want to save before closing?');
             if (shouldSave) {
-                await autoSave();
+                await handleSave(); // Use handleSave instead of autoSave
             }
         }
 
         await stopEditingStory(itemId);
         closeStoryTab(itemId);
+    };
+
+    // ADD: In-app notification function
+    const showNotification = (message, type = 'info') => {
+        setNotification({ message, type });
+        setTimeout(() => setNotification(null), 3000); // Auto-dismiss after 3 seconds
     };
 
     // FIXED: Better error handling
@@ -253,6 +290,25 @@ const StoryEditTab = ({ itemId }) => {
 
     return (
         <div className="space-y-6">
+            {/* ADD: In-app notification */}
+            {notification && (
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
+                    notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
+                    notification.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
+                    'bg-blue-100 text-blue-800 border border-blue-200'
+                }`}>
+                    <div className="flex items-center justify-between">
+                        <span>{notification.message}</span>
+                        <button
+                            onClick={() => setNotification(null)}
+                            className="ml-4 text-gray-500 hover:text-gray-700"
+                        >
+                            ×
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <h2 className="text-xl font-semibold">Edit Story</h2>
