@@ -98,15 +98,18 @@ export const CollaborationProvider = ({ children }) => {
         };
     }, [setupNotificationListener, currentUser, db]);
 
+    // FIX: This effect now correctly handles the full list of active users.
     useEffect(() => {
         const manager = collaborationManagerRef.current;
         if (manager && appState.activeRundownId && currentUser) {
             manager.startPresenceTracking(appState.activeRundownId);
             manager.listenToPresence(
                 appState.activeRundownId,
-                (users) => {
-                    setActiveUsers(users);
-                    updateEditingSessions(users);
+                (allUsers) => {
+                    // Set the full list of active users, including the current user.
+                    setActiveUsers(allUsers);
+                    // Update the editing sessions based on the full list.
+                    updateEditingSessions(allUsers);
                 }
             );
         }
@@ -118,11 +121,12 @@ export const CollaborationProvider = ({ children }) => {
         };
     }, [appState.activeRundownId, db, currentUser]);
 
+    // FIX: Correctly process all users to build the editing sessions map.
     const updateEditingSessions = (users) => {
         const sessions = new Map();
         users.forEach(user => {
             if (user.editingItem) {
-                sessions.set(user.editingItem, {
+                sessions.set(user.editingItem.toString(), { // Ensure item ID is a string for map keys
                     userId: user.userId,
                     userName: user.userName,
                     timestamp: Date.now()
@@ -155,27 +159,23 @@ export const CollaborationProvider = ({ children }) => {
         const manager = collaborationManagerRef.current;
         if (!manager) return;
     
-        console.log('startEditingStory called with:', { itemId, storyData }); // DEBUG
-    
-        const existingEditor = editingSessions.get(itemId.toString());
-        if (existingEditor && existingEditor.userId !== currentUser.uid) {
-            console.log('Item being edited by another user:', existingEditor); // DEBUG
+        const editingUser = editingSessions.get(itemId.toString());
+        const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
+
+        if (isBeingEditedByOther) {
             openStoryTab(itemId, storyData);
             updateStoryTab(itemId, {
                 isOwner: false,
                 takenOver: true,
-                takenOverBy: existingEditor.userName,
-                storyData: storyData // FIXED: Ensure story data is passed
+                takenOverBy: editingUser.userName,
             });
         } else {
-            console.log('Taking ownership of item:', itemId); // DEBUG
             await manager.setEditingItem(itemId.toString());
             openStoryTab(itemId, storyData);
             updateStoryTab(itemId, {
                 isOwner: true,
                 takenOver: false,
                 takenOverBy: null,
-                storyData: storyData // FIXED: Ensure story data is passed
             });
         }
         return true;
@@ -184,7 +184,11 @@ export const CollaborationProvider = ({ children }) => {
     const stopEditingStory = async (itemId) => {
         const manager = collaborationManagerRef.current;
         if (manager) {
-            await manager.setEditingItem(null);
+            // Check if the current user is the one editing this item before clearing it.
+            const editingUser = editingSessions.get(itemId?.toString());
+            if (editingUser && editingUser.userId === currentUser.uid) {
+                 await manager.setEditingItem(null);
+            }
         }
     };
 
@@ -251,11 +255,11 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const getUserEditingItem = (itemId) => {
-        return editingSessions.get(itemId);
+        return editingSessions.get(itemId.toString());
     };
 
     const isItemBeingEdited = (itemId) => {
-        const session = editingSessions.get(itemId);
+        const session = editingSessions.get(itemId.toString());
         return session && session.userId !== currentUser.uid;
     };
 
