@@ -22,8 +22,11 @@ const StoryEditTab = ({ itemId }) => {
         getUserEditingItem
     } = useCollaboration();
 
-    // FIXED: Better way to find the tab and get ownership info
-    const tab = appState.editingStoryTabs.find(t => t.itemId === itemId);
+    // FIXED: Better way to find the tab and get ownership info with proper timing
+    const tab = React.useMemo(() => {
+        return appState.editingStoryTabs.find(t => t.itemId === itemId);
+    }, [appState.editingStoryTabs, itemId]);
+    
     const storyData = tab?.storyData;
 
     // FIXED: Also try to find the item in the current rundown if not in tab
@@ -75,12 +78,13 @@ const StoryEditTab = ({ itemId }) => {
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
+    // FIXED: Get ownership info from tab, with fallback to true for owner
     const isOwner = tab?.isOwner !== undefined ? tab.isOwner : true; // Default to true if not set
     const isTakenOver = tab?.takenOver || false;
     const takenOverBy = tab?.takenOverBy;
     const isReadOnly = isTakenOver && !isOwner;
 
-    console.log('Ownership status:', { isOwner, isTakenOver, takenOverBy, tab });
+    console.log('Ownership status:', { isOwner, isTakenOver, takenOverBy, tab, tabFound: !!tab }); // DEBUG
 
     // FIXED: Initialize form data from rundownItem
     useEffect(() => {
@@ -386,6 +390,7 @@ const StoryEditTab = ({ itemId }) => {
                                 placeholder="Enter story content..."
                                 rows={12}
                                 className="min-h-[300px]"
+                                isOwner={isOwner} // PASS isOwner as prop
                             />
                         )}
                     </div>
