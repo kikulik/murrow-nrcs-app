@@ -114,10 +114,11 @@ export const AppProvider = ({ children }) => {
     };
 
     const openStoryTab = (itemId, storyData) => {
-        console.log('Opening story tab for item:', itemId); // DEBUG
+        console.log('Opening story tab for item:', itemId, 'with data:', storyData); // DEBUG
         setAppState(prev => {
             const existingTab = prev.editingStoryTabs.find(tab => tab.itemId === itemId);
             if (existingTab) {
+                console.log('Tab already exists, switching to it'); // DEBUG
                 return {
                     ...prev,
                     activeTab: `storyEdit-${itemId}`
@@ -128,11 +129,13 @@ export const AppProvider = ({ children }) => {
                 itemId,
                 storyData,
                 tabId: `storyEdit-${itemId}`,
-                title: storyData.title || 'Untitled Story',
+                title: storyData?.title || 'Untitled Story',
                 isOwner: true,
                 takenOver: false,
                 takenOverBy: null
             };
+
+            console.log('Creating new tab:', newTab); // DEBUG
 
             return {
                 ...prev,
