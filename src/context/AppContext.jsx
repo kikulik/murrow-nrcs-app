@@ -117,13 +117,20 @@ export const AppProvider = ({ children }) => {
         console.log('Opening story tab for item:', itemId, 'with data:', storyData); // DEBUG
         setAppState(prev => {
             const existingTab = prev.editingStoryTabs.find(tab => tab.itemId.toString() === itemId.toString());
+            
+            // FIX: Ensure the storyId from the rundown item is always passed into the tab's storyData.
+            const fullStoryData = {
+                ...storyData,
+                storyId: storyData.storyId || null
+            };
+
             if (existingTab) {
                 console.log('Tab already exists, updating and switching to it'); // DEBUG
                 return {
                     ...prev,
                     editingStoryTabs: prev.editingStoryTabs.map(tab =>
                         tab.itemId.toString() === itemId.toString()
-                            ? { ...tab, storyData: storyData || tab.storyData }
+                            ? { ...tab, storyData: fullStoryData }
                             : tab
                     ),
                     activeTab: `storyEdit-${itemId}`
@@ -131,8 +138,8 @@ export const AppProvider = ({ children }) => {
             }
     
             const newTab = {
-                itemId: itemId.toString(), // FIXED: Ensure string consistency
-                storyData: storyData || null,
+                itemId: itemId.toString(),
+                storyData: fullStoryData,
                 tabId: `storyEdit-${itemId}`,
                 title: storyData?.title || 'Untitled Story',
                 isOwner: true,
