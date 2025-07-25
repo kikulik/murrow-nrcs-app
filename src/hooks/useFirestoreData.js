@@ -1,35 +1,56 @@
 // src/hooks/useFirestoreData.js
-// Custom hook for Firestore data management
-// FIX: Standardized the dynamic import to use 'firebase/firestore' for consistency
-// across the application.
+// Custom hook for Firestore data management with improved error handling
 export const setupFirestoreListeners = async (db, setAppState) => {
     const { collection, onSnapshot, query, orderBy } = await import("firebase/firestore");
 
+    const createListener = (collectionName, stateKey, orderByField = null) => {
+        try {
+            const collectionRef = collection(db, collectionName);
+            const queryRef = orderByField
+                ? query(collectionRef, orderBy(orderByField, "asc"))
+                : collectionRef;
+
+            return onSnapshot(
+                queryRef,
+                (snapshot) => {
+                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setAppState(prev => ({ ...prev, [stateKey]: data }));
+                },
+                (error) => {
+                    console.error(`Error in ${collectionName} listener:`, error);
+                    // Don't throw error to prevent app crash
+                    // Just log it and continue
+                    if (error.code === 'permission-denied') {
+                        console.warn(`Permission denied for ${collectionName}, likely due to logout`);
+                    } else if (error.code === 'unavailable') {
+                        console.warn(`Firestore unavailable for ${collectionName}, will retry automatically`);
+                    }
+                }
+            );
+        } catch (error) {
+            console.error(`Error creating listener for ${collectionName}:`, error);
+            return () => { }; // Return empty function if listener creation fails
+        }
+    };
+
     const unsubscribers = [
-        onSnapshot(collection(db, "users"), (snapshot) =>
-            setAppState(prev => ({ ...prev, users: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }))
-        ),
-        onSnapshot(collection(db, "groups"), (snapshot) =>
-            setAppState(prev => ({ ...prev, groups: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }))
-        ),
-        onSnapshot(collection(db, "stories"), (snapshot) =>
-            setAppState(prev => ({ ...prev, stories: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }))
-        ),
-        onSnapshot(collection(db, "assignments"), (snapshot) =>
-            setAppState(prev => ({ ...prev, assignments: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }))
-        ),
-        onSnapshot(collection(db, "rundowns"), (snapshot) =>
-            setAppState(prev => ({ ...prev, rundowns: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }))
-        ),
-        onSnapshot(collection(db, "rundownTemplates"), (snapshot) =>
-            setAppState(prev => ({ ...prev, rundownTemplates: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }))
-        ),
-        // FIX: Added a query with orderBy to ensure messages are always sorted by timestamp from Firestore.
-        onSnapshot(query(collection(db, "messages"), orderBy("timestamp", "asc")), (snapshot) =>
-            setAppState(prev => ({ ...prev, messages: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }))
-        ),
-    ];
+        createListener("users", "users"),
+        createListener("groups", "groups"),
+        createListener("stories", "stories"),
+        createListener("assignments", "assignments"),
+        createListener("rundowns", "rundowns"),
+        createListener("rundownTemplates", "rundownTemplates"),
+        createListener("messages", "messages", "timestamp")
+    ].filter(Boolean); // Filter out any null/undefined listeners
 
     // Return a single cleanup function that unsubscribes from all listeners.
-    return () => unsubscribers.forEach(unsub => unsub());
+    return () => {
+        unsubscribers.forEach(unsub => {
+            try {
+                unsub();
+            } catch (error) {
+                console.warn('Error unsubscribing from listener:', error);
+            }
+        });
+    };
 };
