@@ -36,7 +36,8 @@ export class CollaborationManager {
                 editingItem: null
             };
 
-            await setDoc(this.presenceRef, presenceData);
+            // Use setDoc with merge to create or update the presence document
+            await setDoc(this.presenceRef, presenceData, { merge: true });
 
             this.presenceInterval = setInterval(async () => {
                 if (!this.presenceRef || this.isDestroyed) return;
@@ -45,10 +46,12 @@ export class CollaborationManager {
                 if (now - this.lastUpdate < this.updateThrottle) return;
 
                 try {
-                    await setDoc(this.presenceRef, {
+                    // Use updateDoc for subsequent updates
+                    const { updateDoc } = await import("firebase/firestore");
+                    await updateDoc(this.presenceRef, {
                         lastSeen: new Date().toISOString(),
                         editingItem: this.currentEditingItem || null
-                    }, { merge: true });
+                    });
                     this.lastUpdate = now;
                 } catch (error) {
                     if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
@@ -167,21 +170,24 @@ export class CollaborationManager {
                 presenceQuery,
                 (snapshot) => {
                     if (this.isDestroyed) return;
-
-                    const activeUsers = snapshot.docs
+                    
+                    // FIX: Process ALL active users, including the current user.
+                    // The UI components will decide how to filter or display this information.
+                    const allActiveUsers = snapshot.docs
                         .map(doc => doc.data())
                         .filter(data => {
                             if (!data.lastSeen) return false;
                             const lastSeen = new Date(data.lastSeen);
                             const minutesAgo = (new Date() - lastSeen) / (1000 * 60);
-                            return minutesAgo < 5 && data.userId !== this.currentUser.uid;
+                            // Consider users active if seen in the last 5 minutes.
+                            return minutesAgo < 5;
                         })
                         .map(data => ({
                             userId: data.userId,
                             userName: data.userName,
                             editingItem: data.editingItem
                         }));
-                    callback(activeUsers);
+                    callback(allActiveUsers);
                 },
                 (error) => {
                     if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
