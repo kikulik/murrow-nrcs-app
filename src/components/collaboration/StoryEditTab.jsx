@@ -28,13 +28,40 @@ const StoryEditTab = ({ itemId }) => {
 
     // FIXED: Also try to find the item in the current rundown if not in tab
     const rundownItem = React.useMemo(() => {
-        if (storyData) return storyData;
+        console.log('=== DEBUGGING RUNDOWN ITEM LOOKUP ===');
+        console.log('Looking for itemId:', itemId, 'Type:', typeof itemId);
+        console.log('storyData from tab:', storyData);
+        
+        if (storyData) {
+            console.log('Found storyData in tab, using it');
+            return storyData;
+        }
         
         const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
-        const foundItem = activeRundown?.items?.find(item => item.id === itemId);
+        console.log('activeRundown found:', activeRundown);
         
-        console.log('Looking for rundown item:', itemId, 'found:', foundItem); // DEBUG
-        return foundItem;
+        if (activeRundown?.items) {
+            console.log('activeRundown.items:', activeRundown.items);
+            
+            // Try multiple comparison methods since ID types might differ
+            const foundItem = activeRundown.items.find(item => {
+                // Try exact match first
+                if (item.id === itemId) return true;
+                // Try string comparison
+                if (String(item.id) === String(itemId)) return true;
+                // Try number comparison
+                if (Number(item.id) === Number(itemId)) return true;
+                return false;
+            });
+            
+            console.log('Found item:', foundItem);
+            return foundItem;
+        } else {
+            console.log('No items in active rundown or no active rundown');
+        }
+        
+        console.log('=== END DEBUG ===');
+        return null;
     }, [storyData, appState.rundowns, appState.activeRundownId, itemId]);
 
     const [formData, setFormData] = useState({
