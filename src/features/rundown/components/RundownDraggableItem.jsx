@@ -19,18 +19,20 @@ const RundownDraggableItem = ({
     isSelected,
     onSelect
 }) => {
-    const { appState } = useAppContext();
+    const { appState, setQuickEditItem } = useAppContext();
     const { currentUser } = useAuth();
     const {
         safeUpdateRundown,
         getUserEditingItem,
-        startEditingStory
+        startEditingStory,
+        takeOverStory
     } = useCollaboration();
     const ref = useRef(null);
 
     const userPermissions = getUserPermissions(currentUser.role);
     const editingUser = getUserEditingItem(item.id);
     const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
+    const canTakeOver = userPermissions.canTakeOverStories;
 
     const [{ handlerId }, drop] = useDrop({
         accept: 'rundownItem',
@@ -97,6 +99,28 @@ const RundownDraggableItem = ({
         await startEditingStory(item.id, item);
     };
 
+    const handleTakeOver = async () => {
+        if (!canTakeOver || !editingUser) return;
+
+        const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`);
+        if (!confirmed) return;
+
+        const success = await takeOverStory(item.id, editingUser.userId);
+        if (success) {
+            await startEditingStory(item.id, item);
+        } else {
+            alert('Failed to take over the story. Please try again.');
+        }
+    };
+
+    const handleDoubleClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isLocked && !isBeingEditedByOther) {
+            setQuickEditItem(item);
+        }
+    };
+
     const handleClick = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -113,7 +137,13 @@ const RundownDraggableItem = ({
     `;
 
     return (
-        <div ref={ref} data-handler-id={handlerId} className={itemClasses} onClick={handleClick}>
+        <div
+            ref={ref}
+            data-handler-id={handlerId}
+            className={itemClasses}
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+        >
             <div className="grid grid-cols-13 items-center gap-2 px-4 py-2 min-h-[44px] relative">
                 <div className="col-span-1 flex justify-center">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-600'}`}>
@@ -156,13 +186,30 @@ const RundownDraggableItem = ({
                 <div className="col-span-1 flex justify-end">
                     {!isLocked && (
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {!isBeingEditedByOther && (
-                                <button onClick={(e) => { e.stopPropagation(); handleEdit(); }} className="p-1 text-gray-400 hover:text-blue-600 rounded" title="Edit item">
+                            {isBeingEditedByOther && canTakeOver ? (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleTakeOver(); }}
+                                    className="p-1 text-orange-600 hover:text-orange-800 rounded"
+                                    title={`Take over from ${editingUser.userName}`}
+                                >
+                                    <CustomIcon name="user" size={16} />
+                                </button>
+                            ) : !isBeingEditedByOther && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleEdit(); }}
+                                    className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                                    title="Edit item"
+                                >
                                     <CustomIcon name="edit" size={16} />
                                 </button>
                             )}
                             {userPermissions.canDeleteAnything && (
-                                <button onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }} disabled={isBeingEditedByOther} className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`} title="Delete item">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
+                                    disabled={isBeingEditedByOther}
+                                    className={`p-1 rounded transition-colors ${isBeingEditedByOther ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`}
+                                    title="Delete item"
+                                >
                                     <CustomIcon name="delete" size={16} />
                                 </button>
                             )}
