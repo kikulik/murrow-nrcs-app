@@ -13,11 +13,13 @@ export class CollaborationManager {
         this.presenceListenerUnsubscribe = null;
         this.lastUpdate = 0;
         this.updateThrottle = 2000;
-        this.cleanup = () => {};
+        this.cleanup = () => { };
+        this.isDestroyed = false;
     }
 
     async startPresenceTracking(rundownId) {
-        if (!this.db || !this.currentUser) return;
+        if (!this.db || !this.currentUser || this.isDestroyed) return;
+
         // If we are already tracking for another rundown, stop it first.
         if (this.presenceRef) {
             await this.stopPresenceTracking();
@@ -42,7 +44,8 @@ export class CollaborationManager {
             await setDoc(this.presenceRef, presenceData);
 
             this.presenceInterval = setInterval(async () => {
-                if (!this.presenceRef) return;
+                if (!this.presenceRef || this.isDestroyed) return;
+
                 const now = Date.now();
                 if (now - this.lastUpdate < this.updateThrottle) return;
 
@@ -53,6 +56,12 @@ export class CollaborationManager {
                     }, { merge: true });
                     this.lastUpdate = now;
                 } catch (error) {
+                    // Check if it's an auth error (user logged out)
+                    if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                        console.warn('User appears to be logged out, stopping presence tracking');
+                        this.stopPresenceTracking();
+                        return;
+                    }
                     console.error('Error updating presence:', error);
                 }
             }, 3000);
@@ -66,13 +75,19 @@ export class CollaborationManager {
     }
 
     async stopPresenceTracking() {
+        this.isDestroyed = true;
+
         if (this.presenceInterval) {
             clearInterval(this.presenceInterval);
             this.presenceInterval = null;
         }
 
         if (this.presenceListenerUnsubscribe) {
-            this.presenceListenerUnsubscribe();
+            try {
+                this.presenceListenerUnsubscribe();
+            } catch (error) {
+                console.warn('Error unsubscribing from presence listener:', error);
+            }
             this.presenceListenerUnsubscribe = null;
         }
 
@@ -83,19 +98,26 @@ export class CollaborationManager {
                 const { deleteDoc } = await import("firebase/firestore");
                 await deleteDoc(refToDelete);
             } catch (error) {
+                // Don't log as error since this is expected during logout
                 console.warn('Could not delete presence document on cleanup (this is expected on logout):', error.message);
             }
         }
 
         if (this.cleanup) {
-            this.cleanup();
-            this.cleanup = () => {}; // Ensure it only runs once
+            try {
+                this.cleanup();
+            } catch (error) {
+                console.warn('Error during cleanup function:', error);
+            }
+            this.cleanup = () => { }; // Ensure it only runs once
         }
     }
 
     async setEditingItem(itemId) {
+        if (this.isDestroyed) return;
+
         this.currentEditingItem = itemId;
-        if (this.presenceRef) {
+        if (this.presenceRef && !this.isDestroyed) {
             try {
                 const { updateDoc } = await import("firebase/firestore");
                 await updateDoc(this.presenceRef, {
@@ -104,13 +126,17 @@ export class CollaborationManager {
                 });
                 this.lastUpdate = Date.now();
             } catch (error) {
+                if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                    console.warn('User appears to be logged out, cannot update editing item');
+                    return;
+                }
                 console.error('Error updating editing item:', error);
             }
         }
     }
 
     async sendTakeOverNotification(itemId, previousUserId) {
-        if (!previousUserId) return;
+        if (!previousUserId || this.isDestroyed) return;
         try {
             const { collection, addDoc } = await import("firebase/firestore");
             await addDoc(collection(this.db, "notifications"), {
@@ -127,32 +153,51 @@ export class CollaborationManager {
     }
 
     async listenToPresence(rundownId, callback) {
-        if (!this.db) return;
+        if (!this.db || this.isDestroyed) return;
+
         if (this.presenceListenerUnsubscribe) {
-            this.presenceListenerUnsubscribe();
+            try {
+                this.presenceListenerUnsubscribe();
+            } catch (error) {
+                console.warn('Error cleaning up previous presence listener:', error);
+            }
         }
+
         try {
             const { collection, query, where, onSnapshot } = await import("firebase/firestore");
             const presenceQuery = query(
                 collection(this.db, "presence"),
                 where("rundownId", "==", rundownId)
             );
-            this.presenceListenerUnsubscribe = onSnapshot(presenceQuery, (snapshot) => {
-                const activeUsers = snapshot.docs
-                    .map(doc => doc.data())
-                    .filter(data => {
-                        if (!data.lastSeen) return false;
-                        const lastSeen = new Date(data.lastSeen);
-                        const minutesAgo = (new Date() - lastSeen) / (1000 * 60);
-                        return minutesAgo < 5 && data.userId !== this.currentUser.uid;
-                    })
-                    .map(data => ({
-                        userId: data.userId,
-                        userName: data.userName,
-                        editingItem: data.editingItem
-                    }));
-                callback(activeUsers);
-            });
+
+            this.presenceListenerUnsubscribe = onSnapshot(
+                presenceQuery,
+                (snapshot) => {
+                    if (this.isDestroyed) return;
+
+                    const activeUsers = snapshot.docs
+                        .map(doc => doc.data())
+                        .filter(data => {
+                            if (!data.lastSeen) return false;
+                            const lastSeen = new Date(data.lastSeen);
+                            const minutesAgo = (new Date() - lastSeen) / (1000 * 60);
+                            return minutesAgo < 5 && data.userId !== this.currentUser.uid;
+                        })
+                        .map(data => ({
+                            userId: data.userId,
+                            userName: data.userName,
+                            editingItem: data.editingItem
+                        }));
+                    callback(activeUsers);
+                },
+                (error) => {
+                    if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                        console.warn('User appears to be logged out, stopping presence listener');
+                        return;
+                    }
+                    console.error('Error in presence listener:', error);
+                }
+            );
         } catch (error) {
             console.error('Error setting up presence listener:', error);
         }
@@ -194,6 +239,8 @@ export class CollaborationManager {
     }
 
     async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
+        if (this.isDestroyed) return null;
+
         for (let attempt = 0; attempt < retryCount; attempt++) {
             try {
                 const { doc, getDoc, updateDoc } = await import("firebase/firestore");
@@ -211,6 +258,10 @@ export class CollaborationManager {
                 await updateDoc(rundownRef, versionedData);
                 return versionedData;
             } catch (error) {
+                if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                    console.warn('User appears to be logged out, cannot update rundown');
+                    return null;
+                }
                 if (attempt === retryCount - 1) throw error;
                 await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
             }
