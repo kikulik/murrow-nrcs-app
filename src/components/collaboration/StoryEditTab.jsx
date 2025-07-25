@@ -12,7 +12,7 @@ import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalc
 
 const StoryEditTab = ({ itemId }) => {
     const { currentUser } = useAuth();
-    const { appState, closeStoryTab, updateStoryTab, setAppState } = useAppContext(); // ADD setAppState
+    const { appState, closeStoryTab, updateStoryTab, setAppState } = useAppContext();
     const {
         stopEditingStory,
         saveStoryProgress,
@@ -22,50 +22,39 @@ const StoryEditTab = ({ itemId }) => {
         getUserEditingItem
     } = useCollaboration();
 
-    // FIXED: Better way to find the tab and get ownership info with proper timing
+    // FIXED: Better way to find the tab and get ownership info
     const tab = React.useMemo(() => {
-        return appState.editingStoryTabs.find(t => t.itemId === itemId);
+        return appState.editingStoryTabs.find(t => t.itemId.toString() === itemId.toString());
     }, [appState.editingStoryTabs, itemId]);
     
-    const storyData = tab?.storyData;
-
-    // FIXED: Also try to find the item in the current rundown if not in tab
+    // FIXED: Get story data from tab first, then fallback to rundown
     const rundownItem = React.useMemo(() => {
         console.log('=== DEBUGGING RUNDOWN ITEM LOOKUP ===');
         console.log('Looking for itemId:', itemId, 'Type:', typeof itemId);
-        console.log('storyData from tab:', storyData);
+        console.log('tab found:', tab);
         
-        if (storyData) {
+        // First try to get data from the tab
+        if (tab?.storyData) {
             console.log('Found storyData in tab, using it');
-            return storyData;
+            return tab.storyData;
         }
         
         const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
-        console.log('activeRundown found:', activeRundown);
+        console.log('activeRundown found:', !!activeRundown);
         
         if (activeRundown?.items) {
-            console.log('activeRundown.items:', activeRundown.items);
-            
             // Try multiple comparison methods since ID types might differ
             const foundItem = activeRundown.items.find(item => {
-                // Try exact match first
-                if (item.id === itemId) return true;
-                // Try string comparison
-                if (String(item.id) === String(itemId)) return true;
-                // Try number comparison
-                if (Number(item.id) === Number(itemId)) return true;
-                return false;
+                return item.id.toString() === itemId.toString();
             });
             
-            console.log('Found item:', foundItem);
+            console.log('Found item in rundown:', foundItem);
             return foundItem;
-        } else {
-            console.log('No items in active rundown or no active rundown');
         }
         
         console.log('=== END DEBUG ===');
         return null;
-    }, [storyData, appState.rundowns, appState.activeRundownId, itemId]);
+    }, [tab, appState.rundowns, appState.activeRundownId, itemId]);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -77,15 +66,15 @@ const StoryEditTab = ({ itemId }) => {
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [notification, setNotification] = useState(null); // ADD notification state
+    const [notification, setNotification] = useState(null);
 
-    // FIXED: Get ownership info from tab, with fallback to true for owner
-    const isOwner = tab?.isOwner !== undefined ? tab.isOwner : true; // Default to true if not set
+    // FIXED: Get ownership info from tab with proper fallback
+    const isOwner = tab?.isOwner !== undefined ? tab.isOwner : true;
     const isTakenOver = tab?.takenOver || false;
     const takenOverBy = tab?.takenOverBy;
     const isReadOnly = isTakenOver && !isOwner;
 
-    console.log('Ownership status:', { isOwner, isTakenOver, takenOverBy, tab, tabFound: !!tab }); // DEBUG
+    console.log('Ownership status:', { isOwner, isTakenOver, takenOverBy, tab: !!tab }); // DEBUG
 
     // FIXED: Initialize form data from rundownItem
     useEffect(() => {
@@ -99,7 +88,7 @@ const StoryEditTab = ({ itemId }) => {
             };
             console.log('Setting form data:', data); // DEBUG
             setFormData(data);
-            setHasUnsavedChanges(false); // Reset unsaved changes when loading new data
+            setHasUnsavedChanges(false);
         }
     }, [rundownItem]);
 
@@ -139,11 +128,11 @@ const StoryEditTab = ({ itemId }) => {
     }, [itemId, formData, hasUnsavedChanges, isOwner, saveStoryProgress]);
 
     useEffect(() => {
-        if (isOwner) {
+        if (isOwner && hasUnsavedChanges) {
             const autoSaveInterval = setInterval(autoSave, 5000);
             return () => clearInterval(autoSaveInterval);
         }
-    }, [autoSave, isOwner]);
+    }, [autoSave, isOwner, hasUnsavedChanges]);
 
     const handleFormChange = (field, value) => {
         if (!isOwner) return;
@@ -180,17 +169,17 @@ const StoryEditTab = ({ itemId }) => {
         }
     };
 
-    // FIXED: Better save function that updates both the rundown and local state
+    // FIXED: Improved save function
     const handleSave = async () => {
         if (!itemId || !appState.activeRundownId || !isOwner) return;
 
         setIsSaving(true);
         try {
             // Update the rundown in Firebase
-            await safeUpdateRundown(appState.activeRundownId, (rundownData) => ({
+            const result = await safeUpdateRundown(appState.activeRundownId, (rundownData) => ({
                 ...rundownData,
                 items: rundownData.items.map(item =>
-                    item.id === itemId
+                    item.id.toString() === itemId.toString()
                         ? {
                             ...item,
                             title: formData.title,
@@ -205,35 +194,48 @@ const StoryEditTab = ({ itemId }) => {
                 )
             }));
 
-            // Update the local app state immediately to prevent reversion
-            setAppState(prev => ({
-                ...prev,
-                rundowns: prev.rundowns.map(rundown =>
-                    rundown.id === appState.activeRundownId
-                        ? {
-                            ...rundown,
-                            items: rundown.items.map(item =>
-                                item.id === itemId
-                                    ? {
-                                        ...item,
-                                        title: formData.title,
-                                        content: formData.content,
-                                        duration: formData.duration,
-                                        type: formData.type,
-                                        version: (item.version || 1) + 1,
-                                        lastModified: new Date().toISOString(),
-                                        lastModifiedBy: currentUser.uid
-                                    }
-                                    : item
-                            )
-                        }
-                        : rundown
-                )
-            }));
+            if (result) {
+                // Update the local app state immediately
+                setAppState(prev => ({
+                    ...prev,
+                    rundowns: prev.rundowns.map(rundown =>
+                        rundown.id === appState.activeRundownId
+                            ? {
+                                ...rundown,
+                                items: rundown.items.map(item =>
+                                    item.id.toString() === itemId.toString()
+                                        ? {
+                                            ...item,
+                                            title: formData.title,
+                                            content: formData.content,
+                                            duration: formData.duration,
+                                            type: formData.type,
+                                            version: (item.version || 1) + 1,
+                                            lastModified: new Date().toISOString(),
+                                            lastModifiedBy: currentUser.uid
+                                        }
+                                        : item
+                                )
+                            }
+                            : rundown
+                    )
+                }));
 
-            setHasUnsavedChanges(false);
-            setLastSaved(new Date());
-            showNotification('Story saved successfully!', 'success');
+                // Also update the tab data
+                updateStoryTab(itemId, {
+                    storyData: {
+                        ...rundownItem,
+                        title: formData.title,
+                        content: formData.content,
+                        duration: formData.duration,
+                        type: formData.type
+                    }
+                });
+
+                setHasUnsavedChanges(false);
+                setLastSaved(new Date());
+                showNotification('Story saved successfully!', 'success');
+            }
         } catch (error) {
             console.error('Error saving story:', error);
             showNotification('Failed to save story. Please try again.', 'error');
@@ -242,26 +244,33 @@ const StoryEditTab = ({ itemId }) => {
         }
     };
 
-    // FIXED: Better close function
+    // FIXED: Improved close function
     const handleClose = async () => {
+        console.log('Closing story tab, hasUnsavedChanges:', hasUnsavedChanges); // DEBUG
+        
         if (hasUnsavedChanges && isOwner) {
             const shouldSave = window.confirm('You have unsaved changes. Do you want to save before closing?');
             if (shouldSave) {
-                await handleSave(); // Use handleSave instead of autoSave
+                await handleSave();
             }
         }
 
-        await stopEditingStory(itemId);
+        try {
+            await stopEditingStory(itemId);
+        } catch (error) {
+            console.error('Error stopping editing story:', error);
+        }
+        
         closeStoryTab(itemId);
     };
 
-    // ADD: In-app notification function
+    // In-app notification function
     const showNotification = (message, type = 'info') => {
         setNotification({ message, type });
-        setTimeout(() => setNotification(null), 3000); // Auto-dismiss after 3 seconds
+        setTimeout(() => setNotification(null), 3000);
     };
 
-    // FIXED: Better error handling
+    // Error handling
     if (!itemId) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -271,10 +280,7 @@ const StoryEditTab = ({ itemId }) => {
     }
 
     if (!rundownItem) {
-        console.error('Story/Item not found for ID:', itemId); // DEBUG
-        console.log('Available rundowns:', appState.rundowns); // DEBUG
-        console.log('Active rundown ID:', appState.activeRundownId); // DEBUG
-        console.log('Editing tabs:', appState.editingStoryTabs); // DEBUG
+        console.error('Story/Item not found for ID:', itemId);
         
         return (
             <div className="flex items-center justify-center h-64">
@@ -290,7 +296,7 @@ const StoryEditTab = ({ itemId }) => {
 
     return (
         <div className="space-y-6">
-            {/* ADD: In-app notification */}
+            {/* In-app notification */}
             {notification && (
                 <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
                     notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
@@ -348,7 +354,11 @@ const StoryEditTab = ({ itemId }) => {
                             Read Only
                         </span>
                     )}
-                    <button onClick={handleClose} className="btn-secondary">
+                    <button 
+                        onClick={handleClose} 
+                        className="btn-secondary"
+                        type="button"
+                    >
                         <CustomIcon name="cancel" size={40} />
                         <span>Close</span>
                     </button>
@@ -442,11 +452,11 @@ const StoryEditTab = ({ itemId }) => {
                             <CollaborativeTextEditor
                                 value={formData.content}
                                 onChange={(content) => handleFormChange('content', content)}
-                                itemId={itemId}
+                                itemId={itemId.toString()}
                                 placeholder="Enter story content..."
                                 rows={12}
                                 className="min-h-[300px]"
-                                isOwner={isOwner} // PASS isOwner as prop
+                                isOwner={isOwner}
                             />
                         )}
                     </div>
@@ -461,6 +471,7 @@ const StoryEditTab = ({ itemId }) => {
                                     onClick={autoSave}
                                     disabled={!hasUnsavedChanges || isSaving}
                                     className="btn-secondary"
+                                    type="button"
                                 >
                                     <CustomIcon name="save" size={32} />
                                     <span>Save Draft</span>
@@ -469,6 +480,7 @@ const StoryEditTab = ({ itemId }) => {
                                     onClick={handleSave}
                                     disabled={isSaving}
                                     className="btn-primary"
+                                    type="button"
                                 >
                                     <CustomIcon name="save" size={40} />
                                     <span>{isSaving ? 'Saving...' : 'Save & Update'}</span>
