@@ -8,8 +8,6 @@ import InputField from '../ui/InputField';
 import UserPresenceIndicator from './UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
-// We are removing CollaborativeTextEditor to simplify the data flow and fix the bug.
-// import CollaborativeTextEditor from './CollaborativeTextEditor';
 
 const StoryEditTab = ({ itemId }) => {
     const { currentUser } = useAuth();
@@ -21,14 +19,12 @@ const StoryEditTab = ({ itemId }) => {
         clearEditingItem,
     } = useCollaboration();
 
-    // Determine ownership state from the single source of truth: the collaboration context.
+    // FIX: Correctly determine ownership and "taken over" state from the collaboration context.
     const editingUser = editingSessions.get(itemId?.toString());
-    const isBeingEditedByOther = !!editingUser; // Simplified check: if there's a session, someone is editing.
-    const isOwner = !isBeingEditedByOther;
-    const isTakenOver = isBeingEditedByOther;
-    const takenOverBy = isBeingEditedByOther ? editingUser.userName : null;
+    const isOwner = !editingUser || editingUser.userId === currentUser.uid;
+    const isTakenOver = editingUser && editingUser.userId !== currentUser.uid;
+    const takenOverBy = isTakenOver ? editingUser.userName : null;
 
-    // Get initial data from the tab state when it's opened.
     const tab = appState.editingStoryTabs.find(t => t.itemId === itemId);
     const initialData = tab?.storyData || {};
 
@@ -57,14 +53,13 @@ const StoryEditTab = ({ itemId }) => {
         }
     }, [calculatedDuration, useCalculatedDuration, isOwner]);
 
-    // Centralized save logic using the reliable `safeUpdateRundown` function.
     const autoSave = useCallback(async () => {
         if (itemId && hasUnsavedChanges && isOwner && appState.activeRundownId) {
             setIsSaving(true);
             const updateFunction = (rundownData) => {
                 const newItems = rundownData.items.map(item =>
                     item.id.toString() === itemId.toString()
-                        ? { ...item, ...formData }
+                        ? { ...item, ...formData, id: item.id } // Ensure ID is preserved
                         : item
                 );
                 return { ...rundownData, items: newItems };
@@ -156,7 +151,8 @@ const StoryEditTab = ({ itemId }) => {
                 <div className="flex items-center gap-4">
                     <h2 className="text-xl font-semibold">Edit Story</h2>
                     <UserPresenceIndicator itemId={itemId} />
-                    {!isOwner && isTakenOver && takenOverBy && (
+                    {/* FIX: Correctly show the "Take Over" button only when another user is editing. */}
+                    {isTakenOver && takenOverBy && (
                         <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
                             <CustomIcon name="lock" size={32} className="text-orange-600" />
                             <span className="text-sm text-orange-800 dark:text-orange-200">{takenOverBy} is editing</span>
@@ -182,7 +178,8 @@ const StoryEditTab = ({ itemId }) => {
                 </div>
             </div>
 
-            {!isOwner && isTakenOver && (
+            {/* FIX: Correctly show the "Story is Being Edited" banner. */}
+            {isTakenOver && (
                 <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
                     <div className="flex items-center space-x-2">
                         <CustomIcon name="lock" size={40} className="text-orange-600" />
@@ -255,7 +252,6 @@ const StoryEditTab = ({ itemId }) => {
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
-                        {/* FIX: Replaced CollaborativeTextEditor with a standard textarea to ensure a single data flow. */}
                         <textarea
                             value={formData.content}
                             onChange={(e) => handleFormChange('content', e.target.value)}
