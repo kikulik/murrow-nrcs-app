@@ -3,32 +3,35 @@ import React, { useState, useEffect, useCallback } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
+import { useCollaboration } from '../../context/CollaborationContext';
 import InputField from '../ui/InputField';
 import UserPresenceIndicator from './UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
-import { useDirectRundownCollaboration } from '../../hooks/useDirectRundownCollaboration';
-import CollaborativeTextEditor from './CollaborativeTextEditor';
+// We are removing CollaborativeTextEditor to simplify the data flow and fix the bug.
+// import CollaborativeTextEditor from './CollaborativeTextEditor';
 
 const StoryEditTab = ({ itemId }) => {
     const { currentUser } = useAuth();
-    const { appState, closeStoryTab, updateStoryTab, setAppState } = useAppContext();
+    const { appState, closeStoryTab } = useAppContext();
+    const {
+        safeUpdateRundown,
+        editingSessions,
+        takeOverStory,
+        clearEditingItem,
+    } = useCollaboration();
 
-    // FIX: Get the initial story data directly from the tab state in AppContext
+    // Determine ownership state from the single source of truth: the collaboration context.
+    const editingUser = editingSessions.get(itemId?.toString());
+    const isBeingEditedByOther = !!editingUser; // Simplified check: if there's a session, someone is editing.
+    const isOwner = !isBeingEditedByOther;
+    const isTakenOver = isBeingEditedByOther;
+    const takenOverBy = isBeingEditedByOther ? editingUser.userName : null;
+
+    // Get initial data from the tab state when it's opened.
     const tab = appState.editingStoryTabs.find(t => t.itemId === itemId);
     const initialData = tab?.storyData || {};
 
-    const {
-        isOwner,
-        isTakenOver,
-        takenOverBy,
-        handleTakeOver,
-        saveChanges,
-        stopEditing,
-        editingData // This will receive real-time updates from other users
-    } = useDirectRundownCollaboration(itemId);
-
-    // FIX: Initialize formData with the initialData from the context
     const [formData, setFormData] = useState({
         title: initialData.title || '',
         content: initialData.content || '',
@@ -42,18 +45,6 @@ const StoryEditTab = ({ itemId }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [notification, setNotification] = useState(null);
 
-    // This effect will merge incoming real-time data from other collaborators
-    useEffect(() => {
-        if (editingData && !isOwner) { // Only apply incoming changes if not the owner
-            setFormData({
-                title: editingData.title || '',
-                content: editingData.content || '',
-                duration: editingData.duration || '01:00',
-                type: Array.isArray(editingData.type) ? editingData.type : [editingData.type || 'STD']
-            });
-        }
-    }, [editingData, isOwner]);
-
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
 
@@ -66,15 +57,31 @@ const StoryEditTab = ({ itemId }) => {
         }
     }, [calculatedDuration, useCalculatedDuration, isOwner]);
 
+    // Centralized save logic using the reliable `safeUpdateRundown` function.
     const autoSave = useCallback(async () => {
-        if (itemId && hasUnsavedChanges && isOwner) {
+        if (itemId && hasUnsavedChanges && isOwner && appState.activeRundownId) {
             setIsSaving(true);
-            await saveChanges(formData);
-            setLastSaved(new Date());
-            setHasUnsavedChanges(false);
-            setIsSaving(false);
+            const updateFunction = (rundownData) => {
+                const newItems = rundownData.items.map(item =>
+                    item.id.toString() === itemId.toString()
+                        ? { ...item, ...formData }
+                        : item
+                );
+                return { ...rundownData, items: newItems };
+            };
+
+            try {
+                await safeUpdateRundown(appState.activeRundownId, updateFunction);
+                setLastSaved(new Date());
+                setHasUnsavedChanges(false);
+            } catch (error) {
+                console.error("Failed to save changes:", error);
+                showNotification("Failed to save changes.", "error");
+            } finally {
+                setIsSaving(false);
+            }
         }
-    }, [itemId, formData, hasUnsavedChanges, isOwner, saveChanges]);
+    }, [itemId, formData, hasUnsavedChanges, isOwner, safeUpdateRundown, appState.activeRundownId]);
 
     useEffect(() => {
         if (isOwner && hasUnsavedChanges) {
@@ -104,8 +111,17 @@ const StoryEditTab = ({ itemId }) => {
                 await autoSave();
             }
         }
-        await stopEditing();
+        await clearEditingItem();
         closeStoryTab(itemId);
+    };
+
+    const handleTakeOver = async () => {
+        if (editingUser?.userId) {
+            const success = await takeOverStory(itemId, editingUser.userId);
+            if (!success) {
+                showNotification("Failed to take over editing.", "error");
+            }
+        }
     };
 
     const showNotification = (message, type = 'info') => {
@@ -226,7 +242,7 @@ const StoryEditTab = ({ itemId }) => {
                                 >
                                     <input
                                         type="checkbox"
-                                        checked={formData.type.includes(abbr)}
+                                        checked={Array.isArray(formData.type) && formData.type.includes(abbr)}
                                         onChange={() => handleTypeChange(abbr)}
                                         disabled={!isOwner}
                                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -239,16 +255,14 @@ const StoryEditTab = ({ itemId }) => {
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
-                        <CollaborativeTextEditor
-                            // FIX: Pass the content from the unified formData state
+                        {/* FIX: Replaced CollaborativeTextEditor with a standard textarea to ensure a single data flow. */}
+                        <textarea
                             value={formData.content}
-                            // FIX: Simplify the onChange handler
-                            onChange={(newText) => handleFormChange('content', newText)}
-                            itemId={itemId}
-                            isOwner={isOwner}
+                            onChange={(e) => handleFormChange('content', e.target.value)}
+                            disabled={!isOwner}
                             placeholder="Enter story content..."
                             rows={12}
-                            className="min-h-[300px]"
+                            className="w-full form-input min-h-[300px]"
                         />
                     </div>
 
