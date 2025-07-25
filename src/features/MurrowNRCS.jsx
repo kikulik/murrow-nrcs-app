@@ -24,8 +24,8 @@ import { collection, addDoc } from "firebase/firestore";
 
 const MurrowNRCS = () => {
     const { currentUser, logout, db } = useAuth();
-    const { appState, setAppState } = useAppContext();
-    const { collaborationManager } = useCollaboration(); // Get the manager instance
+    const { appState, setAppState, cleanupDataListeners } = useAppContext();
+    const { CollaborationManager } = useCollaboration(); // Get the manager instance
 
     const userPermissions = getUserPermissions(currentUser.role);
 
@@ -33,12 +33,33 @@ const MurrowNRCS = () => {
     const liveMode = useLiveMode(activeRundown, appState.activeRundownId);
 
     const handleLogout = async () => {
-        // First, perform cleanup operations while the user is still authenticated.
-        if (collaborationManager) {
-            await collaborationManager.stopPresenceTracking();
+        try {
+            // Step 1: Clean up collaboration manager first
+            if (CollaborationManager) {
+                await CollaborationManager.stopPresenceTracking();
+            }
+
+            // Step 2: Clean up data listeners
+            if (cleanupDataListeners) {
+                cleanupDataListeners();
+            }
+
+            // Step 3: Small delay to ensure cleanup completes
+            await new Promise(resolve => setTimeout(resolve, 150));
+
+            // Step 4: Finally logout (this will trigger AuthContext cleanup)
+            await logout();
+        } catch (error) {
+            console.error('Error during logout process:', error);
+            // Even if there's an error, force logout
+            try {
+                await logout();
+            } catch (finalError) {
+                console.error('Final logout attempt failed:', finalError);
+                // Force reload as last resort
+                window.location.reload();
+            }
         }
-        // After cleanup is complete, sign the user out.
-        await logout();
     };
 
     const handleSendMessage = async (text) => {
@@ -108,13 +129,11 @@ const MurrowNRCS = () => {
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                                        appState.activeTab === tab.id
+                                    className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${appState.activeTab === tab.id
                                             ? 'border-sky-500 text-sky-600 dark:text-sky-400'
                                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                                    } ${
-                                        tab.isEditing ? 'bg-blue-50 dark:bg-blue-900/20 rounded-t-lg px-3' : ''
-                                    }`}
+                                        } ${tab.isEditing ? 'bg-blue-50 dark:bg-blue-900/20 rounded-t-lg px-3' : ''
+                                        }`}
                                 >
                                     <CustomIcon name={tab.icon} size={40} />
                                     <span className={tab.isEditing ? 'max-w-[150px] truncate' : ''}>{tab.label}</span>
