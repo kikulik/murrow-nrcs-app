@@ -1,4 +1,4 @@
-// src/context/CollaborationContext.jsx (Fixed)
+// src/context/CollaborationContext.jsx (Final Fix)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -315,7 +315,8 @@ export const CollaborationProvider = ({ children }) => {
 
             await manager.clearPreviousUserEditingState(previousUserId, itemId);
             
-            forceCloseStoryTab(itemId);
+            // Force close with takeover flag = true
+            forceCloseStoryTab(itemId, true);
             
             await new Promise(resolve => setTimeout(resolve, 1000));
             
@@ -334,6 +335,7 @@ export const CollaborationProvider = ({ children }) => {
             
             await new Promise(resolve => setTimeout(resolve, 500));
             
+            console.log('Opening story tab for producer after takeover');
             openStoryTab(itemId, currentItem);
             updateStoryTab(itemId, {
                 isOwner: true,
