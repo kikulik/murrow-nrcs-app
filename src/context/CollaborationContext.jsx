@@ -1,364 +1,486 @@
-// src/services/CollaborationManager.js
-export class CollaborationManager {
-    constructor(db, currentUser) {
-        this.db = db;
-        this.currentUser = currentUser;
-        this.presenceRef = null;
-        this.currentEditingItem = null;
-        this.presenceInterval = null;
-        this.presenceListenerUnsubscribe = null;
-        this.lastUpdate = 0;
-        this.updateThrottle = 1000;
-        this.cleanup = () => { };
-        this.isDestroyed = false;
-    }
+// src/context/CollaborationContext.jsx
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc } from 'firebase/firestore';
+import { useAuth } from './AuthContext';
+import { useAppContext } from './AppContext';
+import { CollaborationManager } from '../services/CollaborationManager';
 
-    async startPresenceTracking(rundownId) {
-        if (!this.db || !this.currentUser) {
-            console.error('Cannot start presence tracking: missing db or currentUser');
-            return;
-        }
+const CollaborationContext = createContext();
 
-        if (this.isDestroyed) {
-            console.error('Cannot start presence tracking: instance is destroyed');
-            return;
-        }
+export const CollaborationProvider = ({ children }) => {
+    const { currentUser, db } = useAuth();
+    const { appState, setAppState, openStoryTab, updateStoryTab, forceCloseStoryTab, refreshStoryTabData } = useAppContext();
+    const [activeUsers, setActiveUsers] = useState([]);
+    const [editingSessions, setEditingSessions] = useState(new Map());
+    const [notifications, setNotifications] = useState([]);
+    const collaborationManagerRef = useRef(null);
+    const notificationsUnsubscribeRef = useRef(null);
+    const presenceInitialized = useRef(false);
+    const processedNotifications = useRef(new Set());
 
-        if (this.presenceRef) {
-            await this.stopPresenceTracking();
-        }
-
-        try {
-            const { doc, setDoc, collection } = await import("firebase/firestore");
-
-            const presenceCollection = collection(this.db, "presence");
-            const presenceDoc = doc(presenceCollection, `${rundownId}_${this.currentUser.uid}`);
-            this.presenceRef = presenceDoc;
-
-            const presenceData = {
-                userId: this.currentUser.uid,
-                userName: this.currentUser.name,
-                rundownId,
-                lastSeen: new Date().toISOString(),
-                isActive: true,
-                editingItem: this.currentEditingItem
-            };
-
-            await setDoc(this.presenceRef, presenceData, { merge: true });
-
-            this.presenceInterval = setInterval(async () => {
-                if (!this.presenceRef || this.isDestroyed) return;
-
-                const now = Date.now();
-                if (now - this.lastUpdate < this.updateThrottle) return;
-
-                try {
-                    const { updateDoc } = await import("firebase/firestore");
-                    const updateData = {
-                        lastSeen: new Date().toISOString(),
-                        editingItem: this.currentEditingItem || null,
-                        isActive: true
-                    };
-                    await updateDoc(this.presenceRef, updateData);
-                    this.lastUpdate = now;
-                } catch (error) {
-                    if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
-                        console.warn('User appears to be logged out, stopping presence tracking');
-                        this.stopPresenceTracking();
-                        return;
-                    }
-                    console.error('Error updating presence:', error);
-                }
-            }, 3000);
-
-            const handleBeforeUnload = () => this.stopPresenceTracking();
-            window.addEventListener('beforeunload', handleBeforeUnload);
-            this.cleanup = () => window.removeEventListener('beforeunload', handleBeforeUnload);
-        } catch (error) {
-            console.error('Error starting presence tracking:', error);
-        }
-    }
-
-    async stopPresenceTracking() {
-        if (this.presenceInterval) {
-            clearInterval(this.presenceInterval);
-            this.presenceInterval = null;
-        }
-
-        if (this.presenceListenerUnsubscribe) {
-            try {
-                this.presenceListenerUnsubscribe();
-            } catch (error) {
-                console.warn('Error unsubscribing from presence listener:', error);
-            }
-            this.presenceListenerUnsubscribe = null;
-        }
-
-        if (this.presenceRef) {
-            const refToDelete = this.presenceRef;
-            this.presenceRef = null;
-            try {
-                const { deleteDoc } = await import("firebase/firestore");
-                await deleteDoc(refToDelete);
-            } catch (error) {
-                console.warn('Could not delete presence document on cleanup (this is expected on logout):', error.message);
-            }
-        }
-
-        if (this.cleanup) {
-            try {
-                this.cleanup();
-            } catch (error) {
-                console.warn('Error during cleanup function:', error);
-            }
-            this.cleanup = () => { };
-        }
-
-        this.isDestroyed = true;
-    }
-
-    async setEditingItem(itemId) {
-        if (this.isDestroyed) {
-            console.warn('Cannot set editing item: instance is destroyed');
-            return;
-        }
-
-        this.currentEditingItem = itemId;
+    useEffect(() => {
+        console.log('Manager init effect:', { 
+            hasDb: !!db, 
+            hasUser: !!currentUser,
+            hasManager: !!collaborationManagerRef.current,
+            isDestroyed: collaborationManagerRef.current?.isDestroyed 
+        });
         
-        if (this.presenceRef) {
-            try {
-                const { updateDoc } = await import("firebase/firestore");
-                const updateData = {
-                    editingItem: itemId,
-                    lastSeen: new Date().toISOString()
-                };
-                await updateDoc(this.presenceRef, updateData);
-                this.lastUpdate = Date.now();
-                
-                setTimeout(() => {
-                    if (!this.isDestroyed && this.presenceRef) {
-                        updateDoc(this.presenceRef, {
-                            editingItem: itemId,
-                            lastSeen: new Date().toISOString(),
-                            isActive: true
-                        }).catch(err => console.error('Force update failed:', err));
-                    }
-                }, 300);
-                
-            } catch (error) {
-                if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
-                    console.warn('User appears to be logged out, cannot update editing item');
-                    return;
+        try {
+            if (db && currentUser) {
+                if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                    console.log('Creating new CollaborationManager');
+                    collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+                    presenceInitialized.current = false;
                 }
-                console.error('Error updating editing item:', error);
+            } else {
+                if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
+                    console.log('Stopping CollaborationManager');
+                    collaborationManagerRef.current.stopPresenceTracking();
+                }
+                collaborationManagerRef.current = null;
+                presenceInitialized.current = false;
             }
-        }
-    }
-
-    async sendTakeOverNotification(itemId, previousUserId) {
-        if (!previousUserId || this.isDestroyed) return;
-        try {
-            const { collection, addDoc } = await import("firebase/firestore");
-            const notificationId = `takeover_${itemId}_${this.currentUser.uid}_${Date.now()}`;
-            await addDoc(collection(this.db, "notifications"), {
-                id: notificationId,
-                userId: previousUserId,
-                type: 'takeOver',
-                message: `${this.currentUser.name} has taken over editing the item.`,
-                itemId: itemId,
-                timestamp: new Date().toISOString(),
-                read: false
-            });
         } catch (error) {
-            console.error('Error sending notification:', error);
+            console.error('Error in manager initialization:', error);
         }
-    }
+    }, [db, currentUser]);
 
-    async listenToPresence(rundownId, callback) {
-        if (!this.db || this.isDestroyed) return;
-
-        if (this.presenceListenerUnsubscribe) {
-            try {
-                this.presenceListenerUnsubscribe();
-            } catch (error) {
-                console.warn('Error cleaning up previous presence listener:', error);
+    useEffect(() => {
+        if (!currentUser) {
+            if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current.stopPresenceTracking();
             }
+            collaborationManagerRef.current = null;
+
+            if (notificationsUnsubscribeRef.current) {
+                try {
+                    notificationsUnsubscribeRef.current();
+                } catch (error) {
+                    console.warn('Error cleaning up notifications listener:', error);
+                }
+                notificationsUnsubscribeRef.current = null;
+            }
+
+            setActiveUsers([]);
+            setEditingSessions(new Map());
+            setNotifications([]);
+            presenceInitialized.current = false;
+            processedNotifications.current.clear();
+        }
+    }, [currentUser]);
+
+    const markNotificationAsRead = async (notificationId) => {
+        if (!db) return;
+        try {
+            await updateDoc(doc(db, "notifications", notificationId), { read: true });
+        } catch (error) {
+            console.error('Error marking notification as read:', error);
+        }
+    };
+
+    const handleTakeOverNotification = useCallback(async (notification) => {
+        if (!notification || notification.type !== 'takeOver' || processedNotifications.current.has(notification.id)) {
+            return;
         }
 
         try {
-            const { collection, query, where, onSnapshot } = await import("firebase/firestore");
-            const presenceQuery = query(
-                collection(this.db, "presence"),
-                where("rundownId", "==", rundownId)
+            processedNotifications.current.add(notification.id);
+            console.log('Processing takeover notification for item:', notification.itemId);
+            
+            const tabToClose = appState.editingStoryTabs?.find(tab => 
+                tab && tab.itemId && tab.itemId.toString() === notification.itemId.toString()
+            );
+            
+            if (tabToClose) {
+                console.log('Auto-saving and closing tab for taken over user');
+                
+                if (setAppState) {
+                    setAppState(prev => ({
+                        ...prev,
+                        editingStoryTabs: prev.editingStoryTabs.map(tab =>
+                            tab.itemId.toString() === notification.itemId.toString()
+                                ? { ...tab, isBeingTakenOver: true }
+                                : tab
+                        )
+                    }));
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                if (forceCloseStoryTab) {
+                    forceCloseStoryTab(notification.itemId);
+                }
+                
+                if (markNotificationAsRead) {
+                    await markNotificationAsRead(notification.id);
+                }
+            }
+            
+            setEditingSessions(prevSessions => {
+                const newSessions = new Map(prevSessions);
+                newSessions.delete(notification.itemId.toString());
+                return newSessions;
+            });
+            
+            const manager = collaborationManagerRef.current;
+            if (manager && !manager.isDestroyed && manager.setEditingItem) {
+                manager.setEditingItem(null);
+            }
+        } catch (error) {
+            console.error('Error handling takeover notification:', error);
+        }
+    }, [appState.editingStoryTabs, forceCloseStoryTab, setAppState, markNotificationAsRead]);
+
+    const setupNotificationListener = useCallback(async () => {
+        if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
+
+        try {
+            const notificationsQuery = query(
+                collection(db, "notifications"),
+                where("userId", "==", currentUser.uid)
             );
 
-            this.presenceListenerUnsubscribe = onSnapshot(
-                presenceQuery,
+            notificationsUnsubscribeRef.current = onSnapshot(
+                notificationsQuery,
                 (snapshot) => {
-                    if (this.isDestroyed) return;
-                    
-                    const allActiveUsers = snapshot.docs
-                        .map(doc => doc.data())
-                        .filter(data => {
-                            if (!data.lastSeen) return false;
-                            const lastSeen = new Date(data.lastSeen);
-                            const minutesAgo = (new Date() - lastSeen) / (1000 * 60);
-                            return minutesAgo < 5;
-                        })
-                        .map(data => ({
-                            userId: data.userId,
-                            userName: data.userName,
-                            editingItem: data.editingItem
+                    try {
+                        const allUserNotifications = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
                         }));
-                    
-                    callback(allActiveUsers);
+                        
+                        const unreadNotifications = allUserNotifications.filter(n => n.read === false);
+                        unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                        setNotifications(unreadNotifications);
+                        
+                        // Only process new notifications that haven't been processed yet
+                        const newNotifications = unreadNotifications.filter(n => 
+                            !processedNotifications.current.has(n.id)
+                        );
+                        
+                        newNotifications.forEach(handleTakeOverNotification);
+                    } catch (error) {
+                        console.error('Error processing notifications:', error);
+                    }
                 },
                 (error) => {
-                    if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
-                        console.warn('User appears to be logged out, stopping presence listener');
-                        return;
+                    console.error('Notifications listener error:', error);
+                    if (error.code === 'permission-denied') {
+                        console.warn('Permission denied for notifications, user may need to re-login');
                     }
-                    console.error('Error in presence listener:', error);
                 }
             );
         } catch (error) {
-            console.error('Error setting up presence listener:', error);
+            console.error('Error setting up notification listener:', error);
         }
-    }
+    }, [db, currentUser, handleTakeOverNotification]);
 
-    generateTextOperations(oldText, newText) {
-        if (oldText === newText) return [];
-        return [{
-            type: 'replace',
-            position: 0,
-            oldLength: oldText.length,
-            newText: newText,
-            timestamp: Date.now()
-        }];
-    }
+    useEffect(() => {
+        if (currentUser && db) {
+            setupNotificationListener();
+        }
 
-    applyTextTransform(originalText, operations) {
-        let result = originalText;
-        let offset = 0;
-        const sortedOps = [...operations].sort((a, b) => a.position - b.position);
-        for (const op of sortedOps) {
-            const pos = op.position + offset;
-            switch (op.type) {
-                case 'insert':
-                    result = result.slice(0, pos) + op.text + result.slice(pos);
-                    offset += op.text.length;
-                    break;
-                case 'delete':
-                    result = result.slice(0, pos) + result.slice(pos + op.length);
-                    offset -= op.length;
-                    break;
-                case 'replace':
-                    result = result.slice(0, pos) + op.newText + result.slice(pos + op.oldLength);
-                    offset += op.newText.length - op.oldLength;
-                    break;
+        return () => {
+            if (notificationsUnsubscribeRef.current) {
+                try {
+                    notificationsUnsubscribeRef.current();
+                } catch (error) {
+                    console.warn('Error cleaning up notifications listener on unmount:', error);
+                }
+                notificationsUnsubscribeRef.current = null;
             }
-        }
-        return result;
-    }
+        };
+    }, [setupNotificationListener, currentUser, db]);
 
-    async clearPreviousUserEditingState(previousUserId, itemId) {
-        if (this.isDestroyed) return;
+    const updateEditingSessions = useCallback((users) => {
+        const sessions = new Map();
+        users.forEach(user => {
+            if (user.editingItem) {
+                sessions.set(user.editingItem.toString(), {
+                    userId: user.userId,
+                    userName: user.userName,
+                    timestamp: Date.now()
+                });
+            }
+        });
+        
+        setEditingSessions(prevSessions => {
+            if (prevSessions.size !== sessions.size) {
+                return sessions;
+            }
+            
+            let hasChanged = false;
+            for (const [key, value] of sessions) {
+                const prevValue = prevSessions.get(key);
+                if (!prevValue || prevValue.userId !== value.userId) {
+                    hasChanged = true;
+                    break;
+                }
+            }
+            
+            return hasChanged ? sessions : prevSessions;
+        });
+    }, []);
 
+    useEffect(() => {
+        const manager = collaborationManagerRef.current;
+        
         try {
-            const { collection, query, where, getDocs, updateDoc } = await import("firebase/firestore");
-            
-            const presenceQuery = query(
-                collection(this.db, "presence"),
-                where("userId", "==", previousUserId)
-            );
-            
-            const presenceSnapshot = await getDocs(presenceQuery);
-            
-            const updatePromises = presenceSnapshot.docs.map(doc => {
-                const data = doc.data();
-                if (data.editingItem === itemId.toString()) {
-                    return updateDoc(doc.ref, {
-                        editingItem: null,
-                        lastSeen: new Date().toISOString()
+            if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser) {
+                if (!presenceInitialized.current) {
+                    console.log('Starting presence tracking for rundown:', appState.activeRundownId);
+                    presenceInitialized.current = true;
+                    manager.startPresenceTracking(appState.activeRundownId);
+                    manager.listenToPresence(
+                        appState.activeRundownId,
+                        (allUsers) => {
+                            setActiveUsers(allUsers);
+                            updateEditingSessions(allUsers);
+                        }
+                    );
+                }
+            } else if (!appState.activeRundownId) {
+                presenceInitialized.current = false;
+            }
+        } catch (error) {
+            console.error('Error in presence tracking setup:', error);
+        }
+
+        return () => {
+            try {
+                if (manager && !manager.isDestroyed && presenceInitialized.current) {
+                    console.log('Cleaning up presence tracking');
+                    manager.stopPresenceTracking();
+                    presenceInitialized.current = false;
+                }
+            } catch (error) {
+                console.error('Error cleaning up presence tracking:', error);
+            }
+        };
+    }, [appState.activeRundownId, currentUser, updateEditingSessions]);
+
+    const startEditingStory = async (itemId, storyData) => {
+        try {
+            if (!itemId || !storyData || !currentUser) {
+                console.error('Missing required parameters for startEditingStory');
+                return false;
+            }
+
+            if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+                if (appState.activeRundownId) {
+                    collaborationManagerRef.current.startPresenceTracking(appState.activeRundownId);
+                    collaborationManagerRef.current.listenToPresence(
+                        appState.activeRundownId,
+                        (allUsers) => {
+                            setActiveUsers(allUsers);
+                            updateEditingSessions(allUsers);
+                        }
+                    );
+                }
+            }
+
+            const manager = collaborationManagerRef.current;
+            if (!manager) {
+                console.error('Failed to create collaboration manager');
+                return false;
+            }
+        
+            const editingUser = editingSessions.get(itemId.toString());
+            const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
+
+            if (isBeingEditedByOther) {
+                if (openStoryTab) {
+                    openStoryTab(itemId, storyData);
+                }
+                if (updateStoryTab) {
+                    updateStoryTab(itemId, {
+                        isOwner: false,
+                        takenOver: true,
+                        takenOverBy: editingUser.userName,
                     });
                 }
-                return Promise.resolve();
-            });
-            
-            await Promise.all(updatePromises);
-            console.log('Cleared previous user editing state for user:', previousUserId);
-            
-        } catch (error) {
-            console.error('Error clearing previous user editing state:', error);
-        }
-    }
-
-    async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
-        if (this.isDestroyed) return null;
-
-        for (let attempt = 0; attempt < retryCount; attempt++) {
-            try {
-                const { doc, getDoc, updateDoc } = await import("firebase/firestore");
-                const rundownRef = doc(this.db, "rundowns", rundownId);
-                const rundownDoc = await getDoc(rundownRef);
-                if (!rundownDoc.exists()) throw new Error("Rundown not found");
-                const currentData = rundownDoc.data();
-                const updatedData = updateFunction(currentData);
-                const versionedData = {
-                    ...updatedData,
-                    version: (currentData.version || 1) + 1,
-                    lastModified: new Date().toISOString(),
-                    lastModifiedBy: this.currentUser.uid
-                };
-                await updateDoc(rundownRef, versionedData);
-                return versionedData;
-            } catch (error) {
-                if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
-                    console.warn('User appears to be logged out, cannot update rundown');
-                    return null;
+            } else {
+                await manager.setEditingItem(itemId.toString());
+                if (openStoryTab) {
+                    openStoryTab(itemId, storyData);
                 }
-                if (attempt === retryCount - 1) throw error;
-                await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+                if (updateStoryTab) {
+                    updateStoryTab(itemId, {
+                        isOwner: true,
+                        takenOver: false,
+                        takenOverBy: null,
+                    });
+                }
             }
-        }
-    }
-
-    async ensureLatestContent(itemId) {
-        if (this.isDestroyed) return null;
-
-        try {
-            const { doc, getDoc } = await import("firebase/firestore");
-            const storyDraftRef = doc(this.db, "storyDrafts", `${itemId}_auto`);
-            const draftDoc = await getDoc(storyDraftRef);
-            
-            if (draftDoc.exists()) {
-                return draftDoc.data();
-            }
-            
-            return null;
+            return true;
         } catch (error) {
-            console.error('Error getting latest content:', error);
-            return null;
+            console.error('Error in startEditingStory:', error);
+            return false;
         }
-    }
+    };
 
-    async saveContentForTakeover(itemId, content) {
-        if (this.isDestroyed) return;
+    const stopEditingStory = async (itemId) => {
+        const manager = collaborationManagerRef.current;
+        if (manager && !manager.isDestroyed) {
+            const editingUser = editingSessions.get(itemId?.toString());
+            if (editingUser && editingUser.userId === currentUser.uid) {
+                await manager.setEditingItem(null);
+                setEditingSessions(prevSessions => {
+                    const newSessions = new Map(prevSessions);
+                    newSessions.delete(itemId?.toString());
+                    return newSessions;
+                });
+            }
+        }
+    };
 
+    const takeOverStory = async (itemId, previousUserId) => {
+        const manager = collaborationManagerRef.current;
+        if (!manager || manager.isDestroyed) return false;
+        
         try {
-            const { doc, setDoc } = await import("firebase/firestore");
-            const storyDraftRef = doc(this.db, "storyDrafts", `${itemId}_auto`);
+            console.log('Taking over story:', itemId, 'from user:', previousUserId);
+
+            // Get the latest content from the user being kicked out
+            const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
+            const currentItem = rundownData?.items?.find(item => item.id.toString() === itemId.toString());
+
+            if (currentItem) {
+                await manager.saveContentForTakeover(itemId, currentItem);
+            }
             
-            await setDoc(storyDraftRef, {
+            await manager.sendTakeOverNotification(itemId, previousUserId);
+            
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            await manager.clearPreviousUserEditingState(previousUserId, itemId);
+            await manager.setEditingItem(itemId.toString());
+            
+            if (currentItem) {
+                const latestContent = await manager.ensureLatestContent(itemId);
+                const storyDataToOpen = latestContent ? latestContent.content : currentItem;
+
+                openStoryTab(itemId, storyDataToOpen);
+                updateStoryTab(itemId, {
+                    isOwner: true,
+                    takenOver: false,
+                    takenOverBy: null
+                });
+                refreshStoryTabData(itemId);
+            }
+            
+            setTimeout(() => {
+                setEditingSessions(prevSessions => {
+                    const newSessions = new Map(prevSessions);
+                    newSessions.set(itemId.toString(), {
+                        userId: currentUser.uid,
+                        userName: currentUser.name,
+                        timestamp: Date.now()
+                    });
+                    return newSessions;
+                });
+            }, 200);
+            
+            return true;
+        } catch (error) {
+            console.error('Error taking over story:', error);
+            return false;
+        }
+    };
+
+    const saveStoryProgress = async (itemId, storyData) => {
+        if (!db || !itemId) return;
+        try {
+            await setDoc(doc(db, "storyDrafts", `${itemId}_${currentUser.uid}`), {
                 itemId,
-                content,
+                userId: currentUser.uid,
+                storyData: storyData,
                 timestamp: new Date().toISOString(),
-                savedBy: this.currentUser.uid,
                 autoSaved: true
-            }, { merge: true });
-            
+            });
         } catch (error) {
-            console.error('Error saving content for takeover:', error);
+            console.error('Error saving story progress:', error);
         }
+    };
+
+    const getStoryProgress = async (itemId) => {
+        if (!db || !itemId) return null;
+        try {
+            const draftDoc = await getDoc(doc(db, "storyDrafts", `${itemId}_${currentUser.uid}`));
+            return draftDoc.exists() ? draftDoc.data().storyData : null;
+        } catch (error) {
+            console.error('Error getting story progress:', error);
+            return null;
+        }
+    };
+
+    const setEditingItem = async (itemId) => {
+        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+        }
+        const manager = collaborationManagerRef.current;
+        if (manager) {
+            await manager.setEditingItem(itemId);
+        }
+    };
+
+    const clearEditingItem = async () => {
+        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+        }
+        const manager = collaborationManagerRef.current;
+        if (manager) {
+            await manager.setEditingItem(null);
+        }
+    };
+
+    const safeUpdateRundown = async (rundownId, updateFunction) => {
+        const manager = collaborationManagerRef.current;
+        if (manager && !manager.isDestroyed) {
+            return await manager.safeUpdateRundown(rundownId, updateFunction);
+        }
+    };
+
+    const getUserEditingItem = (itemId) => {
+        return editingSessions.get(itemId.toString());
+    };
+
+    const isItemBeingEdited = (itemId) => {
+        const session = editingSessions.get(itemId.toString());
+        return session && session.userId !== currentUser.uid;
+    };
+
+    const value = {
+        activeUsers,
+        editingSessions,
+        notifications,
+        startEditingStory,
+        stopEditingStory,
+        takeOverStory,
+        saveStoryProgress,
+        getStoryProgress,
+        setEditingItem,
+        clearEditingItem,
+        safeUpdateRundown,
+        getUserEditingItem,
+        isItemBeingEdited,
+        markNotificationAsRead,
+        CollaborationManager: collaborationManagerRef.current
+    };
+
+    return (
+        <CollaborationContext.Provider value={value}>
+            {children}
+        </CollaborationContext.Provider>
+    );
+};
+
+export const useCollaboration = () => {
+    const context = useContext(CollaborationContext);
+    if (!context) {
+        throw new Error('useCollaboration must be used within a CollaborationProvider');
     }
-}
+    return context;
+};
