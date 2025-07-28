@@ -80,8 +80,6 @@ export class CollaborationManager {
     }
 
     async stopPresenceTracking() {
-        this.isDestroyed = true;
-
         if (this.presenceInterval) {
             clearInterval(this.presenceInterval);
             this.presenceInterval = null;
@@ -115,6 +113,8 @@ export class CollaborationManager {
             }
             this.cleanup = () => { };
         }
+
+        this.isDestroyed = true;
     }
 
     async setEditingItem(itemId) {
