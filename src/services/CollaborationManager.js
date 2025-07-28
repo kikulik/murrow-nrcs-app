@@ -69,7 +69,7 @@ export class CollaborationManager {
                     }
                     console.error('Error updating presence:', error);
                 }
-            }, 2000);
+            }, 3000);
 
             const handleBeforeUnload = () => this.stopPresenceTracking();
             window.addEventListener('beforeunload', handleBeforeUnload);
@@ -143,7 +143,7 @@ export class CollaborationManager {
                             isActive: true
                         }).catch(err => console.error('Force update failed:', err));
                     }
-                }, 100);
+                }, 300);
                 
             } catch (error) {
                 if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
