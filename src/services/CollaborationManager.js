@@ -128,12 +128,17 @@ export class CollaborationManager {
         
         if (this.presenceRef) {
             try {
-                const { updateDoc } = await import("firebase/firestore");
+                // FIX: Import deleteField and use it to explicitly remove the editingItem field
+                // when a user stops editing. This is a more robust signal than setting it to null.
+                const { updateDoc, deleteField } = await import("firebase/firestore");
+                
                 const updateData = {
-                    editingItem: itemId,
                     lastSeen: new Date().toISOString(),
-                    isActive: true
+                    isActive: true,
+                    // Conditionally add or delete the editingItem field
+                    editingItem: itemId ? itemId : deleteField()
                 };
+
                 await updateDoc(this.presenceRef, updateData);
                 this.lastUpdate = Date.now();
                 console.log('Updated presence with editing item:', itemId);
