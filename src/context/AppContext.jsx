@@ -1,5 +1,5 @@
 // src/context/AppContext.jsx (Fixed)
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
 
@@ -115,15 +115,15 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const openStoryTab = (itemId, storyData) => {
+    // FIX: Wrapped functions with useCallback to prevent re-creation on every render,
+    // which was causing an infinite loop in the CollaborationContext.
+    const openStoryTab = useCallback((itemId, storyData) => {
         setAppState(prev => {
             const itemIdStr = itemId.toString();
             
-            // Remove from recently closed if it's there (for takeover scenarios)
             const newRecentlyClosed = new Set(prev.recentlyClosed);
             newRecentlyClosed.delete(itemIdStr);
             
-            // Check if tab already exists
             const existingTab = prev.editingStoryTabs.find(tab => tab.itemId.toString() === itemIdStr);
             
             const fullStoryData = {
@@ -166,9 +166,9 @@ export const AppProvider = ({ children }) => {
                 recentlyClosed: newRecentlyClosed
             };
         });
-    };
+    }, []);
     
-    const closeStoryTab = (itemId, isForced = false, isForTakeover = false) => {
+    const closeStoryTab = useCallback((itemId, isForced = false, isForTakeover = false) => {
         const itemIdStr = itemId.toString();
         setAppState(prev => {
             const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId.toString() !== itemIdStr);
@@ -180,7 +180,6 @@ export const AppProvider = ({ children }) => {
     
             const newRecentlyClosed = new Set(prev.recentlyClosed);
             
-            // Only add to recently closed if it's not a takeover scenario
             if (isForced && !isForTakeover) {
                 newRecentlyClosed.add(itemIdStr);
             }
@@ -193,7 +192,6 @@ export const AppProvider = ({ children }) => {
             };
         });
 
-        // Set timeout to remove from recently closed only for non-takeover scenarios
         if (isForced && !isForTakeover) {
             setTimeout(() => {
                 setAppState(prev => {
@@ -203,26 +201,26 @@ export const AppProvider = ({ children }) => {
                 });
             }, 5000);
         }
-    };
+    }, []);
     
-    const updateStoryTab = (itemId, updates) => {
+    const updateStoryTab = useCallback((itemId, updates) => {
         setAppState(prev => ({
             ...prev,
             editingStoryTabs: prev.editingStoryTabs.map(tab =>
                 tab.itemId.toString() === itemId.toString() ? { ...tab, ...updates } : tab
             )
         }));
-    };
+    }, []);
 
-    const forceCloseStoryTab = (itemId, isForTakeover = false) => {
+    const forceCloseStoryTab = useCallback((itemId, isForTakeover = false) => {
         closeStoryTab(itemId, true, isForTakeover);
-    };
+    }, [closeStoryTab]);
 
-    const setQuickEditItem = (item) => {
+    const setQuickEditItem = useCallback((item) => {
         setAppState(prev => ({ ...prev, quickEditItem: item }));
-    };
+    }, []);
 
-    const refreshStoryTabData = (itemId) => {
+    const refreshStoryTabData = useCallback((itemId) => {
         setAppState(prev => {
             const rundown = prev.rundowns.find(r => r.id === prev.activeRundownId);
             if (!rundown) return prev;
@@ -239,7 +237,7 @@ export const AppProvider = ({ children }) => {
                 )
             };
         });
-    };
+    }, []);
 
     const contextValue = {
         appState,
