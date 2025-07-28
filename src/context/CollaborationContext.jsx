@@ -71,8 +71,9 @@ export const CollaborationProvider = ({ children }) => {
     }, [currentUser]);
 
     const markNotificationAsRead = async (notificationId) => {
-        if (!db) return;
+        if (!db || !notificationId) return;
         try {
+            // The notificationId is now correctly sourced from the Firestore snapshot
             await updateDoc(doc(db, "notifications", notificationId), { read: true });
         } catch (error) {
             console.error('Error marking notification as read:', error);
@@ -84,53 +85,17 @@ export const CollaborationProvider = ({ children }) => {
             return;
         }
 
-        try {
-            processedNotifications.current.add(notification.id);
-            console.log('Processing takeover notification for item:', notification.itemId);
-            
-            const tabToClose = appState.editingStoryTabs?.find(tab => 
-                tab && tab.itemId && tab.itemId.toString() === notification.itemId.toString()
-            );
-            
-            if (tabToClose) {
-                console.log('Auto-saving and closing tab for taken over user');
-                
-                if (setAppState) {
-                    setAppState(prev => ({
-                        ...prev,
-                        editingStoryTabs: prev.editingStoryTabs.map(tab =>
-                            tab.itemId.toString() === notification.itemId.toString()
-                                ? { ...tab, isBeingTakenOver: true }
-                                : tab
-                        )
-                    }));
-                }
+        processedNotifications.current.add(notification.id);
+        console.log(`Received takeover notification for item: ${notification.itemId}. Setting flag.`);
 
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                if (forceCloseStoryTab) {
-                    forceCloseStoryTab(notification.itemId);
-                }
-                
-                if (markNotificationAsRead) {
-                    await markNotificationAsRead(notification.id);
-                }
-            }
-            
-            setEditingSessions(prevSessions => {
-                const newSessions = new Map(prevSessions);
-                newSessions.delete(notification.itemId.toString());
-                return newSessions;
-            });
-            
-            const manager = collaborationManagerRef.current;
-            if (manager && !manager.isDestroyed && manager.setEditingItem) {
-                manager.setEditingItem(null);
-            }
-        } catch (error) {
-            console.error('Error handling takeover notification:', error);
-        }
-    }, [appState.editingStoryTabs, forceCloseStoryTab, setAppState, markNotificationAsRead]);
+        // Authoritatively set the 'isBeingTakenOver' flag in the global state.
+        // This is the primary trigger for the original user's client.
+        updateStoryTab(notification.itemId, { isBeingTakenOver: true });
+
+        // Mark the notification as read immediately.
+        await markNotificationAsRead(notification.id);
+
+    }, [updateStoryTab, markNotificationAsRead]);
 
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
@@ -146,7 +111,7 @@ export const CollaborationProvider = ({ children }) => {
                 (snapshot) => {
                     try {
                         const allUserNotifications = snapshot.docs.map(doc => ({
-                            id: doc.id,
+                            id: doc.id, // This is the correct, Firestore-generated ID
                             ...doc.data()
                         }));
                         
@@ -154,7 +119,6 @@ export const CollaborationProvider = ({ children }) => {
                         unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                         setNotifications(unreadNotifications);
                         
-                        // Only process new notifications that haven't been processed yet
                         const newNotifications = unreadNotifications.filter(n => 
                             !processedNotifications.current.has(n.id)
                         );
@@ -342,33 +306,33 @@ export const CollaborationProvider = ({ children }) => {
         
         try {
             console.log('Taking over story:', itemId, 'from user:', previousUserId);
-
-            // Get the latest content from the user being kicked out
-            const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
-            const currentItem = rundownData?.items?.find(item => item.id.toString() === itemId.toString());
-
-            if (currentItem) {
-                await manager.saveContentForTakeover(itemId, currentItem);
-            }
             
+            // Send the notification to the other user.
             await manager.sendTakeOverNotification(itemId, previousUserId);
             
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            // Add a delay to give the other client time to receive the notification,
+            // trigger the auto-save, and close the tab.
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             await manager.clearPreviousUserEditingState(previousUserId, itemId);
             await manager.setEditingItem(itemId.toString());
             
-            if (currentItem) {
-                const latestContent = await manager.ensureLatestContent(itemId);
-                const storyDataToOpen = latestContent ? latestContent.content : currentItem;
+            // Refresh the rundown data to get the latest version saved by the other user.
+            if (refreshStoryTabData) {
+                 refreshStoryTabData(itemId);
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
 
-                openStoryTab(itemId, storyDataToOpen);
+            const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
+            const currentItem = rundownData?.items?.find(item => item.id.toString() === itemId.toString());
+            
+            if (currentItem) {
+                openStoryTab(itemId, currentItem);
                 updateStoryTab(itemId, {
                     isOwner: true,
                     takenOver: false,
                     takenOverBy: null
                 });
-                refreshStoryTabData(itemId);
             }
             
             setTimeout(() => {
