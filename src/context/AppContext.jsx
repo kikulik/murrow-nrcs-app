@@ -28,7 +28,9 @@ export const AppProvider = ({ children }) => {
         currentLiveItemIndex: 0,
         liveRundownId: null,
         editingStoryTabs: [],
-        quickEditItem: null
+        quickEditItem: null,
+        // Add a set to track recently closed tabs to prevent re-opening loops
+        recentlyClosed: new Set(),
     });
     const unsubscribeRef = useRef(null);
     const cleanupTimeoutRef = useRef(null);
@@ -97,7 +99,8 @@ export const AppProvider = ({ children }) => {
                 currentLiveItemIndex: 0,
                 liveRundownId: null,
                 editingStoryTabs: [],
-                quickEditItem: null
+                quickEditItem: null,
+                recentlyClosed: new Set(),
             });
         }
     }, [currentUser]);
@@ -114,8 +117,13 @@ export const AppProvider = ({ children }) => {
     };
 
     const openStoryTab = (itemId, storyData) => {
-        console.log('Opening story tab for item:', itemId, 'with data:', storyData);
         setAppState(prev => {
+            // BLOCKER: Prevent re-opening a tab that was just force-closed.
+            if (prev.recentlyClosed.has(itemId.toString())) {
+                console.warn(`Blocked re-opening of recently closed tab: ${itemId}`);
+                return prev;
+            }
+
             const existingTab = prev.editingStoryTabs.find(tab => tab.itemId.toString() === itemId.toString());
             
             const fullStoryData = {
@@ -124,7 +132,6 @@ export const AppProvider = ({ children }) => {
             };
 
             if (existingTab) {
-                console.log('Tab already exists, updating with latest data and switching to it');
                 return {
                     ...prev,
                     editingStoryTabs: prev.editingStoryTabs.map(tab =>
@@ -151,8 +158,6 @@ export const AppProvider = ({ children }) => {
                 isBeingTakenOver: false
             };
     
-            console.log('Creating new tab:', newTab);
-    
             return {
                 ...prev,
                 editingStoryTabs: [...prev.editingStoryTabs, newTab],
@@ -161,32 +166,43 @@ export const AppProvider = ({ children }) => {
         });
     };
     
-    const closeStoryTab = (itemId) => {
-        console.log('Closing story tab for item:', itemId);
+    // Add an 'isForced' flag to handle the takeover scenario
+    const closeStoryTab = (itemId, isForced = false) => {
+        const itemIdStr = itemId.toString();
         setAppState(prev => {
-            const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId.toString() !== itemId.toString());
+            const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId.toString() !== itemIdStr);
             let newActiveTab = prev.activeTab;
     
-            if (prev.activeTab === `storyEdit-${itemId}`) {
-                if (updatedTabs.length > 0) {
-                    newActiveTab = updatedTabs[updatedTabs.length - 1].tabId;
-                } else {
-                    newActiveTab = 'rundown';
-                }
+            if (prev.activeTab === `storyEdit-${itemIdStr}`) {
+                newActiveTab = updatedTabs.length > 0 ? updatedTabs[updatedTabs.length - 1].tabId : 'rundown';
             }
     
-            console.log('Updated tabs after close:', updatedTabs.length, 'New active tab:', newActiveTab);
-    
+            const newRecentlyClosed = new Set(prev.recentlyClosed);
+            if (isForced) {
+                newRecentlyClosed.add(itemIdStr);
+            }
+
             return {
                 ...prev,
                 editingStoryTabs: updatedTabs,
-                activeTab: newActiveTab
+                activeTab: newActiveTab,
+                recentlyClosed: newRecentlyClosed,
             };
         });
+
+        // If forced, set a timeout to remove the block after 5 seconds
+        if (isForced) {
+            setTimeout(() => {
+                setAppState(prev => {
+                    const newRecentlyClosed = new Set(prev.recentlyClosed);
+                    newRecentlyClosed.delete(itemIdStr);
+                    return { ...prev, recentlyClosed: newRecentlyClosed };
+                });
+            }, 5000);
+        }
     };
     
     const updateStoryTab = (itemId, updates) => {
-        console.log('Updating story tab for item:', itemId, 'with updates:', updates);
         setAppState(prev => ({
             ...prev,
             editingStoryTabs: prev.editingStoryTabs.map(tab =>
@@ -196,38 +212,12 @@ export const AppProvider = ({ children }) => {
     };
 
     const forceCloseStoryTab = (itemId) => {
-        console.log('Force closing story tab for item:', itemId);
-        setAppState(prev => {
-            const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId.toString() !== itemId.toString());
-            let newActiveTab = prev.activeTab;
-
-            if (prev.activeTab === `storyEdit-${itemId}`) {
-                if (updatedTabs.length > 0) {
-                    newActiveTab = updatedTabs[updatedTabs.length - 1].tabId;
-                } else {
-                    newActiveTab = 'rundown';
-                }
-            }
-
-            return {
-                ...prev,
-                editingStoryTabs: updatedTabs,
-                activeTab: newActiveTab
-            };
-        });
+        // This is a convenience function that ensures the 'isForced' flag is set.
+        closeStoryTab(itemId, true);
     };
 
     const setQuickEditItem = (item) => {
-        console.log('setQuickEditItem called with:', item);
-        setAppState(prev => {
-            console.log('Previous quickEditItem:', prev.quickEditItem);
-            const newState = {
-                ...prev,
-                quickEditItem: item
-            };
-            console.log('New quickEditItem:', newState.quickEditItem);
-            return newState;
-        });
+        setAppState(prev => ({ ...prev, quickEditItem: item }));
     };
 
     const refreshStoryTabData = (itemId) => {
@@ -260,8 +250,6 @@ export const AppProvider = ({ children }) => {
         setQuickEditItem,
         refreshStoryTabData
     };
-
-    console.log('AppContext value:', Object.keys(contextValue));
 
     return (
         <AppContext.Provider value={contextValue}>
