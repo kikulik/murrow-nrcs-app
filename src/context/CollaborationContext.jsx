@@ -18,17 +18,26 @@ export const CollaborationProvider = ({ children }) => {
     const presenceInitialized = useRef(false);
 
     useEffect(() => {
+        console.log('Manager init effect:', { 
+            hasDb: !!db, 
+            hasUser: !!currentUser,
+            hasManager: !!collaborationManagerRef.current,
+            isDestroyed: collaborationManagerRef.current?.isDestroyed 
+        });
+        
         if (db && currentUser) {
             if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                console.log('Creating new CollaborationManager');
                 collaborationManagerRef.current = new CollaborationManager(db, currentUser);
                 presenceInitialized.current = false;
             }
         } else {
             if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
+                console.log('Stopping CollaborationManager');
                 collaborationManagerRef.current.stopPresenceTracking();
-                collaborationManagerRef.current = null;
-                presenceInitialized.current = false;
             }
+            collaborationManagerRef.current = null;
+            presenceInitialized.current = false;
         }
     }, [db, currentUser]);
 
@@ -104,26 +113,40 @@ export const CollaborationProvider = ({ children }) => {
 
     useEffect(() => {
         const manager = collaborationManagerRef.current;
+        console.log('Presence effect:', {
+            hasManager: !!manager,
+            isDestroyed: manager?.isDestroyed,
+            activeRundownId: appState.activeRundownId,
+            hasUser: !!currentUser,
+            presenceInitialized: presenceInitialized.current
+        });
         
-        if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser && !presenceInitialized.current) {
-            presenceInitialized.current = true;
-            manager.startPresenceTracking(appState.activeRundownId);
-            manager.listenToPresence(
-                appState.activeRundownId,
-                (allUsers) => {
-                    setActiveUsers(allUsers);
-                    updateEditingSessions(allUsers);
-                }
-            );
+        if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser) {
+            if (!presenceInitialized.current) {
+                console.log('Starting presence tracking for rundown:', appState.activeRundownId);
+                presenceInitialized.current = true;
+                manager.startPresenceTracking(appState.activeRundownId);
+                manager.listenToPresence(
+                    appState.activeRundownId,
+                    (allUsers) => {
+                        console.log('Presence update:', allUsers);
+                        setActiveUsers(allUsers);
+                        updateEditingSessions(allUsers);
+                    }
+                );
+            }
+        } else if (!appState.activeRundownId) {
+            presenceInitialized.current = false;
         }
 
         return () => {
-            if (manager && !manager.isDestroyed) {
+            if (manager && !manager.isDestroyed && presenceInitialized.current) {
+                console.log('Cleaning up presence tracking');
                 manager.stopPresenceTracking();
                 presenceInitialized.current = false;
             }
         };
-    }, [appState.activeRundownId, db, currentUser]);
+    }, [appState.activeRundownId, currentUser]);
 
     const updateEditingSessions = (users) => {
         const sessions = new Map();
@@ -159,9 +182,23 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const startEditingStory = async (itemId, storyData) => {
+        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+            if (appState.activeRundownId) {
+                collaborationManagerRef.current.startPresenceTracking(appState.activeRundownId);
+                collaborationManagerRef.current.listenToPresence(
+                    appState.activeRundownId,
+                    (allUsers) => {
+                        setActiveUsers(allUsers);
+                        updateEditingSessions(allUsers);
+                    }
+                );
+            }
+        }
+
         const manager = collaborationManagerRef.current;
-        if (!manager || manager.isDestroyed) {
-            console.error('No collaboration manager available');
+        if (!manager) {
+            console.error('Failed to create collaboration manager');
             return;
         }
     
@@ -255,15 +292,21 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const setEditingItem = async (itemId) => {
+        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+        }
         const manager = collaborationManagerRef.current;
-        if (manager && !manager.isDestroyed) {
+        if (manager) {
             await manager.setEditingItem(itemId);
         }
     };
 
     const clearEditingItem = async () => {
+        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+        }
         const manager = collaborationManagerRef.current;
-        if (manager && !manager.isDestroyed) {
+        if (manager) {
             await manager.setEditingItem(null);
         }
     };
