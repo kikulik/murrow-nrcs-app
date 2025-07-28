@@ -1,5 +1,5 @@
-// src/components/collaboration/StoryEditTab.jsx (Complete)
-import React, { useState, useEffect, useCallback } from 'react';
+// src/components/collaboration/StoryEditTab.jsx (Fixed Loop Issue)
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
@@ -19,6 +19,8 @@ const StoryEditTab = ({ itemId }) => {
         clearEditingItem,
         getUserEditingItem,
     } = useCollaboration();
+
+    const takeoverProcessedRef = useRef(false);
 
     if (!itemId || !currentUser || !appState) {
         return (
@@ -115,6 +117,12 @@ const StoryEditTab = ({ itemId }) => {
     }, [hasUnsavedChanges, isOwner, saveChanges, clearEditingItem, closeStoryTab, itemId]);
     
     const forceSaveAndClose = useCallback(async () => {
+        if (takeoverProcessedRef.current) {
+            console.log('Takeover already processed, ignoring duplicate');
+            return;
+        }
+        
+        takeoverProcessedRef.current = true;
         console.log('Force save and close triggered for item:', itemId);
         setIsSaving(true);
         
@@ -132,11 +140,11 @@ const StoryEditTab = ({ itemId }) => {
     }, [saveChanges, clearEditingItem, closeStoryTab, itemId]);
 
     useEffect(() => {
-        if (tab?.isBeingTakenOver) {
+        if (tab?.isBeingTakenOver && !takeoverProcessedRef.current) {
             console.log('Takeover detected for item:', itemId, 'triggering force save and close');
             forceSaveAndClose();
         }
-    }, [tab?.isBeingTakenOver, forceSaveAndClose]);
+    }, [tab?.isBeingTakenOver, forceSaveAndClose, itemId]);
 
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
