@@ -80,27 +80,41 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const handleTakeOverNotification = useCallback(async (notification) => {
-        if (notification.type === 'takeOver' && !processedNotifications.current.has(notification.id)) {
+        if (!notification || notification.type !== 'takeOver' || processedNotifications.current.has(notification.id)) {
+            return;
+        }
+
+        try {
             processedNotifications.current.add(notification.id);
             console.log('Processing takeover notification for item:', notification.itemId);
             
-            const tabToClose = appState.editingStoryTabs.find(tab => tab.itemId.toString() === notification.itemId.toString());
+            const tabToClose = appState.editingStoryTabs?.find(tab => 
+                tab && tab.itemId && tab.itemId.toString() === notification.itemId.toString()
+            );
+            
             if (tabToClose) {
                 console.log('Auto-saving and closing tab for taken over user');
                 
-                setAppState(prev => ({
-                    ...prev,
-                    editingStoryTabs: prev.editingStoryTabs.map(tab =>
-                        tab.itemId.toString() === notification.itemId.toString()
-                            ? { ...tab, isBeingTakenOver: true }
-                            : tab
-                    )
-                }));
+                if (setAppState) {
+                    setAppState(prev => ({
+                        ...prev,
+                        editingStoryTabs: prev.editingStoryTabs.map(tab =>
+                            tab.itemId.toString() === notification.itemId.toString()
+                                ? { ...tab, isBeingTakenOver: true }
+                                : tab
+                        )
+                    }));
+                }
 
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 
-                forceCloseStoryTab(notification.itemId);
-                await markNotificationAsRead(notification.id);
+                if (forceCloseStoryTab) {
+                    forceCloseStoryTab(notification.itemId);
+                }
+                
+                if (markNotificationAsRead) {
+                    await markNotificationAsRead(notification.id);
+                }
             }
             
             setEditingSessions(prevSessions => {
@@ -110,11 +124,13 @@ export const CollaborationProvider = ({ children }) => {
             });
             
             const manager = collaborationManagerRef.current;
-            if (manager && !manager.isDestroyed) {
+            if (manager && !manager.isDestroyed && manager.setEditingItem) {
                 manager.setEditingItem(null);
             }
+        } catch (error) {
+            console.error('Error handling takeover notification:', error);
         }
-    }, [appState.editingStoryTabs, forceCloseStoryTab, db, setAppState, markNotificationAsRead]);
+    }, [appState.editingStoryTabs, forceCloseStoryTab, setAppState, markNotificationAsRead]);
 
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
@@ -245,46 +261,64 @@ export const CollaborationProvider = ({ children }) => {
     }, [appState.activeRundownId, currentUser, updateEditingSessions]);
 
     const startEditingStory = async (itemId, storyData) => {
-        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
-            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
-            if (appState.activeRundownId) {
-                collaborationManagerRef.current.startPresenceTracking(appState.activeRundownId);
-                collaborationManagerRef.current.listenToPresence(
-                    appState.activeRundownId,
-                    (allUsers) => {
-                        setActiveUsers(allUsers);
-                        updateEditingSessions(allUsers);
-                    }
-                );
+        try {
+            if (!itemId || !storyData || !currentUser) {
+                console.error('Missing required parameters for startEditingStory');
+                return false;
             }
-        }
 
-        const manager = collaborationManagerRef.current;
-        if (!manager) {
-            console.error('Failed to create collaboration manager');
-            return;
-        }
-    
-        const editingUser = editingSessions.get(itemId.toString());
-        const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
+            if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+                if (appState.activeRundownId) {
+                    collaborationManagerRef.current.startPresenceTracking(appState.activeRundownId);
+                    collaborationManagerRef.current.listenToPresence(
+                        appState.activeRundownId,
+                        (allUsers) => {
+                            setActiveUsers(allUsers);
+                            updateEditingSessions(allUsers);
+                        }
+                    );
+                }
+            }
 
-        if (isBeingEditedByOther) {
-            openStoryTab(itemId, storyData);
-            updateStoryTab(itemId, {
-                isOwner: false,
-                takenOver: true,
-                takenOverBy: editingUser.userName,
-            });
-        } else {
-            await manager.setEditingItem(itemId.toString());
-            openStoryTab(itemId, storyData);
-            updateStoryTab(itemId, {
-                isOwner: true,
-                takenOver: false,
-                takenOverBy: null,
-            });
+            const manager = collaborationManagerRef.current;
+            if (!manager) {
+                console.error('Failed to create collaboration manager');
+                return false;
+            }
+        
+            const editingUser = editingSessions.get(itemId.toString());
+            const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
+
+            if (isBeingEditedByOther) {
+                if (openStoryTab) {
+                    openStoryTab(itemId, storyData);
+                }
+                if (updateStoryTab) {
+                    updateStoryTab(itemId, {
+                        isOwner: false,
+                        takenOver: true,
+                        takenOverBy: editingUser.userName,
+                    });
+                }
+            } else {
+                await manager.setEditingItem(itemId.toString());
+                if (openStoryTab) {
+                    openStoryTab(itemId, storyData);
+                }
+                if (updateStoryTab) {
+                    updateStoryTab(itemId, {
+                        isOwner: true,
+                        takenOver: false,
+                        takenOverBy: null,
+                    });
+                }
+            }
+            return true;
+        } catch (error) {
+            console.error('Error in startEditingStory:', error);
+            return false;
         }
-        return true;
     };
 
     const stopEditingStory = async (itemId) => {
