@@ -1,4 +1,4 @@
-// src/context/AppContext.jsx
+// src/context/AppContext.jsx (Fixed)
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
@@ -29,7 +29,6 @@ export const AppProvider = ({ children }) => {
         liveRundownId: null,
         editingStoryTabs: [],
         quickEditItem: null,
-        // Add a set to track recently closed tabs to prevent re-opening loops
         recentlyClosed: new Set(),
     });
     const unsubscribeRef = useRef(null);
@@ -118,13 +117,14 @@ export const AppProvider = ({ children }) => {
 
     const openStoryTab = (itemId, storyData) => {
         setAppState(prev => {
-            // BLOCKER: Prevent re-opening a tab that was just force-closed.
-            if (prev.recentlyClosed.has(itemId.toString())) {
-                console.warn(`Blocked re-opening of recently closed tab: ${itemId}`);
-                return prev;
-            }
-
-            const existingTab = prev.editingStoryTabs.find(tab => tab.itemId.toString() === itemId.toString());
+            const itemIdStr = itemId.toString();
+            
+            // Remove from recently closed if it's there (for takeover scenarios)
+            const newRecentlyClosed = new Set(prev.recentlyClosed);
+            newRecentlyClosed.delete(itemIdStr);
+            
+            // Check if tab already exists
+            const existingTab = prev.editingStoryTabs.find(tab => tab.itemId.toString() === itemIdStr);
             
             const fullStoryData = {
                 ...storyData,
@@ -135,7 +135,7 @@ export const AppProvider = ({ children }) => {
                 return {
                     ...prev,
                     editingStoryTabs: prev.editingStoryTabs.map(tab =>
-                        tab.itemId.toString() === itemId.toString()
+                        tab.itemId.toString() === itemIdStr
                             ? { 
                                 ...tab, 
                                 storyData: fullStoryData,
@@ -143,12 +143,13 @@ export const AppProvider = ({ children }) => {
                             }
                             : tab
                     ),
-                    activeTab: `storyEdit-${itemId}`
+                    activeTab: `storyEdit-${itemId}`,
+                    recentlyClosed: newRecentlyClosed
                 };
             }
     
             const newTab = {
-                itemId: itemId.toString(),
+                itemId: itemIdStr,
                 storyData: fullStoryData,
                 tabId: `storyEdit-${itemId}`,
                 title: storyData?.title || 'Untitled Story',
@@ -161,13 +162,13 @@ export const AppProvider = ({ children }) => {
             return {
                 ...prev,
                 editingStoryTabs: [...prev.editingStoryTabs, newTab],
-                activeTab: `storyEdit-${itemId}`
+                activeTab: `storyEdit-${itemId}`,
+                recentlyClosed: newRecentlyClosed
             };
         });
     };
     
-    // Add an 'isForced' flag to handle the takeover scenario
-    const closeStoryTab = (itemId, isForced = false) => {
+    const closeStoryTab = (itemId, isForced = false, isForTakeover = false) => {
         const itemIdStr = itemId.toString();
         setAppState(prev => {
             const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId.toString() !== itemIdStr);
@@ -178,7 +179,9 @@ export const AppProvider = ({ children }) => {
             }
     
             const newRecentlyClosed = new Set(prev.recentlyClosed);
-            if (isForced) {
+            
+            // Only add to recently closed if it's not a takeover scenario
+            if (isForced && !isForTakeover) {
                 newRecentlyClosed.add(itemIdStr);
             }
 
@@ -190,8 +193,8 @@ export const AppProvider = ({ children }) => {
             };
         });
 
-        // If forced, set a timeout to remove the block after 5 seconds
-        if (isForced) {
+        // Set timeout to remove from recently closed only for non-takeover scenarios
+        if (isForced && !isForTakeover) {
             setTimeout(() => {
                 setAppState(prev => {
                     const newRecentlyClosed = new Set(prev.recentlyClosed);
@@ -211,9 +214,8 @@ export const AppProvider = ({ children }) => {
         }));
     };
 
-    const forceCloseStoryTab = (itemId) => {
-        // This is a convenience function that ensures the 'isForced' flag is set.
-        closeStoryTab(itemId, true);
+    const forceCloseStoryTab = (itemId, isForTakeover = false) => {
+        closeStoryTab(itemId, true, isForTakeover);
     };
 
     const setQuickEditItem = (item) => {
