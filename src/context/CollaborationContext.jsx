@@ -58,16 +58,18 @@ export const CollaborationProvider = ({ children }) => {
         }
     }, [currentUser]);
 
-    const markNotificationAsRead = async (notificationId) => {
+    // FIX: Wrapped markNotificationAsRead in useCallback to stabilize its reference.
+    const markNotificationAsRead = useCallback(async (notificationId) => {
         if (!db || !notificationId) return;
         try {
             await updateDoc(doc(db, "notifications", notificationId), { read: true });
         } catch (error) {
             console.error('Error marking notification as read:', error);
         }
-    };
+    }, [db]);
 
-    const clearAllNotifications = async () => {
+    // FIX: Wrapped clearAllNotifications in useCallback.
+    const clearAllNotifications = useCallback(async () => {
         if (!db || !currentUser) return;
         try {
             const notificationsQuery = query(
@@ -86,7 +88,7 @@ export const CollaborationProvider = ({ children }) => {
         } catch (error) {
             console.error('Error clearing all notifications:', error);
         }
-    };
+    }, [db, currentUser]);
 
     const handleTakeOverNotification = useCallback(async (notification) => {
         if (!notification || notification.type !== 'takeOver' || processedNotifications.current.has(notification.id)) {
@@ -116,14 +118,10 @@ export const CollaborationProvider = ({ children }) => {
                 notificationsQuery,
                 (snapshot) => {
                     try {
-                        console.log('Notification snapshot received, docs count:', snapshot.docs.length);
-                        
                         const allUserNotifications = snapshot.docs.map(doc => ({
                             id: doc.id,
                             ...doc.data()
                         }));
-                        
-                        console.log('All notifications:', allUserNotifications);
                         
                         const unreadNotifications = allUserNotifications.filter(n => n.read === false);
                         unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -133,7 +131,6 @@ export const CollaborationProvider = ({ children }) => {
                             !processedNotifications.current.has(n.id)
                         );
                         
-                        console.log('New notifications to process:', newNotifications);
                         newNotifications.forEach(handleTakeOverNotification);
                     } catch (error) {
                         console.error('Error processing notifications:', error);
@@ -169,7 +166,6 @@ export const CollaborationProvider = ({ children }) => {
     }, [setupNotificationListener, currentUser, db]);
 
     const updateEditingSessions = useCallback((users) => {
-        // FIX: Add a guard clause to prevent errors when currentUser is null (e.g., during logout).
         if (!currentUser) return;
 
         const sessions = new Map();
@@ -207,7 +203,6 @@ export const CollaborationProvider = ({ children }) => {
             
             return hasChanged ? sessions : prevSessions;
         });
-    // FIX: Depend on the whole currentUser object, not currentUser.uid.
     }, [appState.editingStoryTabs, currentUser, updateStoryTab]);
 
 
@@ -223,7 +218,6 @@ export const CollaborationProvider = ({ children }) => {
                     manager.listenToPresence(
                         appState.activeRundownId,
                         (allUsers) => {
-                            console.log('Presence update received:', allUsers);
                             setActiveUsers(allUsers);
                             updateEditingSessions(allUsers);
                         }
