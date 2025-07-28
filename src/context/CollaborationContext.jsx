@@ -327,45 +327,49 @@ export const CollaborationProvider = ({ children }) => {
         try {
             console.log('Starting takeover for item:', itemId, 'from user:', previousUserId);
             
-            let rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
-            let currentItem = rundownData?.items?.find(item => item.id.toString() === itemId.toString());
-            
-            if (!currentItem) {
-                console.error('Item not found in rundown');
-                return false;
-            }
-    
-            await manager.setEditingItem(itemId.toString());
-            console.log('Set current user as editing');
-    
+            // 1. Update remote state (Firestore presence)
+            await manager.setEditingItem(itemIdStr);
             await manager.sendTakeOverNotification(itemId, previousUserId);
-            console.log('Sent takeover notification');
 
-            // FIX: Introduce a short delay and then force a refresh of the rundown data
-            // to ensure we have the absolute latest version before opening the tab.
-            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
-
-            const rundownRef = doc(db, "rundowns", appState.activeRundownId);
-            const freshRundownDoc = await getDoc(rundownRef);
-            if (freshRundownDoc.exists()) {
-                const freshRundownData = freshRundownDoc.data();
-                setAppState(prev => ({
-                    ...prev,
-                    rundowns: prev.rundowns.map(r => r.id === appState.activeRundownId ? { ...r, ...freshRundownData } : r)
-                }));
-                currentItem = freshRundownData.items.find(item => item.id.toString() === itemId.toString());
-            }
-            
+            // 2. Manually update local state to reflect the takeover IMMEDIATELY.
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
-                newSessions.set(itemId.toString(), {
+                newSessions.set(itemIdStr, {
                     userId: currentUser.uid,
                     userName: currentUser.name,
                     timestamp: Date.now()
                 });
                 return newSessions;
             });
-            
+
+            // 3. Give the system a moment for the journalist's client to save and update the rundown.
+            await new Promise(resolve => setTimeout(resolve, 500)); 
+
+            // 4. Fetch the absolute latest version of the rundown to get the final save.
+            const rundownRef = doc(db, "rundowns", appState.activeRundownId);
+            const freshRundownDoc = await getDoc(rundownRef);
+            let currentItem;
+
+            if (freshRundownDoc.exists()) {
+                const freshRundownData = freshRundownDoc.data();
+                // Update the entire rundown in the app state to ensure all components have the fresh data.
+                setAppState(prev => ({
+                    ...prev,
+                    rundowns: prev.rundowns.map(r => r.id === appState.activeRundownId ? { id: r.id, ...freshRundownData } : r)
+                }));
+                currentItem = freshRundownData.items.find(item => item.id.toString() === itemIdStr);
+            } else {
+                // Fallback to existing item if the fetch somehow fails
+                const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
+                currentItem = rundownData?.items?.find(item => item.id.toString() === itemIdStr);
+            }
+
+            if (!currentItem) {
+                console.error('Item not found after takeover refresh.');
+                return false;
+            }
+
+            // 5. Now, with all local state correct, open the tab.
             console.log('Opening story tab for new user with fresh data');
             openStoryTab(itemId, currentItem);
             updateStoryTab(itemId, {
