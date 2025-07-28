@@ -15,7 +15,6 @@ const StoryEditTab = ({ itemId }) => {
     const { appState, closeStoryTab } = useAppContext();
     const {
         safeUpdateRundown,
-        editingSessions,
         takeOverStory,
         clearEditingItem,
         getUserEditingItem,
@@ -29,14 +28,15 @@ const StoryEditTab = ({ itemId }) => {
             </div>
         );
     }
-
-    const editingUser = getUserEditingItem(itemId);
-    const isOwner = !editingUser || editingUser.userId === currentUser.uid;
-    const isTakenOver = editingUser && editingUser.userId !== currentUser.uid;
-    const takenOverBy = isTakenOver ? editingUser.userName : null;
-
+    
     const tab = appState.editingStoryTabs.find(t => t.itemId.toString() === itemId.toString());
     const initialData = tab?.storyData || {};
+    const editingUser = getUserEditingItem(itemId);
+
+    // FIX: Make the isOwner check dependent on the takeover flag from the global state.
+    const isOwner = (!editingUser || editingUser.userId === currentUser.uid) && !tab?.isBeingTakenOver;
+    const isTakenOverByOther = editingUser && editingUser.userId !== currentUser.uid;
+    const takenOverBy = isTakenOverByOther ? editingUser.userName : null;
 
     const [formData, setFormData] = useState({
         title: initialData.title || '',
@@ -51,14 +51,12 @@ const StoryEditTab = ({ itemId }) => {
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [notification, setNotification] = useState(null);
-    const [isBeingTakenOver, setIsBeingTakenOver] = useState(false);
 
     const showNotification = (message, type = 'info') => {
         setNotification({ message, type });
         setTimeout(() => setNotification(null), 3000);
     };
 
-    // MOVED aitoSave and handleSaveAndClose functions here, before the useEffects that use them.
     const autoSave = useCallback(async () => {
         if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db) {
             return false;
@@ -104,14 +102,19 @@ const StoryEditTab = ({ itemId }) => {
 
     const handleSaveAndClose = useCallback(async () => {
         if (hasUnsavedChanges && isOwner) {
-            const saved = await autoSave();
-            if (saved) {
-                showNotification("Changes saved automatically due to takeover.", "info");
-            }
+            await autoSave();
         }
         await clearEditingItem();
         closeStoryTab(itemId);
     }, [hasUnsavedChanges, isOwner, autoSave, clearEditingItem, closeStoryTab, itemId]);
+    
+    // FIX: This useEffect now decisively handles the takeover.
+    useEffect(() => {
+        if (tab?.isBeingTakenOver) {
+            console.log(`Takeover detected for item ${itemId}. Forcing save and close.`);
+            handleSaveAndClose();
+        }
+    }, [tab?.isBeingTakenOver, handleSaveAndClose]);
 
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
@@ -126,18 +129,11 @@ const StoryEditTab = ({ itemId }) => {
     }, [calculatedDuration, useCalculatedDuration, isOwner]);
 
     useEffect(() => {
-        if (tab?.isBeingTakenOver && isOwner && hasUnsavedChanges) {
-            console.log('Tab is being taken over, auto-saving and closing');
-            handleSaveAndClose();
-        }
-    }, [tab?.isBeingTakenOver, isOwner, hasUnsavedChanges, handleSaveAndClose]);
-
-    useEffect(() => {
-        if (isOwner && hasUnsavedChanges && !isBeingTakenOver) {
+        if (isOwner && hasUnsavedChanges && !tab?.isBeingTakenOver) {
             const autoSaveInterval = setInterval(autoSave, 5000);
             return () => clearInterval(autoSaveInterval);
         }
-    }, [autoSave, isOwner, hasUnsavedChanges, isBeingTakenOver]);
+    }, [autoSave, isOwner, hasUnsavedChanges, tab?.isBeingTakenOver]);
 
     const handleFormChange = (field, value) => {
         if (!isOwner) return;
@@ -155,7 +151,7 @@ const StoryEditTab = ({ itemId }) => {
 
     const handleClose = async () => {
         try {
-            if (hasUnsavedChanges && isOwner && !isBeingTakenOver) {
+            if (hasUnsavedChanges && isOwner && !tab?.isBeingTakenOver) {
                 const shouldSave = window.confirm('You have unsaved changes. Save before closing?');
                 if (shouldSave && autoSave) {
                     await autoSave();
@@ -189,7 +185,7 @@ const StoryEditTab = ({ itemId }) => {
         );
     }
 
-    const containerClasses = `space-y-6 ${isTakenOver ? 'opacity-60 pointer-events-none' : ''}`;
+    const containerClasses = `space-y-6 ${isTakenOverByOther ? 'opacity-60 pointer-events-none' : ''}`;
 
     try {
         return (
@@ -211,7 +207,7 @@ const StoryEditTab = ({ itemId }) => {
                 <div className="flex items-center gap-4">
                     <h2 className="text-xl font-semibold">Edit Story</h2>
                     <UserPresenceIndicator itemId={itemId} />
-                    {isTakenOver && takenOverBy && (
+                    {isTakenOverByOther && takenOverBy && (
                         <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
                             <CustomIcon name="lock" size={32} className="text-orange-600" />
                             <span className="text-sm text-orange-800 dark:text-orange-200">{takenOverBy} is editing</span>
@@ -242,7 +238,7 @@ const StoryEditTab = ({ itemId }) => {
                 </div>
             </div>
 
-            {isTakenOver && (
+            {isTakenOverByOther && (
                 <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
                     <div className="flex items-center space-x-2">
                         <CustomIcon name="lock" size={40} className="text-orange-600" />
@@ -325,7 +321,7 @@ const StoryEditTab = ({ itemId }) => {
                         />
                     </div>
 
-                    {isOwner && !isBeingTakenOver && (
+                    {isOwner && !tab?.isBeingTakenOver && (
                         <div className="flex items-center justify-between pt-4 border-t">
                             <div className="text-xs text-gray-500">
                                 Auto-save every 5 seconds
