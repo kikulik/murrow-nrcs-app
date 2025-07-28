@@ -79,8 +79,6 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
-    const processedNotifications = useRef(new Set());
-
     const handleTakeOverNotification = useCallback(async (notification) => {
         if (notification.type === 'takeOver' && !processedNotifications.current.has(notification.id)) {
             processedNotifications.current.add(notification.id);
