@@ -57,11 +57,11 @@ const StoryEditTab = ({ itemId }) => {
     }, [calculatedDuration, useCalculatedDuration, isOwner]);
 
     useEffect(() => {
-        if (isTakenOver && isOwner) {
-            setIsBeingTakenOver(true);
+        if (tab?.isBeingTakenOver && isOwner && hasUnsavedChanges) {
+            console.log('Tab is being taken over, auto-saving and closing');
             handleSaveAndClose();
         }
-    }, [isTakenOver, isOwner]);
+    }, [tab?.isBeingTakenOver, isOwner, hasUnsavedChanges, handleSaveAndClose]);
 
     const autoSave = useCallback(async () => {
         if (itemId && hasUnsavedChanges && isOwner && appState.activeRundownId) {
