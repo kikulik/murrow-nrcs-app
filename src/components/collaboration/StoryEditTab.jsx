@@ -21,6 +21,15 @@ const StoryEditTab = ({ itemId }) => {
         getUserEditingItem,
     } = useCollaboration();
 
+    // Early return if essential data is missing
+    if (!itemId || !currentUser || !appState) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <p className="text-gray-500">Loading...</p>
+            </div>
+        );
+    }
+
     const editingUser = getUserEditingItem(itemId);
     const isOwner = !editingUser || editingUser.userId === currentUser.uid;
     const isTakenOver = editingUser && editingUser.userId !== currentUser.uid;
@@ -64,7 +73,11 @@ const StoryEditTab = ({ itemId }) => {
     }, [tab?.isBeingTakenOver, isOwner, hasUnsavedChanges, handleSaveAndClose]);
 
     const autoSave = useCallback(async () => {
-        if (itemId && hasUnsavedChanges && isOwner && appState.activeRundownId) {
+        if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db) {
+            return false;
+        }
+
+        try {
             setIsSaving(true);
             
             const rundownUpdatePromise = safeUpdateRundown(appState.activeRundownId, (rundownData) => {
@@ -89,20 +102,17 @@ const StoryEditTab = ({ itemId }) => {
                 storyUpdatePromise = updateDoc(storyRef, storyUpdates);
             }
 
-            try {
-                await Promise.all([rundownUpdatePromise, storyUpdatePromise]);
-                setLastSaved(new Date());
-                setHasUnsavedChanges(false);
-                return true;
-            } catch (error) {
-                console.error("Failed to save changes:", error);
-                showNotification("Failed to save changes.", "error");
-                return false;
-            } finally {
-                setIsSaving(false);
-            }
+            await Promise.all([rundownUpdatePromise, storyUpdatePromise]);
+            setLastSaved(new Date());
+            setHasUnsavedChanges(false);
+            return true;
+        } catch (error) {
+            console.error("Failed to save changes:", error);
+            showNotification("Failed to save changes.", "error");
+            return false;
+        } finally {
+            setIsSaving(false);
         }
-        return false;
     }, [itemId, formData, hasUnsavedChanges, isOwner, safeUpdateRundown, appState.activeRundownId, initialData.storyId, db]);
 
     const handleSaveAndClose = useCallback(async () => {
@@ -138,14 +148,22 @@ const StoryEditTab = ({ itemId }) => {
     };
 
     const handleClose = async () => {
-        if (hasUnsavedChanges && isOwner && !isBeingTakenOver) {
-            const shouldSave = window.confirm('You have unsaved changes. Save before closing?');
-            if (shouldSave) {
-                await autoSave();
+        try {
+            if (hasUnsavedChanges && isOwner && !isBeingTakenOver) {
+                const shouldSave = window.confirm('You have unsaved changes. Save before closing?');
+                if (shouldSave && autoSave) {
+                    await autoSave();
+                }
             }
+            if (clearEditingItem) {
+                await clearEditingItem();
+            }
+            if (closeStoryTab && itemId) {
+                closeStoryTab(itemId);
+            }
+        } catch (error) {
+            console.error('Error in handleClose:', error);
         }
-        await clearEditingItem();
-        closeStoryTab(itemId);
     };
 
     const handleTakeOver = async () => {
@@ -172,8 +190,9 @@ const StoryEditTab = ({ itemId }) => {
 
     const containerClasses = `space-y-6 ${isTakenOver ? 'opacity-60 pointer-events-none' : ''}`;
 
-    return (
-        <div className={containerClasses}>
+    try {
+        return (
+            <div className={containerClasses}>
             {notification && (
                 <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
                     notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
@@ -319,8 +338,20 @@ const StoryEditTab = ({ itemId }) => {
                     )}
                 </div>
             </div>
-        </div>
-    );
+        );
+    } catch (error) {
+        console.error('Error rendering StoryEditTab:', error);
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <p className="text-red-500">Something went wrong</p>
+                    <button onClick={() => closeStoryTab(itemId)} className="btn-secondary mt-4">
+                        Close Tab
+                    </button>
+                </div>
+            </div>
+        );
+    }
 };
 
 export default StoryEditTab;
