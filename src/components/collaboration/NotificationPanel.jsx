@@ -4,7 +4,7 @@ import CustomIcon from '../ui/CustomIcon';
 import { useCollaboration } from '../../context/CollaborationContext';
 
 const NotificationPanel = () => {
-    const { notifications, markNotificationAsRead } = useCollaboration();
+    const { notifications, markNotificationAsRead, clearAllNotifications } = useCollaboration();
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef(null);
 
@@ -21,6 +21,10 @@ const NotificationPanel = () => {
 
     const handleNotificationClick = async (notification) => {
         await markNotificationAsRead(notification.id);
+    };
+
+    const handleClearAll = async () => {
+        await clearAllNotifications();
     };
 
     const unreadCount = notifications.length;
@@ -58,7 +62,17 @@ const NotificationPanel = () => {
                     <div className="p-4 border-b">
                         <div className="flex items-center justify-between">
                             <h3 className="font-medium">Notifications</h3>
-                            <span className="text-sm text-gray-500">{unreadCount} unread</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-500">{unreadCount} unread</span>
+                                {unreadCount > 0 && (
+                                    <button
+                                        onClick={handleClearAll}
+                                        className="text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                                    >
+                                        Clear All
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
 
