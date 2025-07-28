@@ -18,14 +18,15 @@ const StoryEditTab = ({ itemId }) => {
         editingSessions,
         takeOverStory,
         clearEditingItem,
+        getUserEditingItem,
     } = useCollaboration();
 
-    const editingUser = editingSessions.get(itemId?.toString());
+    const editingUser = getUserEditingItem(itemId);
     const isOwner = !editingUser || editingUser.userId === currentUser.uid;
     const isTakenOver = editingUser && editingUser.userId !== currentUser.uid;
     const takenOverBy = isTakenOver ? editingUser.userName : null;
 
-    const tab = appState.editingStoryTabs.find(t => t.itemId === itemId);
+    const tab = appState.editingStoryTabs.find(t => t.itemId.toString() === itemId.toString());
     const initialData = tab?.storyData || {};
 
     const [formData, setFormData] = useState({
@@ -57,7 +58,6 @@ const StoryEditTab = ({ itemId }) => {
         if (itemId && hasUnsavedChanges && isOwner && appState.activeRundownId) {
             setIsSaving(true);
             
-            // FIX: Update both the rundown item and the story document
             const rundownUpdatePromise = safeUpdateRundown(appState.activeRundownId, (rundownData) => {
                 const newItems = rundownData.items.map(item =>
                     item.id.toString() === itemId.toString()
@@ -146,8 +146,10 @@ const StoryEditTab = ({ itemId }) => {
         );
     }
 
+    const containerClasses = `space-y-6 ${isTakenOver ? 'opacity-60 pointer-events-none' : ''}`;
+
     return (
-        <div className="space-y-6">
+        <div className={containerClasses}>
             {notification && (
                 <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
                     notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
@@ -169,7 +171,12 @@ const StoryEditTab = ({ itemId }) => {
                         <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
                             <CustomIcon name="lock" size={32} className="text-orange-600" />
                             <span className="text-sm text-orange-800 dark:text-orange-200">{takenOverBy} is editing</span>
-                            <button onClick={handleTakeOver} className="ml-2 px-2 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700">Take Over</button>
+                            <button 
+                                onClick={handleTakeOver} 
+                                className="ml-2 px-2 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700 pointer-events-auto"
+                            >
+                                Take Over
+                            </button>
                         </div>
                     )}
                 </div>
@@ -185,7 +192,7 @@ const StoryEditTab = ({ itemId }) => {
                     {hasUnsavedChanges && !isSaving && isOwner && (
                         <span className="text-sm text-orange-600">Unsaved changes</span>
                     )}
-                    <button onClick={handleClose} className="btn-secondary" type="button">
+                    <button onClick={handleClose} className="btn-secondary pointer-events-auto" type="button">
                         <CustomIcon name="cancel" size={40} /> <span>Close</span>
                     </button>
                 </div>
