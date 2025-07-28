@@ -324,7 +324,7 @@ const StoryEditTab = ({ itemId }) => {
                         />
                     </div>
 
-                    {isOwner && !isBeingTakenOver && (
+                    isOwner && !isBeingTakenOver && (
                         <div className="flex items-center justify-between pt-4 border-t">
                             <div className="text-xs text-gray-500">
                                 Auto-save every 5 seconds
@@ -337,6 +337,7 @@ const StoryEditTab = ({ itemId }) => {
                         </div>
                     )}
                 </div>
+            </div>
             </div>
         );
     } catch (error) {
