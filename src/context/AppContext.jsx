@@ -28,7 +28,7 @@ export const AppProvider = ({ children }) => {
         currentLiveItemIndex: 0,
         liveRundownId: null,
         editingStoryTabs: [],
-        quickEditItem: null // ENSURE THIS IS INITIALIZED
+        quickEditItem: null
     });
     const unsubscribeRef = useRef(null);
     const cleanupTimeoutRef = useRef(null);
@@ -114,23 +114,26 @@ export const AppProvider = ({ children }) => {
     };
 
     const openStoryTab = (itemId, storyData) => {
-        console.log('Opening story tab for item:', itemId, 'with data:', storyData); // DEBUG
+        console.log('Opening story tab for item:', itemId, 'with data:', storyData);
         setAppState(prev => {
             const existingTab = prev.editingStoryTabs.find(tab => tab.itemId.toString() === itemId.toString());
             
-            // FIX: Ensure the storyId from the rundown item is always passed into the tab's storyData.
             const fullStoryData = {
                 ...storyData,
                 storyId: storyData.storyId || null
             };
 
             if (existingTab) {
-                console.log('Tab already exists, updating and switching to it'); // DEBUG
+                console.log('Tab already exists, updating with latest data and switching to it');
                 return {
                     ...prev,
                     editingStoryTabs: prev.editingStoryTabs.map(tab =>
                         tab.itemId.toString() === itemId.toString()
-                            ? { ...tab, storyData: fullStoryData }
+                            ? { 
+                                ...tab, 
+                                storyData: fullStoryData,
+                                isBeingTakenOver: false
+                            }
                             : tab
                     ),
                     activeTab: `storyEdit-${itemId}`
@@ -144,10 +147,11 @@ export const AppProvider = ({ children }) => {
                 title: storyData?.title || 'Untitled Story',
                 isOwner: true,
                 takenOver: false,
-                takenOverBy: null
+                takenOverBy: null,
+                isBeingTakenOver: false
             };
     
-            console.log('Creating new tab:', newTab); // DEBUG
+            console.log('Creating new tab:', newTab);
     
             return {
                 ...prev,
@@ -158,7 +162,7 @@ export const AppProvider = ({ children }) => {
     };
     
     const closeStoryTab = (itemId) => {
-        console.log('Closing story tab for item:', itemId); // DEBUG
+        console.log('Closing story tab for item:', itemId);
         setAppState(prev => {
             const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId.toString() !== itemId.toString());
             let newActiveTab = prev.activeTab;
@@ -171,7 +175,7 @@ export const AppProvider = ({ children }) => {
                 }
             }
     
-            console.log('Updated tabs after close:', updatedTabs.length, 'New active tab:', newActiveTab); // DEBUG
+            console.log('Updated tabs after close:', updatedTabs.length, 'New active tab:', newActiveTab);
     
             return {
                 ...prev,
@@ -182,7 +186,7 @@ export const AppProvider = ({ children }) => {
     };
     
     const updateStoryTab = (itemId, updates) => {
-        console.log('Updating story tab for item:', itemId, 'with updates:', updates); // DEBUG
+        console.log('Updating story tab for item:', itemId, 'with updates:', updates);
         setAppState(prev => ({
             ...prev,
             editingStoryTabs: prev.editingStoryTabs.map(tab =>
@@ -192,8 +196,9 @@ export const AppProvider = ({ children }) => {
     };
 
     const forceCloseStoryTab = (itemId) => {
+        console.log('Force closing story tab for item:', itemId);
         setAppState(prev => {
-            const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId !== itemId);
+            const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId.toString() !== itemId.toString());
             let newActiveTab = prev.activeTab;
 
             if (prev.activeTab === `storyEdit-${itemId}`) {
@@ -212,17 +217,35 @@ export const AppProvider = ({ children }) => {
         });
     };
 
-    // FIXED: Enhanced setQuickEditItem with debugging
     const setQuickEditItem = (item) => {
-        console.log('setQuickEditItem called with:', item); // DEBUG
+        console.log('setQuickEditItem called with:', item);
         setAppState(prev => {
-            console.log('Previous quickEditItem:', prev.quickEditItem); // DEBUG
+            console.log('Previous quickEditItem:', prev.quickEditItem);
             const newState = {
                 ...prev,
                 quickEditItem: item
             };
-            console.log('New quickEditItem:', newState.quickEditItem); // DEBUG
+            console.log('New quickEditItem:', newState.quickEditItem);
             return newState;
+        });
+    };
+
+    const refreshStoryTabData = (itemId) => {
+        setAppState(prev => {
+            const rundown = prev.rundowns.find(r => r.id === prev.activeRundownId);
+            if (!rundown) return prev;
+
+            const updatedItem = rundown.items.find(item => item.id.toString() === itemId.toString());
+            if (!updatedItem) return prev;
+
+            return {
+                ...prev,
+                editingStoryTabs: prev.editingStoryTabs.map(tab =>
+                    tab.itemId.toString() === itemId.toString()
+                        ? { ...tab, storyData: updatedItem }
+                        : tab
+                )
+            };
         });
     };
 
@@ -234,10 +257,10 @@ export const AppProvider = ({ children }) => {
         closeStoryTab,
         updateStoryTab,
         forceCloseStoryTab,
-        setQuickEditItem
+        setQuickEditItem,
+        refreshStoryTabData
     };
 
-    // DEBUG: Log context value to ensure setQuickEditItem is included
     console.log('AppContext value:', Object.keys(contextValue));
 
     return (
