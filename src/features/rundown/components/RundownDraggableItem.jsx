@@ -19,7 +19,7 @@ const RundownDraggableItem = ({
     isSelected,
     onSelect
 }) => {
-    const { appState, setQuickEditItem } = useAppContext();
+    const { appState, setQuickEditItem, refreshStoryTabData } = useAppContext();
     const { currentUser } = useAuth();
     const {
         safeUpdateRundown,
@@ -105,9 +105,10 @@ const RundownDraggableItem = ({
 
         try {
             if (isBeingEditedByOther && canTakeOver) {
-                const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`);
+                const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved automatically.`);
                 if (confirmed) {
                     await takeOverStory(item.id, editingUser.userId);
+                    refreshStoryTabData(item.id);
                 } else {
                     return;
                 }
@@ -122,11 +123,12 @@ const RundownDraggableItem = ({
     const handleTakeOver = async () => {
         if (!canTakeOver || !editingUser) return;
 
-        const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`);
+        const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved automatically.`);
         if (!confirmed) return;
 
         const success = await takeOverStory(item.id, editingUser.userId);
         if (success) {
+            refreshStoryTabData(item.id);
             await startEditingStory(item.id, item);
         } else {
             alert('Failed to take over the story. Please try again.');
@@ -143,8 +145,16 @@ const RundownDraggableItem = ({
         }
         
         if (isBeingEditedByOther) {
-            alert(`${editingUser.userName} is currently editing this item.`);
-            return;
+            if (canTakeOver) {
+                const confirmed = window.confirm(`${editingUser.userName} is currently editing this item. Do you want to take over?`);
+                if (confirmed) {
+                    handleTakeOver();
+                    return;
+                }
+            } else {
+                alert(`${editingUser.userName} is currently editing this item.`);
+                return;
+            }
         }
         
         setQuickEditItem(item);
