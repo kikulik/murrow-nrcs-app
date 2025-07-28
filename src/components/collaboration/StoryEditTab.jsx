@@ -145,7 +145,8 @@ const StoryEditTab = ({ itemId }) => {
         }
         console.log('Closing tab after force save.');
         await clearEditingItem();
-        closeStoryTab(itemId);
+        // Pass 'true' to indicate this is a forced close for the takeover.
+        closeStoryTab(itemId, true);
     }, [hasUnsavedChanges, safeUpdateRundown, appState.activeRundownId, formData, initialData.storyId, db, clearEditingItem, closeStoryTab, itemId]);
 
     useEffect(() => {
