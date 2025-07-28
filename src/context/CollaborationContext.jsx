@@ -1,4 +1,4 @@
-// src/context/CollaborationContext.jsx (Real-time Fix)
+// src/context/CollaborationContext.jsx (Debounced Notifications)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -95,16 +95,9 @@ export const CollaborationProvider = ({ children }) => {
         processedNotifications.current.add(notification.id);
         console.log('Processing takeover notification for item:', notification.itemId);
         
-        // Trigger immediate force close with save
         updateStoryTab(notification.itemId, { isBeingTakenOver: true });
-        
-        // Small delay to let the tab process the takeover flag
-        setTimeout(() => {
-            forceCloseStoryTab(notification.itemId, true);
-        }, 100);
-        
         await markNotificationAsRead(notification.id);
-    }, [updateStoryTab, forceCloseStoryTab, markNotificationAsRead]);
+    }, [updateStoryTab, markNotificationAsRead]);
 
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
@@ -323,22 +316,17 @@ export const CollaborationProvider = ({ children }) => {
                 return false;
             }
 
-            // Step 1: Send notification first (this will trigger the save and close on the other user's side)
             await manager.sendTakeOverNotification(itemId, previousUserId);
             console.log('Sent takeover notification');
             
-            // Step 2: Clear previous user state
             await manager.clearPreviousUserEditingState(previousUserId, itemId);
             console.log('Cleared previous user state');
             
-            // Step 3: Wait for the other user to save and close
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 3000));
             
-            // Step 4: Set current user as editing
             await manager.setEditingItem(itemId.toString());
             console.log('Set current user as editing');
             
-            // Step 5: Update local editing sessions
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
                 newSessions.set(itemId.toString(), {
@@ -349,7 +337,6 @@ export const CollaborationProvider = ({ children }) => {
                 return newSessions;
             });
             
-            // Step 6: Open the story tab for the new user
             console.log('Opening story tab for new user');
             openStoryTab(itemId, currentItem);
             updateStoryTab(itemId, {
