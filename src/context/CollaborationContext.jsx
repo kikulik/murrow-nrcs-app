@@ -1,6 +1,6 @@
 // src/context/CollaborationContext.jsx
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { useAppContext } from './AppContext';
 import { CollaborationManager } from '../services/CollaborationManager';
@@ -19,30 +19,17 @@ export const CollaborationProvider = ({ children }) => {
     const processedNotifications = useRef(new Set());
 
     useEffect(() => {
-        console.log('Manager init effect:', { 
-            hasDb: !!db, 
-            hasUser: !!currentUser,
-            hasManager: !!collaborationManagerRef.current,
-            isDestroyed: collaborationManagerRef.current?.isDestroyed 
-        });
-        
-        try {
-            if (db && currentUser) {
-                if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
-                    console.log('Creating new CollaborationManager');
-                    collaborationManagerRef.current = new CollaborationManager(db, currentUser);
-                    presenceInitialized.current = false;
-                }
-            } else {
-                if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
-                    console.log('Stopping CollaborationManager');
-                    collaborationManagerRef.current.stopPresenceTracking();
-                }
-                collaborationManagerRef.current = null;
+        if (db && currentUser) {
+            if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current = new CollaborationManager(db, currentUser);
                 presenceInitialized.current = false;
             }
-        } catch (error) {
-            console.error('Error in manager initialization:', error);
+        } else {
+            if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current.stopPresenceTracking();
+            }
+            collaborationManagerRef.current = null;
+            presenceInitialized.current = false;
         }
     }, [db, currentUser]);
 
@@ -79,18 +66,35 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
+    const clearAllNotifications = async () => {
+        if (!db || !currentUser) return;
+        try {
+            const notificationsQuery = query(
+                collection(db, "notifications"),
+                where("userId", "==", currentUser.uid),
+                where("read", "==", false)
+            );
+            const snapshot = await getDocs(notificationsQuery);
+            
+            const deletePromises = snapshot.docs.map(docSnapshot => 
+                deleteDoc(doc(db, "notifications", docSnapshot.id))
+            );
+            
+            await Promise.all(deletePromises);
+            setNotifications([]);
+        } catch (error) {
+            console.error('Error clearing all notifications:', error);
+        }
+    };
+
     const handleTakeOverNotification = useCallback(async (notification) => {
         if (!notification || notification.type !== 'takeOver' || processedNotifications.current.has(notification.id)) {
             return;
         }
 
         processedNotifications.current.add(notification.id);
-        console.log(`Received takeover notification for item: ${notification.itemId}. Setting flag.`);
-
         updateStoryTab(notification.itemId, { isBeingTakenOver: true });
-
         await markNotificationAsRead(notification.id);
-
     }, [updateStoryTab, markNotificationAsRead]);
 
     const setupNotificationListener = useCallback(async () => {
@@ -189,7 +193,6 @@ export const CollaborationProvider = ({ children }) => {
         try {
             if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser) {
                 if (!presenceInitialized.current) {
-                    console.log('Starting presence tracking for rundown:', appState.activeRundownId);
                     presenceInitialized.current = true;
                     manager.startPresenceTracking(appState.activeRundownId);
                     manager.listenToPresence(
@@ -210,7 +213,6 @@ export const CollaborationProvider = ({ children }) => {
         return () => {
             try {
                 if (manager && !manager.isDestroyed && presenceInitialized.current) {
-                    console.log('Cleaning up presence tracking');
                     manager.stopPresenceTracking();
                     presenceInitialized.current = false;
                 }
@@ -301,16 +303,16 @@ export const CollaborationProvider = ({ children }) => {
         if (!manager || manager.isDestroyed) return false;
         
         try {
-            console.log('Taking over story:', itemId, 'from user:', previousUserId);
-            
             await manager.clearPreviousUserEditingState(previousUserId, itemId);
             await manager.setEditingItem(itemId.toString());
             await manager.sendTakeOverNotification(itemId, previousUserId);
+
+            forceCloseStoryTab(itemId);
             
-            await new Promise(resolve => setTimeout(resolve, 1500)); 
+            await new Promise(resolve => setTimeout(resolve, 500));
 
             if (refreshStoryTabData) {
-                 refreshStoryTabData(itemId);
+                refreshStoryTabData(itemId);
             }
             await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -420,6 +422,7 @@ export const CollaborationProvider = ({ children }) => {
         getUserEditingItem,
         isItemBeingEdited,
         markNotificationAsRead,
+        clearAllNotifications,
         CollaborationManager: collaborationManagerRef.current
     };
 
