@@ -1,4 +1,4 @@
-// src/components/collaboration/StoryEditTab.jsx (Fixed Loop Issue)
+// src/components/collaboration/StoryEditTab.jsx (Fixed Race Condition)
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
@@ -15,13 +15,9 @@ const StoryEditTab = ({ itemId }) => {
     const { appState, closeStoryTab } = useAppContext();
     const {
         safeUpdateRundown,
-        takeOverStory,
         clearEditingItem,
         getUserEditingItem,
     } = useCollaboration();
-
-    // FIX: Removed takeoverProcessedRef as it was causing issues.
-    // The logic is now simpler and more robust.
 
     if (!itemId || !currentUser || !appState) {
         return (
@@ -35,8 +31,11 @@ const StoryEditTab = ({ itemId }) => {
     const initialData = tab?.storyData || {};
     const editingUser = getUserEditingItem(itemId);
 
-    const isOwner = (!editingUser || editingUser.userId === currentUser.uid) && !tab?.isBeingTakenOver;
-    const isTakenOverByOther = editingUser && editingUser.userId !== currentUser.uid;
+    // FIX: This is the definitive fix. The logic now trusts the `tab.isOwner` property
+    // passed during tab creation, which solves the race condition where the component
+    // would render with stale real-time data.
+    const isOwner = tab?.isOwner && !tab?.isBeingTakenOver;
+    const isTakenOverByOther = !isOwner && editingUser && editingUser.userId !== currentUser.uid;
     const takenOverBy = isTakenOverByOther ? editingUser.userName : null;
 
     const [formData, setFormData] = useState({
@@ -53,6 +52,19 @@ const StoryEditTab = ({ itemId }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [notification, setNotification] = useState(null);
 
+    // When the tab data is refreshed from the context (e.g., after a takeover),
+    // update the form data to show the latest content.
+    useEffect(() => {
+        setFormData({
+            title: initialData.title || '',
+            content: initialData.content || '',
+            duration: initialData.duration || '01:00',
+            type: Array.isArray(initialData.type) ? initialData.type : [initialData.type || 'STD'],
+            authorId: initialData.authorId || currentUser.uid
+        });
+    }, [initialData, currentUser.uid]);
+
+
     const showNotification = (message, type = 'info') => {
         setNotification({ message, type });
         setTimeout(() => setNotification(null), 3000);
@@ -63,7 +75,6 @@ const StoryEditTab = ({ itemId }) => {
             return false;
         }
 
-        // FIX: Ensure we don't try to save if another save is already in progress.
         if (isSaving) return;
 
         try {
@@ -121,17 +132,13 @@ const StoryEditTab = ({ itemId }) => {
         closeStoryTab(itemId);
     }, [hasUnsavedChanges, isOwner, saveChanges, clearEditingItem, closeStoryTab, itemId]);
     
-    // FIX: Renamed and simplified the force close logic.
-    // This function is now more reliable.
     const saveAndCloseForTakeover = useCallback(async () => {
         console.log('Takeover detected, forcing save and close for item:', itemId);
         
-        // Prevent multiple saves during the close process
         if (isSaving) return;
         setIsSaving(true);
         
         try {
-            // Attempt to save any pending changes.
             if (hasUnsavedChanges) {
                 await saveChanges();
                 console.log('Force save completed for takeover.');
@@ -140,16 +147,13 @@ const StoryEditTab = ({ itemId }) => {
             console.error("Failed to force save changes during takeover:", error);
         } finally {
             setIsSaving(false);
-            // This now reliably clears the editing state and closes the tab.
             await clearEditingItem();
-            closeStoryTab(itemId, true); // `isForced = true`
+            closeStoryTab(itemId, true); 
             console.log('Force closed tab for takeover.');
         }
     }, [saveChanges, clearEditingItem, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
 
 
-    // FIX: Simplified the effect that triggers the takeover.
-    // It now directly calls the saveAndCloseForTakeover function.
     useEffect(() => {
         if (tab?.isBeingTakenOver) {
             saveAndCloseForTakeover();
@@ -307,7 +311,7 @@ const StoryEditTab = ({ itemId }) => {
                                 </label>
                                 {wordCount > 0 && (
                                     <p className="text-xs text-gray-500 mt-1">
-                                        {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                                        {wordCount} words Ã¢â‚¬Â¢ Est. {calculatedDuration} reading time
                                     </p>
                                 )}
                             </div>
