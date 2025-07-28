@@ -107,47 +107,42 @@ const StoryEditTab = ({ itemId }) => {
     }, [hasUnsavedChanges, isOwner, autoSave, clearEditingItem, closeStoryTab, itemId]);
     
     const forceSaveAndClose = useCallback(async () => {
-        console.log(`forceSaveAndClose triggered for item ${itemId}. Has unsaved changes: ${hasUnsavedChanges}`);
-        if (hasUnsavedChanges) {
-            console.log('Forcing save...');
-            setIsSaving(true);
-            try {
-                const rundownUpdatePromise = safeUpdateRundown(appState.activeRundownId, (rundownData) => {
-                    const newItems = rundownData.items.map(item =>
-                        item.id.toString() === itemId.toString()
-                            ? { ...item, ...formData, id: item.id }
-                            : item
-                    );
-                    return { ...rundownData, items: newItems };
-                });
+        console.log(`forceSaveAndClose triggered for item ${itemId}.`);
+        setIsSaving(true);
+        try {
+            console.log('Forcing save of current form data...');
+            // Unconditionally save the current formData, ignoring hasUnsavedChanges
+            await safeUpdateRundown(appState.activeRundownId, (rundownData) => {
+                const newItems = rundownData.items.map(item =>
+                    item.id.toString() === itemId.toString()
+                        ? { ...item, ...formData, id: item.id }
+                        : item
+                );
+                return { ...rundownData, items: newItems };
+            });
 
-                let storyUpdatePromise = Promise.resolve();
-                if (initialData.storyId) {
-                    const storyRef = doc(db, "stories", initialData.storyId);
-                    const storyUpdates = {
-                        title: formData.title,
-                        content: formData.content,
-                        duration: formData.duration,
-                        tags: formData.type,
-                        authorId: formData.authorId,
-                    };
-                    storyUpdatePromise = updateDoc(storyRef, storyUpdates);
-                }
-
-                await Promise.all([rundownUpdatePromise, storyUpdatePromise]);
-                console.log('Forced save successful.');
-                setHasUnsavedChanges(false);
-            } catch (error) {
-                console.error("Failed to force save changes:", error);
-            } finally {
-                setIsSaving(false);
+            if (initialData.storyId) {
+                const storyRef = doc(db, "stories", initialData.storyId);
+                const storyUpdates = {
+                    title: formData.title,
+                    content: formData.content,
+                    duration: formData.duration,
+                    tags: formData.type,
+                    authorId: formData.authorId,
+                };
+                await updateDoc(storyRef, storyUpdates);
             }
+            console.log('Forced save successful.');
+        } catch (error) {
+            console.error("Failed to force save changes:", error);
+        } finally {
+            setIsSaving(false);
+            console.log('Closing tab after force save.');
+            await clearEditingItem();
+            // Pass 'true' to indicate this is a forced close for the takeover.
+            closeStoryTab(itemId, true);
         }
-        console.log('Closing tab after force save.');
-        await clearEditingItem();
-        // Pass 'true' to indicate this is a forced close for the takeover.
-        closeStoryTab(itemId, true);
-    }, [hasUnsavedChanges, safeUpdateRundown, appState.activeRundownId, formData, initialData.storyId, db, clearEditingItem, closeStoryTab, itemId]);
+    }, [safeUpdateRundown, appState.activeRundownId, formData, initialData.storyId, db, clearEditingItem, closeStoryTab, itemId]);
 
     useEffect(() => {
         if (tab?.isBeingTakenOver) {
