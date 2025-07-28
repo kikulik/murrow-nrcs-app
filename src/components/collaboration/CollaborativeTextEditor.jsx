@@ -11,14 +11,15 @@ const CollaborativeTextEditor = ({
     className = '',
     placeholder = '',
     rows = 4,
-    isOwner = true // ACCEPT isOwner as prop with default true
+    isOwner = true
 }) => {
     const { currentUser, db } = useAuth();
     const { appState } = useAppContext();
     const { 
         setEditingItem, 
         clearEditingItem, 
-        CollaborationManager
+        CollaborationManager,
+        getUserEditingItem
     } = useCollaboration();
     
     const [localValue, setLocalValue] = useState(value || '');
@@ -28,11 +29,11 @@ const CollaborativeTextEditor = ({
     const lastValueRef = useRef(value || '');
     const operationsListener = useRef(null);
 
-    // FIXED: Use the passed isOwner prop instead of AppState
-    const isTakenOver = appState.editingStoryTakenOver;
+    const editingUser = getUserEditingItem(itemId);
+    const isTakenOver = editingUser && editingUser.userId !== currentUser.uid;
     const isReadOnly = isTakenOver && !isOwner;
 
-    console.log('CollaborativeTextEditor props:', { isOwner, itemId, hasValue: !!value }); // DEBUG
+    console.log('CollaborativeTextEditor props:', { isOwner, itemId, hasValue: !!value, isTakenOver, isReadOnly });
 
     useEffect(() => {
         if (value !== lastValueRef.current) {
@@ -41,7 +42,6 @@ const CollaborativeTextEditor = ({
         }
     }, [value]);
 
-    // Simplified Firebase operations with better error handling
     useEffect(() => {
         if (!db || !itemId || !isOwner || !CollaborationManager) {
             console.log('Skipping Firebase setup:', { db: !!db, itemId, isOwner, CollaborationManager: !!CollaborationManager });
@@ -52,7 +52,6 @@ const CollaborativeTextEditor = ({
             try {
                 const { collection, query, where, onSnapshot } = await import('firebase/firestore');
                 
-                // Simplified query without orderBy to avoid index issues
                 const operationsQuery = query(
                     collection(db, "textOperations"),
                     where("itemId", "==", itemId)
@@ -72,7 +71,6 @@ const CollaborativeTextEditor = ({
                             }
                         });
                         
-                        // Sort operations by timestamp on client side
                         operations.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
                         if (operations.length > 0 && isOwner && CollaborationManager) {
@@ -91,7 +89,6 @@ const CollaborativeTextEditor = ({
                     },
                     (error) => {
                         console.error('Firebase listener error:', error);
-                        // Don't break the component, just log the error
                     }
                 );
             } catch (error) {
@@ -140,7 +137,6 @@ const CollaborativeTextEditor = ({
 
         setLocalValue(newValue);
 
-        // Only try to save operations if we have all required dependencies
         if (CollaborationManager && db && currentUser) {
             try {
                 const operations = CollaborationManager.generateTextOperations(oldValue, newValue);
@@ -160,7 +156,6 @@ const CollaborativeTextEditor = ({
                 }
             } catch (error) {
                 console.error('Error saving text operations:', error);
-                // Don't prevent local editing if Firebase fails
             }
         }
 
@@ -185,11 +180,9 @@ const CollaborativeTextEditor = ({
             });
         } catch (error) {
             console.error('Error updating cursor position:', error);
-            // Don't break editing if cursor sync fails
         }
     }, [db, itemId, currentUser, isOwner]);
 
-    // Simplified cursor tracking
     useEffect(() => {
         if (!db || !itemId || !isOwner || !currentUser) return;
 
@@ -312,9 +305,9 @@ const CollaborativeTextEditor = ({
                 </div>
             )}
 
-            {isReadOnly && appState.editingStoryTakenOverBy && (
+            {isReadOnly && editingUser && (
                 <div className="absolute top-2 right-2 bg-orange-100 border border-orange-300 rounded px-2 py-1 text-xs">
-                    {appState.editingStoryTakenOverBy} is editing
+                    {editingUser.userName} is editing
                 </div>
             )}
         </div>
