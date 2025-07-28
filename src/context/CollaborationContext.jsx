@@ -77,13 +77,25 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
-    const handleTakeOverNotification = useCallback((notification) => {
+    const handleTakeOverNotification = useCallback(async (notification) => {
         if (notification.type === 'takeOver') {
             console.log('Received takeover notification for item:', notification.itemId);
             
             const tabToClose = appState.editingStoryTabs.find(tab => tab.itemId.toString() === notification.itemId.toString());
             if (tabToClose) {
-                console.log('Closing tab for taken over user');
+                console.log('Triggering save and close for taken over user');
+                
+                setAppState(prev => ({
+                    ...prev,
+                    editingStoryTabs: prev.editingStoryTabs.map(tab =>
+                        tab.itemId.toString() === notification.itemId.toString()
+                            ? { ...tab, isBeingTakenOver: true }
+                            : tab
+                    )
+                }));
+
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
                 forceCloseStoryTab(notification.itemId);
                 setTimeout(() => markNotificationAsRead(notification.id), 1000);
             }
@@ -99,7 +111,7 @@ export const CollaborationProvider = ({ children }) => {
                 manager.setEditingItem(null);
             }
         }
-    }, [appState.editingStoryTabs, forceCloseStoryTab, db]);
+    }, [appState.editingStoryTabs, forceCloseStoryTab, db, setAppState]);
 
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
@@ -288,8 +300,23 @@ export const CollaborationProvider = ({ children }) => {
             console.log('Taking over story:', itemId, 'from user:', previousUserId);
             
             await manager.sendTakeOverNotification(itemId, previousUserId);
+            
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
             await manager.clearPreviousUserEditingState(previousUserId, itemId);
             await manager.setEditingItem(itemId.toString());
+            
+            const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
+            const currentItem = rundownData?.items?.find(item => item.id.toString() === itemId.toString());
+            
+            if (currentItem) {
+                openStoryTab(itemId, currentItem);
+                updateStoryTab(itemId, {
+                    isOwner: true,
+                    takenOver: false,
+                    takenOverBy: null
+                });
+            }
             
             setTimeout(() => {
                 setEditingSessions(prevSessions => {
@@ -302,12 +329,6 @@ export const CollaborationProvider = ({ children }) => {
                     return newSessions;
                 });
             }, 200);
-            
-            updateStoryTab(itemId, {
-                isOwner: true,
-                takenOver: false,
-                takenOverBy: null
-            });
             
             return true;
         } catch (error) {
