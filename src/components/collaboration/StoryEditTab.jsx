@@ -107,11 +107,8 @@ const StoryEditTab = ({ itemId }) => {
     }, [hasUnsavedChanges, isOwner, autoSave, clearEditingItem, closeStoryTab, itemId]);
     
     const forceSaveAndClose = useCallback(async () => {
-        console.log(`forceSaveAndClose triggered for item ${itemId}.`);
         setIsSaving(true);
         try {
-            console.log('Forcing save of current form data...');
-            // Unconditionally save the current formData, ignoring hasUnsavedChanges
             await safeUpdateRundown(appState.activeRundownId, (rundownData) => {
                 const newItems = rundownData.items.map(item =>
                     item.id.toString() === itemId.toString()
@@ -132,21 +129,17 @@ const StoryEditTab = ({ itemId }) => {
                 };
                 await updateDoc(storyRef, storyUpdates);
             }
-            console.log('Forced save successful.');
         } catch (error) {
             console.error("Failed to force save changes:", error);
         } finally {
             setIsSaving(false);
-            console.log('Closing tab after force save.');
             await clearEditingItem();
-            // Pass 'true' to indicate this is a forced close for the takeover.
             closeStoryTab(itemId, true);
         }
     }, [safeUpdateRundown, appState.activeRundownId, formData, initialData.storyId, db, clearEditingItem, closeStoryTab, itemId]);
 
     useEffect(() => {
         if (tab?.isBeingTakenOver) {
-            console.log(`Takeover detected for item ${itemId}. Forcing save and close.`);
             forceSaveAndClose();
         }
     }, [tab?.isBeingTakenOver, forceSaveAndClose]);
@@ -203,15 +196,6 @@ const StoryEditTab = ({ itemId }) => {
         }
     };
 
-    const handleTakeOver = async () => {
-        if (editingUser?.userId) {
-            const success = await takeOverStory(itemId, editingUser.userId);
-            if (!success) {
-                showNotification("Failed to take over editing.", "error");
-            }
-        }
-    };
-
     if (!itemId) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -246,12 +230,6 @@ const StoryEditTab = ({ itemId }) => {
                         <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
                             <CustomIcon name="lock" size={32} className="text-orange-600" />
                             <span className="text-sm text-orange-800 dark:text-orange-200">{takenOverBy} is editing</span>
-                            <button 
-                                onClick={handleTakeOver} 
-                                className="ml-2 px-2 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700 pointer-events-auto"
-                            >
-                                Take Over
-                            </button>
                         </div>
                     )}
                 </div>
@@ -280,7 +258,7 @@ const StoryEditTab = ({ itemId }) => {
                         <div>
                             <h4 className="font-medium text-orange-800 dark:text-orange-200">Story is Being Edited</h4>
                             <p className="text-sm text-orange-700 dark:text-orange-300">
-                                {takenOverBy} is currently editing this story. You can view the content but cannot make changes unless you take over.
+                                {takenOverBy} is currently editing this story. You can view the content but cannot make changes.
                             </p>
                         </div>
                     </div>
@@ -317,7 +295,7 @@ const StoryEditTab = ({ itemId }) => {
                             </label>
                             {wordCount > 0 && (
                                 <p className="text-xs text-gray-500 mt-1">
-                                    {wordCount} words &bull; Est. {calculatedDuration} reading time
+                                    {wordCount} words • Est. {calculatedDuration} reading time
                                 </p>
                             )}
                         </div>
