@@ -25,19 +25,24 @@ export const CollaborationProvider = ({ children }) => {
             isDestroyed: collaborationManagerRef.current?.isDestroyed 
         });
         
-        if (db && currentUser) {
-            if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
-                console.log('Creating new CollaborationManager');
-                collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+        try {
+            if (db && currentUser) {
+                if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                    console.log('Creating new CollaborationManager');
+                    collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+                    presenceInitialized.current = false;
+                }
+            } else {
+                if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
+                    console.log('Stopping CollaborationManager');
+                    collaborationManagerRef.current.stopPresenceTracking();
+                }
+                collaborationManagerRef.current = null;
                 presenceInitialized.current = false;
             }
-        } else {
-            if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
-                console.log('Stopping CollaborationManager');
-                collaborationManagerRef.current.stopPresenceTracking();
-            }
-            collaborationManagerRef.current = null;
-            presenceInitialized.current = false;
+        } catch (error) {
+            console.error('Error in manager initialization:', error);
+            // Don't crash the app, just log the error
         }
     }, [db, currentUser]);
 
@@ -76,23 +81,31 @@ export const CollaborationProvider = ({ children }) => {
             notificationsUnsubscribeRef.current = onSnapshot(
                 notificationsQuery,
                 (snapshot) => {
-                    const allUserNotifications = snapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data()
-                    }));
-                    const unreadNotifications = allUserNotifications.filter(n => n.read === false);
-                    unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                    setNotifications(unreadNotifications);
-                    unreadNotifications.forEach(handleTakeOverNotification);
+                    try {
+                        const allUserNotifications = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        const unreadNotifications = allUserNotifications.filter(n => n.read === false);
+                        unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                        setNotifications(unreadNotifications);
+                        unreadNotifications.forEach(handleTakeOverNotification);
+                    } catch (error) {
+                        console.error('Error processing notifications:', error);
+                    }
                 },
                 (error) => {
                     console.error('Notifications listener error:', error);
+                    // Don't crash the app, just log the error
+                    if (error.code === 'permission-denied') {
+                        console.warn('Permission denied for notifications, user may need to re-login');
+                    }
                 }
             );
         } catch (error) {
             console.error('Error setting up notification listener:', error);
         }
-    }, [db, currentUser]);
+    }, [db, currentUser, handleTakeOverNotification]);
 
     useEffect(() => {
         if (currentUser && db) {
@@ -113,39 +126,41 @@ export const CollaborationProvider = ({ children }) => {
 
     useEffect(() => {
         const manager = collaborationManagerRef.current;
-        console.log('Presence effect:', {
-            hasManager: !!manager,
-            isDestroyed: manager?.isDestroyed,
-            activeRundownId: appState.activeRundownId,
-            hasUser: !!currentUser,
-            presenceInitialized: presenceInitialized.current
-        });
         
-        if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser) {
-            if (!presenceInitialized.current) {
-                console.log('Starting presence tracking for rundown:', appState.activeRundownId);
-                presenceInitialized.current = true;
-                manager.startPresenceTracking(appState.activeRundownId);
-                manager.listenToPresence(
-                    appState.activeRundownId,
-                    (allUsers) => {
-                        setActiveUsers(allUsers);
-                        updateEditingSessions(allUsers);
-                    }
-                );
+        try {
+            if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser) {
+                if (!presenceInitialized.current) {
+                    console.log('Starting presence tracking for rundown:', appState.activeRundownId);
+                    presenceInitialized.current = true;
+                    manager.startPresenceTracking(appState.activeRundownId);
+                    manager.listenToPresence(
+                        appState.activeRundownId,
+                        (allUsers) => {
+                            setActiveUsers(allUsers);
+                            updateEditingSessions(allUsers);
+                        }
+                    );
+                }
+            } else if (!appState.activeRundownId) {
+                presenceInitialized.current = false;
             }
-        } else if (!appState.activeRundownId) {
-            presenceInitialized.current = false;
+        } catch (error) {
+            console.error('Error in presence tracking setup:', error);
+            // Don't crash the app
         }
 
         return () => {
-            if (manager && !manager.isDestroyed && presenceInitialized.current) {
-                console.log('Cleaning up presence tracking');
-                manager.stopPresenceTracking();
-                presenceInitialized.current = false;
+            try {
+                if (manager && !manager.isDestroyed && presenceInitialized.current) {
+                    console.log('Cleaning up presence tracking');
+                    manager.stopPresenceTracking();
+                    presenceInitialized.current = false;
+                }
+            } catch (error) {
+                console.error('Error cleaning up presence tracking:', error);
             }
         };
-    }, [appState.activeRundownId, currentUser]);
+    }, [appState.activeRundownId, currentUser, updateEditingSessions]);
 
     const updateEditingSessions = useCallback((users) => {
         const sessions = new Map();
@@ -178,6 +193,15 @@ export const CollaborationProvider = ({ children }) => {
         });
     }, []);
 
+    const markNotificationAsRead = async (notificationId) => {
+        if (!db) return;
+        try {
+            await updateDoc(doc(db, "notifications", notificationId), { read: true });
+        } catch (error) {
+            console.error('Error marking notification as read:', error);
+        }
+    };
+
     const handleTakeOverNotification = useCallback((notification) => {
         if (notification.type === 'takeOver') {
             console.log('Received takeover notification for item:', notification.itemId);
@@ -203,16 +227,7 @@ export const CollaborationProvider = ({ children }) => {
                 manager.setEditingItem(null);
             }
         }
-    }, [appState.editingStoryTabs, forceCloseStoryTab, markNotificationAsRead]);
-
-    const markNotificationAsRead = async (notificationId) => {
-        if (!db) return;
-        try {
-            await updateDoc(doc(db, "notifications", notificationId), { read: true });
-        } catch (error) {
-            console.error('Error marking notification as read:', error);
-        }
-    };
+    }, [appState.editingStoryTabs, forceCloseStoryTab, db]);
 
     const startEditingStory = async (itemId, storyData) => {
         if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
