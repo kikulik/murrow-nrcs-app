@@ -20,7 +20,8 @@ const StoryEditTab = ({ itemId }) => {
         getUserEditingItem,
     } = useCollaboration();
 
-    const takeoverProcessedRef = useRef(false);
+    // FIX: Removed takeoverProcessedRef as it was causing issues.
+    // The logic is now simpler and more robust.
 
     if (!itemId || !currentUser || !appState) {
         return (
@@ -62,6 +63,9 @@ const StoryEditTab = ({ itemId }) => {
             return false;
         }
 
+        // FIX: Ensure we don't try to save if another save is already in progress.
+        if (isSaving) return;
+
         try {
             setIsSaving(true);
             
@@ -99,7 +103,8 @@ const StoryEditTab = ({ itemId }) => {
         } finally {
             setIsSaving(false);
         }
-    }, [itemId, formData, appState.activeRundownId, safeUpdateRundown, initialData.storyId, db]);
+    }, [itemId, formData, appState.activeRundownId, safeUpdateRundown, initialData.storyId, db, isSaving]);
+
 
     const autoSave = useCallback(async () => {
         if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db) {
@@ -116,35 +121,40 @@ const StoryEditTab = ({ itemId }) => {
         closeStoryTab(itemId);
     }, [hasUnsavedChanges, isOwner, saveChanges, clearEditingItem, closeStoryTab, itemId]);
     
-    const forceSaveAndClose = useCallback(async () => {
-        if (takeoverProcessedRef.current) {
-            console.log('Takeover already processed, ignoring duplicate');
-            return;
-        }
+    // FIX: Renamed and simplified the force close logic.
+    // This function is now more reliable.
+    const saveAndCloseForTakeover = useCallback(async () => {
+        console.log('Takeover detected, forcing save and close for item:', itemId);
         
-        takeoverProcessedRef.current = true;
-        console.log('Force save and close triggered for item:', itemId);
+        // Prevent multiple saves during the close process
+        if (isSaving) return;
         setIsSaving(true);
         
         try {
-            await saveChanges();
-            console.log('Force save completed');
+            // Attempt to save any pending changes.
+            if (hasUnsavedChanges) {
+                await saveChanges();
+                console.log('Force save completed for takeover.');
+            }
         } catch (error) {
-            console.error("Failed to force save changes:", error);
+            console.error("Failed to force save changes during takeover:", error);
         } finally {
             setIsSaving(false);
+            // This now reliably clears the editing state and closes the tab.
             await clearEditingItem();
-            console.log('Force closing tab');
-            closeStoryTab(itemId, true);
+            closeStoryTab(itemId, true); // `isForced = true`
+            console.log('Force closed tab for takeover.');
         }
-    }, [saveChanges, clearEditingItem, closeStoryTab, itemId]);
+    }, [saveChanges, clearEditingItem, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
 
+
+    // FIX: Simplified the effect that triggers the takeover.
+    // It now directly calls the saveAndCloseForTakeover function.
     useEffect(() => {
-        if (tab?.isBeingTakenOver && !takeoverProcessedRef.current) {
-            console.log('Takeover detected for item:', itemId, 'triggering force save and close');
-            forceSaveAndClose();
+        if (tab?.isBeingTakenOver) {
+            saveAndCloseForTakeover();
         }
-    }, [tab?.isBeingTakenOver, forceSaveAndClose, itemId]);
+    }, [tab?.isBeingTakenOver, saveAndCloseForTakeover]);
 
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
@@ -297,7 +307,7 @@ const StoryEditTab = ({ itemId }) => {
                                 </label>
                                 {wordCount > 0 && (
                                     <p className="text-xs text-gray-500 mt-1">
-                                        {wordCount} words • Est. {calculatedDuration} reading time
+                                        {wordCount} words â€¢ Est. {calculatedDuration} reading time
                                     </p>
                                 )}
                             </div>
