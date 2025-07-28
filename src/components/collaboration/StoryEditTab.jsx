@@ -33,7 +33,8 @@ const StoryEditTab = ({ itemId }) => {
         title: initialData.title || '',
         content: initialData.content || '',
         duration: initialData.duration || '01:00',
-        type: Array.isArray(initialData.type) ? initialData.type : [initialData.type || 'STD']
+        type: Array.isArray(initialData.type) ? initialData.type : [initialData.type || 'STD'],
+        authorId: initialData.authorId || currentUser.uid
     });
 
     const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
@@ -41,6 +42,7 @@ const StoryEditTab = ({ itemId }) => {
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [notification, setNotification] = useState(null);
+    const [isBeingTakenOver, setIsBeingTakenOver] = useState(false);
 
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
@@ -53,6 +55,13 @@ const StoryEditTab = ({ itemId }) => {
             }));
         }
     }, [calculatedDuration, useCalculatedDuration, isOwner]);
+
+    useEffect(() => {
+        if (isTakenOver && isOwner) {
+            setIsBeingTakenOver(true);
+            handleSaveAndClose();
+        }
+    }, [isTakenOver, isOwner]);
 
     const autoSave = useCallback(async () => {
         if (itemId && hasUnsavedChanges && isOwner && appState.activeRundownId) {
@@ -75,6 +84,7 @@ const StoryEditTab = ({ itemId }) => {
                     content: formData.content,
                     duration: formData.duration,
                     tags: formData.type,
+                    authorId: formData.authorId,
                 };
                 storyUpdatePromise = updateDoc(storyRef, storyUpdates);
             }
@@ -83,21 +93,35 @@ const StoryEditTab = ({ itemId }) => {
                 await Promise.all([rundownUpdatePromise, storyUpdatePromise]);
                 setLastSaved(new Date());
                 setHasUnsavedChanges(false);
+                return true;
             } catch (error) {
                 console.error("Failed to save changes:", error);
                 showNotification("Failed to save changes.", "error");
+                return false;
             } finally {
                 setIsSaving(false);
             }
         }
+        return false;
     }, [itemId, formData, hasUnsavedChanges, isOwner, safeUpdateRundown, appState.activeRundownId, initialData.storyId, db]);
 
+    const handleSaveAndClose = useCallback(async () => {
+        if (hasUnsavedChanges && isOwner) {
+            const saved = await autoSave();
+            if (saved) {
+                showNotification("Changes saved automatically due to takeover.", "info");
+            }
+        }
+        await clearEditingItem();
+        closeStoryTab(itemId);
+    }, [hasUnsavedChanges, isOwner, autoSave, clearEditingItem, closeStoryTab, itemId]);
+
     useEffect(() => {
-        if (isOwner && hasUnsavedChanges) {
+        if (isOwner && hasUnsavedChanges && !isBeingTakenOver) {
             const autoSaveInterval = setInterval(autoSave, 5000);
             return () => clearInterval(autoSaveInterval);
         }
-    }, [autoSave, isOwner, hasUnsavedChanges]);
+    }, [autoSave, isOwner, hasUnsavedChanges, isBeingTakenOver]);
 
     const handleFormChange = (field, value) => {
         if (!isOwner) return;
@@ -114,7 +138,7 @@ const StoryEditTab = ({ itemId }) => {
     };
 
     const handleClose = async () => {
-        if (hasUnsavedChanges && isOwner) {
+        if (hasUnsavedChanges && isOwner && !isBeingTakenOver) {
             const shouldSave = window.confirm('You have unsaved changes. Save before closing?');
             if (shouldSave) {
                 await autoSave();
@@ -281,17 +305,14 @@ const StoryEditTab = ({ itemId }) => {
                         />
                     </div>
 
-                    {isOwner && (
+                    {isOwner && !isBeingTakenOver && (
                         <div className="flex items-center justify-between pt-4 border-t">
                             <div className="text-xs text-gray-500">
                                 Auto-save every 5 seconds
                             </div>
                             <div className="flex gap-3">
-                                <button onClick={autoSave} disabled={!hasUnsavedChanges || isSaving} className="btn-secondary" type="button">
-                                    <CustomIcon name="save" size={32} /> <span>Save Draft</span>
-                                </button>
-                                <button onClick={autoSave} disabled={isSaving} className="btn-primary" type="button">
-                                    <CustomIcon name="save" size={40} /> <span>{isSaving ? 'Saving...' : 'Save & Update'}</span>
+                                <button onClick={handleSaveAndClose} disabled={isSaving} className="btn-primary" type="button">
+                                    <CustomIcon name="save" size={40} /> <span>{isSaving ? 'Saving & Closing...' : 'Save & Close'}</span>
                                 </button>
                             </div>
                         </div>
