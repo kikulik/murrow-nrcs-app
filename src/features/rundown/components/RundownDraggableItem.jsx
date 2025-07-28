@@ -36,7 +36,7 @@ const RundownDraggableItem = ({
     const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
     const canTakeOver = userPermissions.canTakeOverStories;
 
-    console.log(`Item ${item.id} - editingUser:`, editingUser, 'isBeingEditedByOther:', isBeingEditedByOther);
+    console.log(`Item ${item.id} - editingUser:`, editingUser, 'isBeingEditedByOther:', isBeingEditedByOther, 'editingSessions size:', editingSessions?.size || 'no sessions');
 
     const [{ handlerId }, drop] = useDrop({
         accept: 'rundownItem',
@@ -100,6 +100,8 @@ const RundownDraggableItem = ({
     };
 
     const handleEdit = async () => {
+        console.log('handleEdit called for item:', item.id, 'isBeingEditedByOther:', isBeingEditedByOther);
+        
         if (isBeingEditedByOther && !canTakeOver) {
             alert(`${editingUser.userName} is currently editing this item. You don't have permission to take over.`);
             return;
@@ -109,11 +111,13 @@ const RundownDraggableItem = ({
             if (isBeingEditedByOther && canTakeOver) {
                 const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved.`);
                 if (confirmed) {
+                    console.log('Taking over story from:', editingUser.userName);
                     await takeOverStory(item.id, editingUser.userId);
                 } else {
                     return;
                 }
             }
+            console.log('Starting editing story for item:', item.id);
             await startEditingStory(item.id, item);
         } catch (error) {
             console.error('Error starting edit:', error);
