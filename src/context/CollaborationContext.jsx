@@ -17,12 +17,15 @@ export const CollaborationProvider = ({ children }) => {
     const notificationsUnsubscribeRef = useRef(null);
 
     useEffect(() => {
+        console.log('CollaborationManager effect triggered:', { db: !!db, currentUser: !!currentUser });
         if (db && currentUser) {
             if (!collaborationManagerRef.current) {
+                console.log('Creating new CollaborationManager');
                 collaborationManagerRef.current = new CollaborationManager(db, currentUser);
             }
         } else {
             if (collaborationManagerRef.current) {
+                console.log('Stopping CollaborationManager');
                 collaborationManagerRef.current.stopPresenceTracking();
                 collaborationManagerRef.current = null;
             }
@@ -100,11 +103,19 @@ export const CollaborationProvider = ({ children }) => {
 
     useEffect(() => {
         const manager = collaborationManagerRef.current;
+        console.log('Presence effect triggered:', { 
+            hasManager: !!manager, 
+            activeRundownId: appState.activeRundownId, 
+            currentUser: currentUser?.uid 
+        });
+        
         if (manager && appState.activeRundownId && currentUser) {
+            console.log('Starting presence tracking for rundown:', appState.activeRundownId);
             manager.startPresenceTracking(appState.activeRundownId);
             manager.listenToPresence(
                 appState.activeRundownId,
                 (allUsers) => {
+                    console.log('Received presence update - all users:', allUsers);
                     setActiveUsers(allUsers);
                     updateEditingSessions(allUsers);
                 }
@@ -154,10 +165,15 @@ export const CollaborationProvider = ({ children }) => {
 
     const startEditingStory = async (itemId, storyData) => {
         const manager = collaborationManagerRef.current;
-        if (!manager) return;
+        if (!manager) {
+            console.error('No collaboration manager available');
+            return;
+        }
     
         const editingUser = editingSessions.get(itemId.toString());
         const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
+
+        console.log('startEditingStory - itemId:', itemId, 'editingUser:', editingUser, 'isBeingEditedByOther:', isBeingEditedByOther);
 
         if (isBeingEditedByOther) {
             openStoryTab(itemId, storyData);
@@ -167,6 +183,7 @@ export const CollaborationProvider = ({ children }) => {
                 takenOverBy: editingUser.userName,
             });
         } else {
+            console.log('Setting editing item to:', itemId.toString());
             await manager.setEditingItem(itemId.toString());
             openStoryTab(itemId, storyData);
             updateStoryTab(itemId, {
@@ -251,7 +268,9 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const getUserEditingItem = (itemId) => {
-        return editingSessions.get(itemId.toString());
+        const result = editingSessions.get(itemId.toString());
+        console.log('getUserEditingItem called for itemId:', itemId, 'result:', result, 'editingSessions size:', editingSessions.size);
+        return result;
     };
 
     const isItemBeingEdited = (itemId) => {
