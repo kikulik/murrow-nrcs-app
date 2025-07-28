@@ -88,8 +88,6 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
-    // FIX: This notification handler is kept for other notification types,
-    // but the primary takeover logic is now more direct.
     const handleTakeOverNotification = useCallback(async (notification) => {
         if (!notification || notification.type !== 'takeOver' || processedNotifications.current.has(notification.id)) {
             return;
@@ -98,8 +96,6 @@ export const CollaborationProvider = ({ children }) => {
         processedNotifications.current.add(notification.id);
         console.log('Processing takeover notification for item:', notification.itemId);
         
-        // This now serves as a backup mechanism. The primary mechanism is the direct
-        // presence listener update.
         updateStoryTab(notification.itemId, { isBeingTakenOver: true });
         await markNotificationAsRead(notification.id);
     }, [updateStoryTab, markNotificationAsRead]);
@@ -173,6 +169,9 @@ export const CollaborationProvider = ({ children }) => {
     }, [setupNotificationListener, currentUser, db]);
 
     const updateEditingSessions = useCallback((users) => {
+        // FIX: Add a guard clause to prevent errors when currentUser is null (e.g., during logout).
+        if (!currentUser) return;
+
         const sessions = new Map();
         const myOpenTabs = new Set(appState.editingStoryTabs.map(t => t.itemId.toString()));
 
@@ -185,8 +184,6 @@ export const CollaborationProvider = ({ children }) => {
                     timestamp: Date.now()
                 });
 
-                // FIX: Proactive check for takeovers. If a tab I have open is now being
-                // edited by someone else, trigger the takeover flow immediately.
                 if (myOpenTabs.has(itemIdStr) && user.userId !== currentUser.uid) {
                     console.log(`Proactive takeover detected for item ${itemIdStr} by ${user.userName}`);
                     updateStoryTab(itemIdStr, { isBeingTakenOver: true });
@@ -210,7 +207,8 @@ export const CollaborationProvider = ({ children }) => {
             
             return hasChanged ? sessions : prevSessions;
         });
-    }, [appState.editingStoryTabs, currentUser.uid, updateStoryTab]);
+    // FIX: Depend on the whole currentUser object, not currentUser.uid.
+    }, [appState.editingStoryTabs, currentUser, updateStoryTab]);
 
 
     useEffect(() => {
@@ -326,8 +324,6 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
-    // FIX: Simplified and made the takeover process more direct.
-    // The notification is now a secondary confirmation rather than the primary trigger.
     const takeOverStory = async (itemId, previousUserId) => {
         const manager = collaborationManagerRef.current;
         if (!manager || manager.isDestroyed) return false;
@@ -343,16 +339,12 @@ export const CollaborationProvider = ({ children }) => {
                 return false;
             }
     
-            // 1. Immediately set the new user as the editor in Firestore.
-            // This is the most critical step and will trigger the presence listener on the other client.
             await manager.setEditingItem(itemId.toString());
             console.log('Set current user as editing');
     
-            // 2. Send a notification as a secondary channel.
             await manager.sendTakeOverNotification(itemId, previousUserId);
             console.log('Sent takeover notification');
             
-            // 3. Update local state and open the tab for the new owner.
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
                 newSessions.set(itemId.toString(), {
