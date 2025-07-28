@@ -19,22 +19,24 @@ const RundownDraggableItem = ({
     isSelected,
     onSelect
 }) => {
-    const { appState, setQuickEditItem, openStoryTab } = useAppContext();
+    const { appState, setQuickEditItem } = useAppContext();
     const { currentUser } = useAuth();
     const {
         safeUpdateRundown,
-        editingSessions, // Use editingSessions from the context
+        editingSessions,
         startEditingStory,
-        takeOverStory
+        takeOverStory,
+        getUserEditingItem
     } = useCollaboration();
     const ref = useRef(null);
 
     const userPermissions = getUserPermissions(currentUser.role);
     
-    // FIX: Get the editing user directly from the reliable editingSessions map.
-    const editingUser = editingSessions.get(item.id.toString());
+    const editingUser = getUserEditingItem(item.id);
     const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
     const canTakeOver = userPermissions.canTakeOverStories;
+
+    console.log(`Item ${item.id} - editingUser:`, editingUser, 'isBeingEditedByOther:', isBeingEditedByOther);
 
     const [{ handlerId }, drop] = useDrop({
         accept: 'rundownItem',
@@ -186,9 +188,11 @@ const RundownDraggableItem = ({
                     </h4>
                 </div>
                 <div className="col-span-1 flex justify-center">
-                    {/* FIX: Display the user icon when another user is editing. */}
                     {isBeingEditedByOther && (
-                        <div title={`${editingUser.userName} is editing`} className="w-4 h-4 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center">
+                        <div 
+                            title={`${editingUser.userName} is editing`} 
+                            className="w-6 h-6 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center animate-pulse"
+                        >
                             {editingUser.userName?.charAt(0)}
                         </div>
                     )}
@@ -219,7 +223,7 @@ const RundownDraggableItem = ({
                             {isBeingEditedByOther && canTakeOver ? (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleTakeOver(); }}
-                                    className="p-1 text-orange-600 hover:text-orange-800 rounded"
+                                    className="p-1 text-orange-600 hover:text-orange-800 rounded bg-orange-100 hover:bg-orange-200"
                                     title={`Take over from ${editingUser.userName}`}
                                 >
                                     <CustomIcon name="user" size={16} />
