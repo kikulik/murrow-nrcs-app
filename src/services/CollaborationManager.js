@@ -1,4 +1,4 @@
-// src/services/CollaborationManager.js
+// src/services/CollaborationManager.js (Fixed Real-time)
 export class CollaborationManager {
     constructor(db, currentUser) {
         this.db = db;
@@ -8,7 +8,7 @@ export class CollaborationManager {
         this.presenceInterval = null;
         this.presenceListenerUnsubscribe = null;
         this.lastUpdate = 0;
-        this.updateThrottle = 1000;
+        this.updateThrottle = 500;
         this.cleanup = () => { };
         this.isDestroyed = false;
     }
@@ -69,7 +69,7 @@ export class CollaborationManager {
                     }
                     console.error('Error updating presence:', error);
                 }
-            }, 3000);
+            }, 1000);
 
             const handleBeforeUnload = () => this.stopPresenceTracking();
             window.addEventListener('beforeunload', handleBeforeUnload);
@@ -124,27 +124,19 @@ export class CollaborationManager {
         }
 
         this.currentEditingItem = itemId;
+        console.log('Setting editing item to:', itemId);
         
         if (this.presenceRef) {
             try {
                 const { updateDoc } = await import("firebase/firestore");
                 const updateData = {
                     editingItem: itemId,
-                    lastSeen: new Date().toISOString()
+                    lastSeen: new Date().toISOString(),
+                    isActive: true
                 };
                 await updateDoc(this.presenceRef, updateData);
                 this.lastUpdate = Date.now();
-                
-                setTimeout(() => {
-                    if (!this.isDestroyed && this.presenceRef) {
-                        updateDoc(this.presenceRef, {
-                            editingItem: itemId,
-                            lastSeen: new Date().toISOString(),
-                            isActive: true
-                        }).catch(err => console.error('Force update failed:', err));
-                    }
-                }, 300);
-                
+                console.log('Updated presence with editing item:', itemId);
             } catch (error) {
                 if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
                     console.warn('User appears to be logged out, cannot update editing item');
@@ -158,16 +150,22 @@ export class CollaborationManager {
     async sendTakeOverNotification(itemId, previousUserId) {
         if (!previousUserId || this.isDestroyed) return;
         try {
+            console.log('Sending takeover notification to user:', previousUserId, 'for item:', itemId);
             const { collection, addDoc } = await import("firebase/firestore");
-            // FIX: Let Firestore generate the document ID by not passing an 'id' field.
-            await addDoc(collection(this.db, "notifications"), {
+            
+            const notificationData = {
                 userId: previousUserId,
                 type: 'takeOver',
                 message: `${this.currentUser.name} has taken over editing the item.`,
-                itemId: itemId,
+                itemId: itemId.toString(),
                 timestamp: new Date().toISOString(),
-                read: false
-            });
+                read: false,
+                takenOverBy: this.currentUser.uid,
+                takenOverByName: this.currentUser.name
+            };
+            
+            const docRef = await addDoc(collection(this.db, "notifications"), notificationData);
+            console.log('Takeover notification sent with ID:', docRef.id);
         } catch (error) {
             console.error('Error sending notification:', error);
         }
@@ -202,7 +200,7 @@ export class CollaborationManager {
                             if (!data.lastSeen) return false;
                             const lastSeen = new Date(data.lastSeen);
                             const minutesAgo = (new Date() - lastSeen) / (1000 * 60);
-                            return minutesAgo < 5;
+                            return minutesAgo < 2;
                         })
                         .map(data => ({
                             userId: data.userId,
@@ -264,6 +262,7 @@ export class CollaborationManager {
         if (this.isDestroyed) return;
 
         try {
+            console.log('Clearing editing state for user:', previousUserId, 'item:', itemId);
             const { collection, query, where, getDocs, updateDoc } = await import("firebase/firestore");
             
             const presenceQuery = query(
@@ -276,6 +275,7 @@ export class CollaborationManager {
             const updatePromises = presenceSnapshot.docs.map(doc => {
                 const data = doc.data();
                 if (data.editingItem === itemId.toString()) {
+                    console.log('Clearing editing item for presence doc:', doc.id);
                     return updateDoc(doc.ref, {
                         editingItem: null,
                         lastSeen: new Date().toISOString()
@@ -285,7 +285,7 @@ export class CollaborationManager {
             });
             
             await Promise.all(updatePromises);
-            console.log('Cleared previous user editing state for user:', previousUserId);
+            console.log('Successfully cleared previous user editing state');
             
         } catch (error) {
             console.error('Error clearing previous user editing state:', error);
@@ -319,45 +319,6 @@ export class CollaborationManager {
                 if (attempt === retryCount - 1) throw error;
                 await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
             }
-        }
-    }
-
-    async ensureLatestContent(itemId) {
-        if (this.isDestroyed) return null;
-
-        try {
-            const { doc, getDoc } = await import("firebase/firestore");
-            const storyDraftRef = doc(this.db, "storyDrafts", `${itemId}_auto`);
-            const draftDoc = await getDoc(storyDraftRef);
-            
-            if (draftDoc.exists()) {
-                return draftDoc.data();
-            }
-            
-            return null;
-        } catch (error) {
-            console.error('Error getting latest content:', error);
-            return null;
-        }
-    }
-
-    async saveContentForTakeover(itemId, content) {
-        if (this.isDestroyed) return;
-
-        try {
-            const { doc, setDoc } = await import("firebase/firestore");
-            const storyDraftRef = doc(this.db, "storyDrafts", `${itemId}_auto`);
-            
-            await setDoc(storyDraftRef, {
-                itemId,
-                content,
-                timestamp: new Date().toISOString(),
-                savedBy: this.currentUser.uid,
-                autoSaved: true
-            }, { merge: true });
-            
-        } catch (error) {
-            console.error('Error saving content for takeover:', error);
         }
     }
 }
