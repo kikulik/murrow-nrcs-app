@@ -327,8 +327,8 @@ export const CollaborationProvider = ({ children }) => {
         try {
             console.log('Starting takeover for item:', itemId, 'from user:', previousUserId);
             
-            const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
-            const currentItem = rundownData?.items?.find(item => item.id.toString() === itemId.toString());
+            let rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
+            let currentItem = rundownData?.items?.find(item => item.id.toString() === itemId.toString());
             
             if (!currentItem) {
                 console.error('Item not found in rundown');
@@ -340,9 +340,22 @@ export const CollaborationProvider = ({ children }) => {
     
             await manager.sendTakeOverNotification(itemId, previousUserId);
             console.log('Sent takeover notification');
+
+            // FIX: Introduce a short delay and then force a refresh of the rundown data
+            // to ensure we have the absolute latest version before opening the tab.
+            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+
+            const rundownRef = doc(db, "rundowns", appState.activeRundownId);
+            const freshRundownDoc = await getDoc(rundownRef);
+            if (freshRundownDoc.exists()) {
+                const freshRundownData = freshRundownDoc.data();
+                setAppState(prev => ({
+                    ...prev,
+                    rundowns: prev.rundowns.map(r => r.id === appState.activeRundownId ? { ...r, ...freshRundownData } : r)
+                }));
+                currentItem = freshRundownData.items.find(item => item.id.toString() === itemId.toString());
+            }
             
-            // FIX: Immediately update the local state to prevent race conditions.
-            // This ensures the UI knows the current user is the owner *before* opening the tab.
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
                 newSessions.set(itemId.toString(), {
@@ -353,7 +366,7 @@ export const CollaborationProvider = ({ children }) => {
                 return newSessions;
             });
             
-            console.log('Opening story tab for new user');
+            console.log('Opening story tab for new user with fresh data');
             openStoryTab(itemId, currentItem);
             updateStoryTab(itemId, {
                 isOwner: true,
