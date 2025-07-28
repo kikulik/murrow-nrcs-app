@@ -1,4 +1,4 @@
-// src/components/collaboration/StoryEditTab.jsx
+// src/components/collaboration/StoryEditTab.jsx (Complete)
 import React, { useState, useEffect, useCallback } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
@@ -55,8 +55,8 @@ const StoryEditTab = ({ itemId }) => {
         setTimeout(() => setNotification(null), 3000);
     };
 
-    const autoSave = useCallback(async () => {
-        if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db) {
+    const saveChanges = useCallback(async () => {
+        if (!itemId || !appState.activeRundownId || !safeUpdateRundown || !db) {
             return false;
         }
 
@@ -88,6 +88,7 @@ const StoryEditTab = ({ itemId }) => {
             await Promise.all([rundownUpdatePromise, storyUpdatePromise]);
             setLastSaved(new Date());
             setHasUnsavedChanges(false);
+            console.log('Story saved successfully');
             return true;
         } catch (error) {
             console.error("Failed to save changes:", error);
@@ -96,50 +97,43 @@ const StoryEditTab = ({ itemId }) => {
         } finally {
             setIsSaving(false);
         }
-    }, [itemId, formData, hasUnsavedChanges, isOwner, safeUpdateRundown, appState.activeRundownId, initialData.storyId, db]);
+    }, [itemId, formData, appState.activeRundownId, safeUpdateRundown, initialData.storyId, db]);
+
+    const autoSave = useCallback(async () => {
+        if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db) {
+            return false;
+        }
+        return await saveChanges();
+    }, [itemId, hasUnsavedChanges, isOwner, saveChanges]);
 
     const handleSaveAndClose = useCallback(async () => {
         if (hasUnsavedChanges && isOwner) {
-            await autoSave();
+            await saveChanges();
         }
         await clearEditingItem();
         closeStoryTab(itemId);
-    }, [hasUnsavedChanges, isOwner, autoSave, clearEditingItem, closeStoryTab, itemId]);
+    }, [hasUnsavedChanges, isOwner, saveChanges, clearEditingItem, closeStoryTab, itemId]);
     
     const forceSaveAndClose = useCallback(async () => {
+        console.log('Force save and close triggered for item:', itemId);
         setIsSaving(true);
+        
         try {
-            await safeUpdateRundown(appState.activeRundownId, (rundownData) => {
-                const newItems = rundownData.items.map(item =>
-                    item.id.toString() === itemId.toString()
-                        ? { ...item, ...formData, id: item.id }
-                        : item
-                );
-                return { ...rundownData, items: newItems };
-            });
-
-            if (initialData.storyId) {
-                const storyRef = doc(db, "stories", initialData.storyId);
-                const storyUpdates = {
-                    title: formData.title,
-                    content: formData.content,
-                    duration: formData.duration,
-                    tags: formData.type,
-                    authorId: formData.authorId,
-                };
-                await updateDoc(storyRef, storyUpdates);
-            }
+            await saveChanges();
+            console.log('Force save completed');
         } catch (error) {
             console.error("Failed to force save changes:", error);
         } finally {
             setIsSaving(false);
             await clearEditingItem();
+            console.log('Force closing tab');
             closeStoryTab(itemId, true);
         }
-    }, [safeUpdateRundown, appState.activeRundownId, formData, initialData.storyId, db, clearEditingItem, closeStoryTab, itemId]);
+    }, [saveChanges, clearEditingItem, closeStoryTab, itemId]);
 
     useEffect(() => {
         if (tab?.isBeingTakenOver) {
+            console.log('Takeover detected for item:', itemId, 'triggering force save and close');
             forceSaveAndClose();
         }
     }, [tab?.isBeingTakenOver, forceSaveAndClose]);
@@ -181,8 +175,8 @@ const StoryEditTab = ({ itemId }) => {
         try {
             if (hasUnsavedChanges && isOwner && !tab?.isBeingTakenOver) {
                 const shouldSave = window.confirm('You have unsaved changes. Save before closing?');
-                if (shouldSave && autoSave) {
-                    await autoSave();
+                if (shouldSave) {
+                    await saveChanges();
                 }
             }
             if (clearEditingItem) {
@@ -209,145 +203,145 @@ const StoryEditTab = ({ itemId }) => {
     try {
         return (
             <div className={containerClasses}>
-            {notification && (
-                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
-                    notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
-                    notification.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
-                    'bg-blue-100 text-blue-800 border border-blue-200'
-                }`}>
-                    <div className="flex items-center justify-between">
-                        <span>{notification.message}</span>
-                        <button onClick={() => setNotification(null)} className="ml-4 text-gray-500 hover:text-gray-700">&times;</button>
-                    </div>
-                </div>
-            )}
-
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-xl font-semibold">Edit Story</h2>
-                    <UserPresenceIndicator itemId={itemId} />
-                    {isTakenOverByOther && takenOverBy && (
-                        <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
-                            <CustomIcon name="lock" size={32} className="text-orange-600" />
-                            <span className="text-sm text-orange-800 dark:text-orange-200">{takenOverBy} is editing</span>
-                        </div>
-                    )}
-                </div>
-                <div className="flex items-center gap-4">
-                    {lastSaved && isOwner && (
-                        <span className="text-sm text-gray-500">Last saved: {lastSaved.toLocaleTimeString()}</span>
-                    )}
-                    {isSaving && (
-                        <span className="text-sm text-blue-600 flex items-center gap-1">
-                            <CustomIcon name="save" size={32} className="animate-pulse" /> Saving...
-                        </span>
-                    )}
-                    {hasUnsavedChanges && !isSaving && isOwner && (
-                        <span className="text-sm text-orange-600">Unsaved changes</span>
-                    )}
-                    <button onClick={handleClose} className="btn-secondary pointer-events-auto" type="button">
-                        <CustomIcon name="cancel" size={40} /> <span>Close</span>
-                    </button>
-                </div>
-            </div>
-
-            {isTakenOverByOther && (
-                <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
-                    <div className="flex items-center space-x-2">
-                        <CustomIcon name="lock" size={40} className="text-orange-600" />
-                        <div>
-                            <h4 className="font-medium text-orange-800 dark:text-orange-200">Story is Being Edited</h4>
-                            <p className="text-sm text-orange-700 dark:text-orange-300">
-                                {takenOverBy} is currently editing this story. You can view the content but cannot make changes.
-                            </p>
+                {notification && (
+                    <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
+                        notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
+                        notification.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
+                        'bg-blue-100 text-blue-800 border border-blue-200'
+                    }`}>
+                        <div className="flex items-center justify-between">
+                            <span>{notification.message}</span>
+                            <button onClick={() => setNotification(null)} className="ml-4 text-gray-500 hover:text-gray-700">&times;</button>
                         </div>
                     </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <h2 className="text-xl font-semibold">Edit Story</h2>
+                        <UserPresenceIndicator itemId={itemId} />
+                        {isTakenOverByOther && takenOverBy && (
+                            <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
+                                <CustomIcon name="lock" size={32} className="text-orange-600" />
+                                <span className="text-sm text-orange-800 dark:text-orange-200">{takenOverBy} is editing</span>
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-4">
+                        {lastSaved && isOwner && (
+                            <span className="text-sm text-gray-500">Last saved: {lastSaved.toLocaleTimeString()}</span>
+                        )}
+                        {isSaving && (
+                            <span className="text-sm text-blue-600 flex items-center gap-1">
+                                <CustomIcon name="save" size={32} className="animate-pulse" /> Saving...
+                            </span>
+                        )}
+                        {hasUnsavedChanges && !isSaving && isOwner && (
+                            <span className="text-sm text-orange-600">Unsaved changes</span>
+                        )}
+                        <button onClick={handleClose} className="btn-secondary pointer-events-auto" type="button">
+                            <CustomIcon name="cancel" size={40} /> <span>Close</span>
+                        </button>
+                    </div>
                 </div>
-            )}
 
-            <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6 ${!isOwner ? 'opacity-75' : ''}`}>
-                <div className="space-y-6">
-                    <InputField
-                        label="Title"
-                        value={formData.title}
-                        onChange={(e) => handleFormChange('title', e.target.value)}
-                        disabled={!isOwner}
-                    />
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <InputField
-                            label="Duration"
-                            value={formData.duration}
-                            onChange={(e) => handleFormChange('duration', e.target.value)}
-                            placeholder="MM:SS"
-                            disabled={useCalculatedDuration || !isOwner}
-                        />
-                        <div className="flex flex-col justify-end">
-                            <label className="flex items-center space-x-2 text-sm">
-                                <input
-                                    type="checkbox"
-                                    checked={useCalculatedDuration}
-                                    onChange={(e) => setUseCalculatedDuration(e.target.checked)}
-                                    disabled={!isOwner}
-                                    className="rounded"
-                                />
-                                <span>Auto-calculate from text</span>
-                            </label>
-                            {wordCount > 0 && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                    {wordCount} words • Est. {calculatedDuration} reading time
+                {isTakenOverByOther && (
+                    <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+                        <div className="flex items-center space-x-2">
+                            <CustomIcon name="lock" size={40} className="text-orange-600" />
+                            <div>
+                                <h4 className="font-medium text-orange-800 dark:text-orange-200">Story is Being Edited</h4>
+                                <p className="text-sm text-orange-700 dark:text-orange-300">
+                                    {takenOverBy} is currently editing this story. You can view the content but cannot make changes.
                                 </p>
-                            )}
+                            </div>
                         </div>
                     </div>
+                )}
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Item Type(s)</label>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
-                                <label
-                                    key={abbr}
-                                    className={`flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 ${!isOwner ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                >
+                <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6 ${!isOwner ? 'opacity-75' : ''}`}>
+                    <div className="space-y-6">
+                        <InputField
+                            label="Title"
+                            value={formData.title}
+                            onChange={(e) => handleFormChange('title', e.target.value)}
+                            disabled={!isOwner}
+                        />
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <InputField
+                                label="Duration"
+                                value={formData.duration}
+                                onChange={(e) => handleFormChange('duration', e.target.value)}
+                                placeholder="MM:SS"
+                                disabled={useCalculatedDuration || !isOwner}
+                            />
+                            <div className="flex flex-col justify-end">
+                                <label className="flex items-center space-x-2 text-sm">
                                     <input
                                         type="checkbox"
-                                        checked={Array.isArray(formData.type) && formData.type.includes(abbr)}
-                                        onChange={() => handleTypeChange(abbr)}
+                                        checked={useCalculatedDuration}
+                                        onChange={(e) => setUseCalculatedDuration(e.target.checked)}
                                         disabled={!isOwner}
-                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        className="rounded"
                                     />
-                                    <span className="text-sm font-medium">{abbr}</span>
+                                    <span>Auto-calculate from text</span>
                                 </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
-                        <textarea
-                            value={formData.content}
-                            onChange={(e) => handleFormChange('content', e.target.value)}
-                            disabled={!isOwner}
-                            placeholder="Enter story content..."
-                            rows={12}
-                            className="w-full form-input min-h-[300px]"
-                        />
-                    </div>
-
-                    {isOwner && !tab?.isBeingTakenOver && (
-                        <div className="flex items-center justify-between pt-4 border-t">
-                            <div className="text-xs text-gray-500">
-                                Auto-save every 5 seconds
-                            </div>
-                            <div className="flex gap-3">
-                                <button onClick={handleSaveAndClose} disabled={isSaving} className="btn-primary" type="button">
-                                    <CustomIcon name="save" size={40} /> <span>{isSaving ? 'Saving & Closing...' : 'Save & Close'}</span>
-                                </button>
+                                {wordCount > 0 && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        {wordCount} words • Est. {calculatedDuration} reading time
+                                    </p>
+                                )}
                             </div>
                         </div>
-                    )}
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Item Type(s)</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
+                                    <label
+                                        key={abbr}
+                                        className={`flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 ${!isOwner ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={Array.isArray(formData.type) && formData.type.includes(abbr)}
+                                            onChange={() => handleTypeChange(abbr)}
+                                            disabled={!isOwner}
+                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-sm font-medium">{abbr}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
+                            <textarea
+                                value={formData.content}
+                                onChange={(e) => handleFormChange('content', e.target.value)}
+                                disabled={!isOwner}
+                                placeholder="Enter story content..."
+                                rows={12}
+                                className="w-full form-input min-h-[300px]"
+                            />
+                        </div>
+
+                        {isOwner && !tab?.isBeingTakenOver && (
+                            <div className="flex items-center justify-between pt-4 border-t">
+                                <div className="text-xs text-gray-500">
+                                    Auto-save every 5 seconds
+                                </div>
+                                <div className="flex gap-3">
+                                    <button onClick={handleSaveAndClose} disabled={isSaving} className="btn-primary" type="button">
+                                        <CustomIcon name="save" size={40} /> <span>{isSaving ? 'Saving & Closing...' : 'Save & Close'}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
             </div>
         );
     } catch (error) {
