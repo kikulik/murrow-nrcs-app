@@ -42,7 +42,6 @@ export const CollaborationProvider = ({ children }) => {
             }
         } catch (error) {
             console.error('Error in manager initialization:', error);
-            // Don't crash the app, just log the error
         }
     }, [db, currentUser]);
 
@@ -50,8 +49,8 @@ export const CollaborationProvider = ({ children }) => {
         if (!currentUser) {
             if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
                 collaborationManagerRef.current.stopPresenceTracking();
-                collaborationManagerRef.current = null;
             }
+            collaborationManagerRef.current = null;
 
             if (notificationsUnsubscribeRef.current) {
                 try {
@@ -68,6 +67,39 @@ export const CollaborationProvider = ({ children }) => {
             presenceInitialized.current = false;
         }
     }, [currentUser]);
+
+    const markNotificationAsRead = async (notificationId) => {
+        if (!db) return;
+        try {
+            await updateDoc(doc(db, "notifications", notificationId), { read: true });
+        } catch (error) {
+            console.error('Error marking notification as read:', error);
+        }
+    };
+
+    const handleTakeOverNotification = useCallback((notification) => {
+        if (notification.type === 'takeOver') {
+            console.log('Received takeover notification for item:', notification.itemId);
+            
+            const tabToClose = appState.editingStoryTabs.find(tab => tab.itemId.toString() === notification.itemId.toString());
+            if (tabToClose) {
+                console.log('Closing tab for taken over user');
+                forceCloseStoryTab(notification.itemId);
+                setTimeout(() => markNotificationAsRead(notification.id), 1000);
+            }
+            
+            setEditingSessions(prevSessions => {
+                const newSessions = new Map(prevSessions);
+                newSessions.delete(notification.itemId.toString());
+                return newSessions;
+            });
+            
+            const manager = collaborationManagerRef.current;
+            if (manager && !manager.isDestroyed) {
+                manager.setEditingItem(null);
+            }
+        }
+    }, [appState.editingStoryTabs, forceCloseStoryTab, db]);
 
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
@@ -96,7 +128,6 @@ export const CollaborationProvider = ({ children }) => {
                 },
                 (error) => {
                     console.error('Notifications listener error:', error);
-                    // Don't crash the app, just log the error
                     if (error.code === 'permission-denied') {
                         console.warn('Permission denied for notifications, user may need to re-login');
                     }
@@ -124,6 +155,36 @@ export const CollaborationProvider = ({ children }) => {
         };
     }, [setupNotificationListener, currentUser, db]);
 
+    const updateEditingSessions = useCallback((users) => {
+        const sessions = new Map();
+        users.forEach(user => {
+            if (user.editingItem) {
+                sessions.set(user.editingItem.toString(), {
+                    userId: user.userId,
+                    userName: user.userName,
+                    timestamp: Date.now()
+                });
+            }
+        });
+        
+        setEditingSessions(prevSessions => {
+            if (prevSessions.size !== sessions.size) {
+                return sessions;
+            }
+            
+            let hasChanged = false;
+            for (const [key, value] of sessions) {
+                const prevValue = prevSessions.get(key);
+                if (!prevValue || prevValue.userId !== value.userId) {
+                    hasChanged = true;
+                    break;
+                }
+            }
+            
+            return hasChanged ? sessions : prevSessions;
+        });
+    }, []);
+
     useEffect(() => {
         const manager = collaborationManagerRef.current;
         
@@ -146,7 +207,6 @@ export const CollaborationProvider = ({ children }) => {
             }
         } catch (error) {
             console.error('Error in presence tracking setup:', error);
-            // Don't crash the app
         }
 
         return () => {
@@ -161,73 +221,6 @@ export const CollaborationProvider = ({ children }) => {
             }
         };
     }, [appState.activeRundownId, currentUser, updateEditingSessions]);
-
-    const updateEditingSessions = useCallback((users) => {
-        const sessions = new Map();
-        users.forEach(user => {
-            if (user.editingItem) {
-                sessions.set(user.editingItem.toString(), {
-                    userId: user.userId,
-                    userName: user.userName,
-                    timestamp: Date.now()
-                });
-            }
-        });
-        
-        setEditingSessions(prevSessions => {
-            // Only update if the sessions actually changed
-            if (prevSessions.size !== sessions.size) {
-                return sessions;
-            }
-            
-            let hasChanged = false;
-            for (const [key, value] of sessions) {
-                const prevValue = prevSessions.get(key);
-                if (!prevValue || prevValue.userId !== value.userId) {
-                    hasChanged = true;
-                    break;
-                }
-            }
-            
-            return hasChanged ? sessions : prevSessions;
-        });
-    }, []);
-
-    const markNotificationAsRead = async (notificationId) => {
-        if (!db) return;
-        try {
-            await updateDoc(doc(db, "notifications", notificationId), { read: true });
-        } catch (error) {
-            console.error('Error marking notification as read:', error);
-        }
-    };
-
-    const handleTakeOverNotification = useCallback((notification) => {
-        if (notification.type === 'takeOver') {
-            console.log('Received takeover notification for item:', notification.itemId);
-            
-            // Close the tab for the user who was taken over
-            const tabToClose = appState.editingStoryTabs.find(tab => tab.itemId.toString() === notification.itemId.toString());
-            if (tabToClose) {
-                console.log('Closing tab for taken over user');
-                forceCloseStoryTab(notification.itemId);
-                setTimeout(() => markNotificationAsRead(notification.id), 1000);
-            }
-            
-            // Clear the local editing session
-            setEditingSessions(prevSessions => {
-                const newSessions = new Map(prevSessions);
-                newSessions.delete(notification.itemId.toString());
-                return newSessions;
-            });
-            
-            // Clear the editing item from the manager
-            const manager = collaborationManagerRef.current;
-            if (manager && !manager.isDestroyed) {
-                manager.setEditingItem(null);
-            }
-        }
-    }, [appState.editingStoryTabs, forceCloseStoryTab, db]);
 
     const startEditingStory = async (itemId, storyData) => {
         if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
@@ -278,7 +271,6 @@ export const CollaborationProvider = ({ children }) => {
             const editingUser = editingSessions.get(itemId?.toString());
             if (editingUser && editingUser.userId === currentUser.uid) {
                 await manager.setEditingItem(null);
-                // Also clear from local state
                 setEditingSessions(prevSessions => {
                     const newSessions = new Map(prevSessions);
                     newSessions.delete(itemId?.toString());
@@ -295,16 +287,10 @@ export const CollaborationProvider = ({ children }) => {
         try {
             console.log('Taking over story:', itemId, 'from user:', previousUserId);
             
-            // Send notification to previous user FIRST
             await manager.sendTakeOverNotification(itemId, previousUserId);
-            
-            // Force clear the previous user's editing state
             await manager.clearPreviousUserEditingState(previousUserId, itemId);
-            
-            // Set current user as editing this item in Firestore
             await manager.setEditingItem(itemId.toString());
             
-            // Update local editing sessions AFTER Firestore updates
             setTimeout(() => {
                 setEditingSessions(prevSessions => {
                     const newSessions = new Map(prevSessions);
