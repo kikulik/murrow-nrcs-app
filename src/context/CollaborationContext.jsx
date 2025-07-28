@@ -98,7 +98,6 @@ export const CollaborationProvider = ({ children }) => {
         };
     }, [setupNotificationListener, currentUser, db]);
 
-    // FIX: This effect now correctly handles the full list of active users.
     useEffect(() => {
         const manager = collaborationManagerRef.current;
         if (manager && appState.activeRundownId && currentUser) {
@@ -106,9 +105,7 @@ export const CollaborationProvider = ({ children }) => {
             manager.listenToPresence(
                 appState.activeRundownId,
                 (allUsers) => {
-                    // Set the full list of active users, including the current user.
                     setActiveUsers(allUsers);
-                    // Update the editing sessions based on the full list.
                     updateEditingSessions(allUsers);
                 }
             );
@@ -121,12 +118,11 @@ export const CollaborationProvider = ({ children }) => {
         };
     }, [appState.activeRundownId, db, currentUser]);
 
-    // FIX: Correctly process all users to build the editing sessions map.
     const updateEditingSessions = (users) => {
         const sessions = new Map();
         users.forEach(user => {
             if (user.editingItem) {
-                sessions.set(user.editingItem.toString(), { // Ensure item ID is a string for map keys
+                sessions.set(user.editingItem.toString(), {
                     userId: user.userId,
                     userName: user.userName,
                     timestamp: Date.now()
@@ -134,6 +130,7 @@ export const CollaborationProvider = ({ children }) => {
             }
         });
         setEditingSessions(sessions);
+        console.log('Updated editing sessions:', sessions);
     };
 
     const handleTakeOverNotification = (notification) => {
@@ -184,7 +181,6 @@ export const CollaborationProvider = ({ children }) => {
     const stopEditingStory = async (itemId) => {
         const manager = collaborationManagerRef.current;
         if (manager) {
-            // Check if the current user is the one editing this item before clearing it.
             const editingUser = editingSessions.get(itemId?.toString());
             if (editingUser && editingUser.userId === currentUser.uid) {
                  await manager.setEditingItem(null);
@@ -197,7 +193,7 @@ export const CollaborationProvider = ({ children }) => {
         if (!manager) return false;
         try {
             await manager.sendTakeOverNotification(itemId, previousUserId);
-            await manager.setEditingItem(itemId);
+            await manager.setEditingItem(itemId.toString());
             updateStoryTab(itemId, {
                 isOwner: true,
                 takenOver: false,
