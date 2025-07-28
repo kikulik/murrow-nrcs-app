@@ -159,9 +159,8 @@ export class CollaborationManager {
         if (!previousUserId || this.isDestroyed) return;
         try {
             const { collection, addDoc } = await import("firebase/firestore");
-            const notificationId = `takeover_${itemId}_${this.currentUser.uid}_${Date.now()}`;
+            // FIX: Let Firestore generate the document ID by not passing an 'id' field.
             await addDoc(collection(this.db, "notifications"), {
-                id: notificationId,
                 userId: previousUserId,
                 type: 'takeOver',
                 message: `${this.currentUser.name} has taken over editing the item.`,
