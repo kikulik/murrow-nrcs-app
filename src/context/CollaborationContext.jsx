@@ -129,7 +129,6 @@ export const CollaborationProvider = ({ children }) => {
                 manager.listenToPresence(
                     appState.activeRundownId,
                     (allUsers) => {
-                        console.log('Presence update:', allUsers);
                         setActiveUsers(allUsers);
                         updateEditingSessions(allUsers);
                     }
@@ -148,7 +147,7 @@ export const CollaborationProvider = ({ children }) => {
         };
     }, [appState.activeRundownId, currentUser]);
 
-    const updateEditingSessions = (users) => {
+    const updateEditingSessions = useCallback((users) => {
         const sessions = new Map();
         users.forEach(user => {
             if (user.editingItem) {
@@ -159,19 +158,39 @@ export const CollaborationProvider = ({ children }) => {
                 });
             }
         });
-        setEditingSessions(sessions);
-    };
-
-    const handleTakeOverNotification = (notification) => {
-        if (notification.type === 'takeOver') {
-            // Close the tab for the user who was taken over
-            const tabToClose = appState.editingStoryTabs.find(tab => tab.itemId === notification.itemId);
-            if (tabToClose) {
-                setTimeout(() => markNotificationAsRead(notification.id), 3000);
-                forceCloseStoryTab(notification.itemId);
+        
+        setEditingSessions(prevSessions => {
+            // Only update if the sessions actually changed
+            if (prevSessions.size !== sessions.size) {
+                return sessions;
             }
             
-            // Also clear the local editing session
+            let hasChanged = false;
+            for (const [key, value] of sessions) {
+                const prevValue = prevSessions.get(key);
+                if (!prevValue || prevValue.userId !== value.userId) {
+                    hasChanged = true;
+                    break;
+                }
+            }
+            
+            return hasChanged ? sessions : prevSessions;
+        });
+    }, []);
+
+    const handleTakeOverNotification = useCallback((notification) => {
+        if (notification.type === 'takeOver') {
+            console.log('Received takeover notification for item:', notification.itemId);
+            
+            // Close the tab for the user who was taken over
+            const tabToClose = appState.editingStoryTabs.find(tab => tab.itemId.toString() === notification.itemId.toString());
+            if (tabToClose) {
+                console.log('Closing tab for taken over user');
+                forceCloseStoryTab(notification.itemId);
+                setTimeout(() => markNotificationAsRead(notification.id), 1000);
+            }
+            
+            // Clear the local editing session
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
                 newSessions.delete(notification.itemId.toString());
@@ -184,7 +203,7 @@ export const CollaborationProvider = ({ children }) => {
                 manager.setEditingItem(null);
             }
         }
-    };
+    }, [appState.editingStoryTabs, forceCloseStoryTab, markNotificationAsRead]);
 
     const markNotificationAsRead = async (notificationId) => {
         if (!db) return;
@@ -259,25 +278,29 @@ export const CollaborationProvider = ({ children }) => {
         if (!manager || manager.isDestroyed) return false;
         
         try {
-            // Send notification to previous user
+            console.log('Taking over story:', itemId, 'from user:', previousUserId);
+            
+            // Send notification to previous user FIRST
             await manager.sendTakeOverNotification(itemId, previousUserId);
             
-            // Immediately update local editing sessions to reflect the takeover
-            setEditingSessions(prevSessions => {
-                const newSessions = new Map(prevSessions);
-                newSessions.set(itemId.toString(), {
-                    userId: currentUser.uid,
-                    userName: currentUser.name,
-                    timestamp: Date.now()
-                });
-                return newSessions;
-            });
+            // Force clear the previous user's editing state
+            await manager.clearPreviousUserEditingState(previousUserId, itemId);
             
             // Set current user as editing this item in Firestore
             await manager.setEditingItem(itemId.toString());
             
-            // Force clear the previous user's editing state
-            await manager.clearPreviousUserEditingState(previousUserId, itemId);
+            // Update local editing sessions AFTER Firestore updates
+            setTimeout(() => {
+                setEditingSessions(prevSessions => {
+                    const newSessions = new Map(prevSessions);
+                    newSessions.set(itemId.toString(), {
+                        userId: currentUser.uid,
+                        userName: currentUser.name,
+                        timestamp: Date.now()
+                    });
+                    return newSessions;
+                });
+            }, 200);
             
             updateStoryTab(itemId, {
                 isOwner: true,
