@@ -20,7 +20,6 @@ const StoryEditTab = ({ itemId }) => {
         getUserEditingItem,
     } = useCollaboration();
 
-    // Early return if essential data is missing
     if (!itemId || !currentUser || !appState) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -33,7 +32,6 @@ const StoryEditTab = ({ itemId }) => {
     const initialData = tab?.storyData || {};
     const editingUser = getUserEditingItem(itemId);
 
-    // FIX: Make the isOwner check dependent on the takeover flag from the global state.
     const isOwner = (!editingUser || editingUser.userId === currentUser.uid) && !tab?.isBeingTakenOver;
     const isTakenOverByOther = editingUser && editingUser.userId !== currentUser.uid;
     const takenOverBy = isTakenOverByOther ? editingUser.userName : null;
@@ -108,13 +106,54 @@ const StoryEditTab = ({ itemId }) => {
         closeStoryTab(itemId);
     }, [hasUnsavedChanges, isOwner, autoSave, clearEditingItem, closeStoryTab, itemId]);
     
-    // FIX: This useEffect now decisively handles the takeover.
+    const forceSaveAndClose = useCallback(async () => {
+        console.log(`forceSaveAndClose triggered for item ${itemId}. Has unsaved changes: ${hasUnsavedChanges}`);
+        if (hasUnsavedChanges) {
+            console.log('Forcing save...');
+            setIsSaving(true);
+            try {
+                const rundownUpdatePromise = safeUpdateRundown(appState.activeRundownId, (rundownData) => {
+                    const newItems = rundownData.items.map(item =>
+                        item.id.toString() === itemId.toString()
+                            ? { ...item, ...formData, id: item.id }
+                            : item
+                    );
+                    return { ...rundownData, items: newItems };
+                });
+
+                let storyUpdatePromise = Promise.resolve();
+                if (initialData.storyId) {
+                    const storyRef = doc(db, "stories", initialData.storyId);
+                    const storyUpdates = {
+                        title: formData.title,
+                        content: formData.content,
+                        duration: formData.duration,
+                        tags: formData.type,
+                        authorId: formData.authorId,
+                    };
+                    storyUpdatePromise = updateDoc(storyRef, storyUpdates);
+                }
+
+                await Promise.all([rundownUpdatePromise, storyUpdatePromise]);
+                console.log('Forced save successful.');
+                setHasUnsavedChanges(false);
+            } catch (error) {
+                console.error("Failed to force save changes:", error);
+            } finally {
+                setIsSaving(false);
+            }
+        }
+        console.log('Closing tab after force save.');
+        await clearEditingItem();
+        closeStoryTab(itemId);
+    }, [hasUnsavedChanges, safeUpdateRundown, appState.activeRundownId, formData, initialData.storyId, db, clearEditingItem, closeStoryTab, itemId]);
+
     useEffect(() => {
         if (tab?.isBeingTakenOver) {
             console.log(`Takeover detected for item ${itemId}. Forcing save and close.`);
-            handleSaveAndClose();
+            forceSaveAndClose();
         }
-    }, [tab?.isBeingTakenOver, handleSaveAndClose]);
+    }, [tab?.isBeingTakenOver, forceSaveAndClose]);
 
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
