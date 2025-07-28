@@ -53,25 +53,12 @@ const StoryEditTab = ({ itemId }) => {
     const [notification, setNotification] = useState(null);
     const [isBeingTakenOver, setIsBeingTakenOver] = useState(false);
 
-    const calculatedDuration = calculateReadingTime(formData.content);
-    const wordCount = getWordCount(formData.content);
+    const showNotification = (message, type = 'info') => {
+        setNotification({ message, type });
+        setTimeout(() => setNotification(null), 3000);
+    };
 
-    useEffect(() => {
-        if (useCalculatedDuration && isOwner) {
-            setFormData(prev => ({
-                ...prev,
-                duration: calculatedDuration
-            }));
-        }
-    }, [calculatedDuration, useCalculatedDuration, isOwner]);
-
-    useEffect(() => {
-        if (tab?.isBeingTakenOver && isOwner && hasUnsavedChanges) {
-            console.log('Tab is being taken over, auto-saving and closing');
-            handleSaveAndClose();
-        }
-    }, [tab?.isBeingTakenOver, isOwner, hasUnsavedChanges, handleSaveAndClose]);
-
+    // MOVED aitoSave and handleSaveAndClose functions here, before the useEffects that use them.
     const autoSave = useCallback(async () => {
         if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db) {
             return false;
@@ -126,6 +113,25 @@ const StoryEditTab = ({ itemId }) => {
         closeStoryTab(itemId);
     }, [hasUnsavedChanges, isOwner, autoSave, clearEditingItem, closeStoryTab, itemId]);
 
+    const calculatedDuration = calculateReadingTime(formData.content);
+    const wordCount = getWordCount(formData.content);
+
+    useEffect(() => {
+        if (useCalculatedDuration && isOwner) {
+            setFormData(prev => ({
+                ...prev,
+                duration: calculatedDuration
+            }));
+        }
+    }, [calculatedDuration, useCalculatedDuration, isOwner]);
+
+    useEffect(() => {
+        if (tab?.isBeingTakenOver && isOwner && hasUnsavedChanges) {
+            console.log('Tab is being taken over, auto-saving and closing');
+            handleSaveAndClose();
+        }
+    }, [tab?.isBeingTakenOver, isOwner, hasUnsavedChanges, handleSaveAndClose]);
+
     useEffect(() => {
         if (isOwner && hasUnsavedChanges && !isBeingTakenOver) {
             const autoSaveInterval = setInterval(autoSave, 5000);
@@ -175,11 +181,6 @@ const StoryEditTab = ({ itemId }) => {
         }
     };
 
-    const showNotification = (message, type = 'info') => {
-        setNotification({ message, type });
-        setTimeout(() => setNotification(null), 3000);
-    };
-
     if (!itemId) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -201,7 +202,7 @@ const StoryEditTab = ({ itemId }) => {
                 }`}>
                     <div className="flex items-center justify-between">
                         <span>{notification.message}</span>
-                        <button onClick={() => setNotification(null)} className="ml-4 text-gray-500 hover:text-gray-700">×</button>
+                        <button onClick={() => setNotification(null)} className="ml-4 text-gray-500 hover:text-gray-700">&times;</button>
                     </div>
                 </div>
             )}
@@ -285,7 +286,7 @@ const StoryEditTab = ({ itemId }) => {
                             </label>
                             {wordCount > 0 && (
                                 <p className="text-xs text-gray-500 mt-1">
-                                    {wordCount} words • Est. {calculatedDuration} reading time
+                                    {wordCount} words &bull; Est. {calculatedDuration} reading time
                                 </p>
                             )}
                         </div>
@@ -324,7 +325,7 @@ const StoryEditTab = ({ itemId }) => {
                         />
                     </div>
 
-                    isOwner && !isBeingTakenOver && (
+                    {isOwner && !isBeingTakenOver && (
                         <div className="flex items-center justify-between pt-4 border-t">
                             <div className="text-xs text-gray-500">
                                 Auto-save every 5 seconds
