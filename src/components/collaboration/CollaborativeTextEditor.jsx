@@ -33,8 +33,6 @@ const CollaborativeTextEditor = ({
     const isTakenOver = editingUser && editingUser.userId !== currentUser.uid;
     const isReadOnly = isTakenOver && !isOwner;
 
-    console.log('CollaborativeTextEditor props:', { isOwner, itemId, hasValue: !!value, isTakenOver, isReadOnly });
-
     useEffect(() => {
         if (value !== lastValueRef.current) {
             setLocalValue(value || '');
