@@ -164,10 +164,24 @@ export const CollaborationProvider = ({ children }) => {
 
     const handleTakeOverNotification = (notification) => {
         if (notification.type === 'takeOver') {
+            // Close the tab for the user who was taken over
             const tabToClose = appState.editingStoryTabs.find(tab => tab.itemId === notification.itemId);
             if (tabToClose) {
                 setTimeout(() => markNotificationAsRead(notification.id), 3000);
                 forceCloseStoryTab(notification.itemId);
+            }
+            
+            // Also clear the local editing session
+            setEditingSessions(prevSessions => {
+                const newSessions = new Map(prevSessions);
+                newSessions.delete(notification.itemId.toString());
+                return newSessions;
+            });
+            
+            // Clear the editing item from the manager
+            const manager = collaborationManagerRef.current;
+            if (manager && !manager.isDestroyed) {
+                manager.setEditingItem(null);
             }
         }
     };
@@ -229,7 +243,13 @@ export const CollaborationProvider = ({ children }) => {
         if (manager && !manager.isDestroyed) {
             const editingUser = editingSessions.get(itemId?.toString());
             if (editingUser && editingUser.userId === currentUser.uid) {
-                 await manager.setEditingItem(null);
+                await manager.setEditingItem(null);
+                // Also clear from local state
+                setEditingSessions(prevSessions => {
+                    const newSessions = new Map(prevSessions);
+                    newSessions.delete(itemId?.toString());
+                    return newSessions;
+                });
             }
         }
     };
