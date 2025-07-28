@@ -265,7 +265,6 @@ export class CollaborationManager {
         try {
             const { collection, query, where, getDocs, updateDoc } = await import("firebase/firestore");
             
-            // Find and clear the previous user's presence document
             const presenceQuery = query(
                 collection(this.db, "presence"),
                 where("userId", "==", previousUserId)
@@ -273,7 +272,6 @@ export class CollaborationManager {
             
             const presenceSnapshot = await getDocs(presenceQuery);
             
-            // Clear editing item from all presence documents for this user
             const updatePromises = presenceSnapshot.docs.map(doc => {
                 const data = doc.data();
                 if (data.editingItem === itemId.toString()) {
@@ -292,6 +290,7 @@ export class CollaborationManager {
             console.error('Error clearing previous user editing state:', error);
         }
     }
+
     async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
         if (this.isDestroyed) return null;
 
@@ -319,6 +318,45 @@ export class CollaborationManager {
                 if (attempt === retryCount - 1) throw error;
                 await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
             }
+        }
+    }
+
+    async ensureLatestContent(itemId) {
+        if (this.isDestroyed) return null;
+
+        try {
+            const { doc, getDoc } = await import("firebase/firestore");
+            const storyDraftRef = doc(this.db, "storyDrafts", `${itemId}_auto`);
+            const draftDoc = await getDoc(storyDraftRef);
+            
+            if (draftDoc.exists()) {
+                return draftDoc.data();
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('Error getting latest content:', error);
+            return null;
+        }
+    }
+
+    async saveContentForTakeover(itemId, content) {
+        if (this.isDestroyed) return;
+
+        try {
+            const { doc, setDoc } = await import("firebase/firestore");
+            const storyDraftRef = doc(this.db, "storyDrafts", `${itemId}_auto`);
+            
+            await setDoc(storyDraftRef, {
+                itemId,
+                content,
+                timestamp: new Date().toISOString(),
+                savedBy: this.currentUser.uid,
+                autoSaved: true
+            }, { merge: true });
+            
+        } catch (error) {
+            console.error('Error saving content for takeover:', error);
         }
     }
 }
