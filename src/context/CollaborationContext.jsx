@@ -17,6 +17,7 @@ export const CollaborationProvider = ({ children }) => {
     const notificationsUnsubscribeRef = useRef(null);
     const presenceInitialized = useRef(false);
     const processedNotifications = useRef(new Set());
+    const takingOverItemRef = useRef(null); // FIX: Add a ref to track active takeovers
 
     useEffect(() => {
         if (db && currentUser) {
@@ -178,7 +179,8 @@ export const CollaborationProvider = ({ children }) => {
                     timestamp: Date.now()
                 });
 
-                if (myOpenTabs.has(itemIdStr) && user.userId !== currentUser.uid) {
+                // FIX: Add a check on the ref to prevent this from firing on the producer's client during a takeover.
+                if (myOpenTabs.has(itemIdStr) && user.userId !== currentUser.uid && takingOverItemRef.current !== itemIdStr) {
                     console.log(`Proactive takeover detected for item ${itemIdStr} by ${user.userName}`);
                     updateStoryTab(itemIdStr, { isBeingTakenOver: true });
                 }
@@ -320,6 +322,9 @@ export const CollaborationProvider = ({ children }) => {
         const manager = collaborationManagerRef.current;
         if (!manager || manager.isDestroyed) return false;
         
+        const itemIdStr = itemId.toString();
+        takingOverItemRef.current = itemIdStr; // FIX: Set the flag before starting
+
         try {
             console.log('Starting takeover for item:', itemId, 'from user:', previousUserId);
             
@@ -347,8 +352,6 @@ export const CollaborationProvider = ({ children }) => {
                 return newSessions;
             });
             
-            // FIX: This is the crucial step that was missing. After taking over,
-            // we now explicitly open the story tab for the current user (the producer).
             console.log('Opening story tab for new user');
             openStoryTab(itemId, currentItem);
             updateStoryTab(itemId, {
@@ -362,6 +365,13 @@ export const CollaborationProvider = ({ children }) => {
         } catch (error) {
             console.error('Error taking over story:', error);
             return false;
+        } finally {
+            // FIX: Clear the flag after a delay to allow state to settle
+            setTimeout(() => {
+                if (takingOverItemRef.current === itemIdStr) {
+                    takingOverItemRef.current = null;
+                }
+            }, 2000);
         }
     };
 
