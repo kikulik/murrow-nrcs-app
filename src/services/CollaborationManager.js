@@ -259,6 +259,39 @@ export class CollaborationManager {
         return result;
     }
 
+    async clearPreviousUserEditingState(previousUserId, itemId) {
+        if (this.isDestroyed) return;
+
+        try {
+            const { collection, query, where, getDocs, updateDoc } = await import("firebase/firestore");
+            
+            // Find and clear the previous user's presence document
+            const presenceQuery = query(
+                collection(this.db, "presence"),
+                where("userId", "==", previousUserId)
+            );
+            
+            const presenceSnapshot = await getDocs(presenceQuery);
+            
+            // Clear editing item from all presence documents for this user
+            const updatePromises = presenceSnapshot.docs.map(doc => {
+                const data = doc.data();
+                if (data.editingItem === itemId.toString()) {
+                    return updateDoc(doc.ref, {
+                        editingItem: null,
+                        lastSeen: new Date().toISOString()
+                    });
+                }
+                return Promise.resolve();
+            });
+            
+            await Promise.all(updatePromises);
+            console.log('Cleared previous user editing state for user:', previousUserId);
+            
+        } catch (error) {
+            console.error('Error clearing previous user editing state:', error);
+        }
+    }
     async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
         if (this.isDestroyed) return null;
 
