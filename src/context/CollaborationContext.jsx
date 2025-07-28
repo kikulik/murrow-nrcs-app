@@ -1,4 +1,4 @@
-// src/context/CollaborationContext.jsx (Debounced Notifications)
+// src/context/CollaborationContext.jsx (Real-time Fixed)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -21,6 +21,7 @@ export const CollaborationProvider = ({ children }) => {
     useEffect(() => {
         if (db && currentUser) {
             if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                console.log('Creating new CollaborationManager');
                 collaborationManagerRef.current = new CollaborationManager(db, currentUser);
                 presenceInitialized.current = false;
             }
@@ -102,6 +103,8 @@ export const CollaborationProvider = ({ children }) => {
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
 
+        console.log('Setting up notification listener for user:', currentUser.uid);
+
         try {
             const notificationsQuery = query(
                 collection(db, "notifications"),
@@ -113,10 +116,14 @@ export const CollaborationProvider = ({ children }) => {
                 notificationsQuery,
                 (snapshot) => {
                     try {
+                        console.log('Notification snapshot received, docs count:', snapshot.docs.length);
+                        
                         const allUserNotifications = snapshot.docs.map(doc => ({
                             id: doc.id,
                             ...doc.data()
                         }));
+                        
+                        console.log('All notifications:', allUserNotifications);
                         
                         const unreadNotifications = allUserNotifications.filter(n => n.read === false);
                         unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -126,6 +133,7 @@ export const CollaborationProvider = ({ children }) => {
                             !processedNotifications.current.has(n.id)
                         );
                         
+                        console.log('New notifications to process:', newNotifications);
                         newNotifications.forEach(handleTakeOverNotification);
                     } catch (error) {
                         console.error('Error processing notifications:', error);
@@ -196,11 +204,13 @@ export const CollaborationProvider = ({ children }) => {
         try {
             if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser) {
                 if (!presenceInitialized.current) {
+                    console.log('Starting presence tracking for rundown:', appState.activeRundownId);
                     presenceInitialized.current = true;
                     manager.startPresenceTracking(appState.activeRundownId);
                     manager.listenToPresence(
                         appState.activeRundownId,
                         (allUsers) => {
+                            console.log('Presence update received:', allUsers);
                             setActiveUsers(allUsers);
                             updateEditingSessions(allUsers);
                         }
@@ -319,10 +329,10 @@ export const CollaborationProvider = ({ children }) => {
             await manager.sendTakeOverNotification(itemId, previousUserId);
             console.log('Sent takeover notification');
             
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             await manager.clearPreviousUserEditingState(previousUserId, itemId);
             console.log('Cleared previous user state');
-            
-            await new Promise(resolve => setTimeout(resolve, 3000));
             
             await manager.setEditingItem(itemId.toString());
             console.log('Set current user as editing');
@@ -336,6 +346,8 @@ export const CollaborationProvider = ({ children }) => {
                 });
                 return newSessions;
             });
+            
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             console.log('Opening story tab for new user');
             openStoryTab(itemId, currentItem);
