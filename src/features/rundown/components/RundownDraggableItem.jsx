@@ -2,6 +2,7 @@
 import React, { useRef } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import CustomIcon from '../../../components/ui/CustomIcon';
+import TakeOverDropdown from '../../../components/collaboration/TakeOverDropdown';
 import { useAppContext } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useCollaboration } from '../../../context/CollaborationContext';
@@ -99,39 +100,23 @@ const RundownDraggableItem = ({
 
     const handleEdit = async () => {
         if (isBeingEditedByOther && !canTakeOver) {
-            alert(`${editingUser.userName} is currently editing this item. You don't have permission to take over.`);
             return;
         }
 
         try {
-            if (isBeingEditedByOther && canTakeOver) {
-                const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved automatically.`);
-                if (confirmed) {
-                    await takeOverStory(item.id, editingUser.userId);
-                    refreshStoryTabData(item.id);
-                } else {
-                    return;
-                }
-            }
             await startEditingStory(item.id, item);
         } catch (error) {
             console.error('Error starting edit:', error);
-            alert('Failed to start editing. Please try again.');
         }
     };
 
     const handleTakeOver = async () => {
         if (!canTakeOver || !editingUser) return;
 
-        const confirmed = window.confirm(`${editingUser.userName} is currently editing this story. Do you want to take over? Their progress will be saved automatically.`);
-        if (!confirmed) return;
-
         const success = await takeOverStory(item.id, editingUser.userId);
         if (success) {
             refreshStoryTabData(item.id);
             await startEditingStory(item.id, item);
-        } else {
-            alert('Failed to take over the story. Please try again.');
         }
     };
 
@@ -140,21 +125,11 @@ const RundownDraggableItem = ({
         e.stopPropagation();
         
         if (isLocked) {
-            alert('Cannot edit items while rundown is live.');
             return;
         }
         
-        if (isBeingEditedByOther) {
-            if (canTakeOver) {
-                const confirmed = window.confirm(`${editingUser.userName} is currently editing this item. Do you want to take over?`);
-                if (confirmed) {
-                    handleTakeOver();
-                    return;
-                }
-            } else {
-                alert(`${editingUser.userName} is currently editing this item.`);
-                return;
-            }
+        if (isBeingEditedByOther && !canTakeOver) {
+            return;
         }
         
         setQuickEditItem(item);
@@ -229,13 +204,12 @@ const RundownDraggableItem = ({
                     {!isLocked && (
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {isBeingEditedByOther && canTakeOver ? (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleTakeOver(); }}
-                                    className="p-1 text-orange-600 hover:text-orange-800 rounded bg-orange-100 hover:bg-orange-200"
-                                    title={`Take over from ${editingUser.userName}`}
-                                >
-                                    <CustomIcon name="user" size={16} />
-                                </button>
+                                <div onClick={(e) => e.stopPropagation()}>
+                                    <TakeOverDropdown 
+                                        editingUser={editingUser}
+                                        onTakeOver={handleTakeOver}
+                                    />
+                                </div>
                             ) : !isBeingEditedByOther && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleEdit(); }}
