@@ -15,26 +15,26 @@ export const CollaborationProvider = ({ children }) => {
     const [notifications, setNotifications] = useState([]);
     const collaborationManagerRef = useRef(null);
     const notificationsUnsubscribeRef = useRef(null);
+    const presenceInitialized = useRef(false);
 
     useEffect(() => {
-        console.log('CollaborationManager effect triggered:', { db: !!db, currentUser: !!currentUser });
         if (db && currentUser) {
-            if (!collaborationManagerRef.current) {
-                console.log('Creating new CollaborationManager');
+            if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
                 collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+                presenceInitialized.current = false;
             }
         } else {
-            if (collaborationManagerRef.current) {
-                console.log('Stopping CollaborationManager');
+            if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
                 collaborationManagerRef.current.stopPresenceTracking();
                 collaborationManagerRef.current = null;
+                presenceInitialized.current = false;
             }
         }
     }, [db, currentUser]);
 
     useEffect(() => {
         if (!currentUser) {
-            if (collaborationManagerRef.current) {
+            if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
                 collaborationManagerRef.current.stopPresenceTracking();
                 collaborationManagerRef.current = null;
             }
@@ -51,6 +51,7 @@ export const CollaborationProvider = ({ children }) => {
             setActiveUsers([]);
             setEditingSessions(new Map());
             setNotifications([]);
+            presenceInitialized.current = false;
         }
     }, [currentUser]);
 
@@ -103,19 +104,13 @@ export const CollaborationProvider = ({ children }) => {
 
     useEffect(() => {
         const manager = collaborationManagerRef.current;
-        console.log('Presence effect triggered:', { 
-            hasManager: !!manager, 
-            activeRundownId: appState.activeRundownId, 
-            currentUser: currentUser?.uid 
-        });
         
-        if (manager && appState.activeRundownId && currentUser) {
-            console.log('Starting presence tracking for rundown:', appState.activeRundownId);
+        if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser && !presenceInitialized.current) {
+            presenceInitialized.current = true;
             manager.startPresenceTracking(appState.activeRundownId);
             manager.listenToPresence(
                 appState.activeRundownId,
                 (allUsers) => {
-                    console.log('Received presence update - all users:', allUsers);
                     setActiveUsers(allUsers);
                     updateEditingSessions(allUsers);
                 }
@@ -123,8 +118,9 @@ export const CollaborationProvider = ({ children }) => {
         }
 
         return () => {
-            if (collaborationManagerRef.current) {
-                collaborationManagerRef.current.stopPresenceTracking();
+            if (manager && !manager.isDestroyed) {
+                manager.stopPresenceTracking();
+                presenceInitialized.current = false;
             }
         };
     }, [appState.activeRundownId, db, currentUser]);
@@ -141,7 +137,6 @@ export const CollaborationProvider = ({ children }) => {
             }
         });
         setEditingSessions(sessions);
-        console.log('Updated editing sessions:', sessions);
     };
 
     const handleTakeOverNotification = (notification) => {
@@ -165,15 +160,13 @@ export const CollaborationProvider = ({ children }) => {
 
     const startEditingStory = async (itemId, storyData) => {
         const manager = collaborationManagerRef.current;
-        if (!manager) {
+        if (!manager || manager.isDestroyed) {
             console.error('No collaboration manager available');
             return;
         }
     
         const editingUser = editingSessions.get(itemId.toString());
         const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
-
-        console.log('startEditingStory - itemId:', itemId, 'editingUser:', editingUser, 'isBeingEditedByOther:', isBeingEditedByOther);
 
         if (isBeingEditedByOther) {
             openStoryTab(itemId, storyData);
@@ -183,7 +176,6 @@ export const CollaborationProvider = ({ children }) => {
                 takenOverBy: editingUser.userName,
             });
         } else {
-            console.log('Setting editing item to:', itemId.toString());
             await manager.setEditingItem(itemId.toString());
             openStoryTab(itemId, storyData);
             updateStoryTab(itemId, {
@@ -197,7 +189,7 @@ export const CollaborationProvider = ({ children }) => {
 
     const stopEditingStory = async (itemId) => {
         const manager = collaborationManagerRef.current;
-        if (manager) {
+        if (manager && !manager.isDestroyed) {
             const editingUser = editingSessions.get(itemId?.toString());
             if (editingUser && editingUser.userId === currentUser.uid) {
                  await manager.setEditingItem(null);
@@ -207,10 +199,23 @@ export const CollaborationProvider = ({ children }) => {
 
     const takeOverStory = async (itemId, previousUserId) => {
         const manager = collaborationManagerRef.current;
-        if (!manager) return false;
+        if (!manager || manager.isDestroyed) return false;
+        
         try {
             await manager.sendTakeOverNotification(itemId, previousUserId);
+            
+            setEditingSessions(prevSessions => {
+                const newSessions = new Map(prevSessions);
+                newSessions.set(itemId.toString(), {
+                    userId: currentUser.uid,
+                    userName: currentUser.name,
+                    timestamp: Date.now()
+                });
+                return newSessions;
+            });
+            
             await manager.setEditingItem(itemId.toString());
+            
             updateStoryTab(itemId, {
                 isOwner: true,
                 takenOver: false,
@@ -250,27 +255,28 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const setEditingItem = async (itemId) => {
-        if (collaborationManagerRef.current) {
-            await collaborationManagerRef.current.setEditingItem(itemId);
+        const manager = collaborationManagerRef.current;
+        if (manager && !manager.isDestroyed) {
+            await manager.setEditingItem(itemId);
         }
     };
 
     const clearEditingItem = async () => {
-        if (collaborationManagerRef.current) {
-            await collaborationManagerRef.current.setEditingItem(null);
+        const manager = collaborationManagerRef.current;
+        if (manager && !manager.isDestroyed) {
+            await manager.setEditingItem(null);
         }
     };
 
     const safeUpdateRundown = async (rundownId, updateFunction) => {
-        if (collaborationManagerRef.current) {
-            return await collaborationManagerRef.current.safeUpdateRundown(rundownId, updateFunction);
+        const manager = collaborationManagerRef.current;
+        if (manager && !manager.isDestroyed) {
+            return await manager.safeUpdateRundown(rundownId, updateFunction);
         }
     };
 
     const getUserEditingItem = (itemId) => {
-        const result = editingSessions.get(itemId.toString());
-        console.log('getUserEditingItem called for itemId:', itemId, 'result:', result, 'editingSessions size:', editingSessions.size);
-        return result;
+        return editingSessions.get(itemId.toString());
     };
 
     const isItemBeingEdited = (itemId) => {
