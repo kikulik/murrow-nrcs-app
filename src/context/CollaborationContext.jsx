@@ -239,8 +239,10 @@ export const CollaborationProvider = ({ children }) => {
         if (!manager || manager.isDestroyed) return false;
         
         try {
+            // Send notification to previous user
             await manager.sendTakeOverNotification(itemId, previousUserId);
             
+            // Immediately update local editing sessions to reflect the takeover
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
                 newSessions.set(itemId.toString(), {
@@ -251,13 +253,18 @@ export const CollaborationProvider = ({ children }) => {
                 return newSessions;
             });
             
+            // Set current user as editing this item in Firestore
             await manager.setEditingItem(itemId.toString());
+            
+            // Force clear the previous user's editing state
+            await manager.clearPreviousUserEditingState(previousUserId, itemId);
             
             updateStoryTab(itemId, {
                 isOwner: true,
                 takenOver: false,
                 takenOverBy: null
             });
+            
             return true;
         } catch (error) {
             console.error('Error taking over story:', error);
