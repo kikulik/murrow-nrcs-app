@@ -16,6 +16,7 @@ export const CollaborationProvider = ({ children }) => {
     const collaborationManagerRef = useRef(null);
     const notificationsUnsubscribeRef = useRef(null);
     const presenceInitialized = useRef(false);
+    const processedNotifications = useRef(new Set());
 
     useEffect(() => {
         console.log('Manager init effect:', { 
@@ -65,6 +66,7 @@ export const CollaborationProvider = ({ children }) => {
             setEditingSessions(new Map());
             setNotifications([]);
             presenceInitialized.current = false;
+            processedNotifications.current.clear();
         }
     }, [currentUser]);
 
@@ -77,13 +79,16 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
+    const processedNotifications = useRef(new Set());
+
     const handleTakeOverNotification = useCallback(async (notification) => {
-        if (notification.type === 'takeOver') {
-            console.log('Received takeover notification for item:', notification.itemId);
+        if (notification.type === 'takeOver' && !processedNotifications.current.has(notification.id)) {
+            processedNotifications.current.add(notification.id);
+            console.log('Processing takeover notification for item:', notification.itemId);
             
             const tabToClose = appState.editingStoryTabs.find(tab => tab.itemId.toString() === notification.itemId.toString());
             if (tabToClose) {
-                console.log('Triggering save and close for taken over user');
+                console.log('Auto-saving and closing tab for taken over user');
                 
                 setAppState(prev => ({
                     ...prev,
@@ -94,10 +99,10 @@ export const CollaborationProvider = ({ children }) => {
                     )
                 }));
 
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 2000));
                 
                 forceCloseStoryTab(notification.itemId);
-                setTimeout(() => markNotificationAsRead(notification.id), 1000);
+                await markNotificationAsRead(notification.id);
             }
             
             setEditingSessions(prevSessions => {
@@ -111,7 +116,7 @@ export const CollaborationProvider = ({ children }) => {
                 manager.setEditingItem(null);
             }
         }
-    }, [appState.editingStoryTabs, forceCloseStoryTab, db, setAppState]);
+    }, [appState.editingStoryTabs, forceCloseStoryTab, db, setAppState, markNotificationAsRead]);
 
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
@@ -130,10 +135,17 @@ export const CollaborationProvider = ({ children }) => {
                             id: doc.id,
                             ...doc.data()
                         }));
+                        
                         const unreadNotifications = allUserNotifications.filter(n => n.read === false);
                         unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                         setNotifications(unreadNotifications);
-                        unreadNotifications.forEach(handleTakeOverNotification);
+                        
+                        // Only process new notifications that haven't been processed yet
+                        const newNotifications = unreadNotifications.filter(n => 
+                            !processedNotifications.current.has(n.id)
+                        );
+                        
+                        newNotifications.forEach(handleTakeOverNotification);
                     } catch (error) {
                         console.error('Error processing notifications:', error);
                     }
