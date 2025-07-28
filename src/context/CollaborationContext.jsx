@@ -73,7 +73,6 @@ export const CollaborationProvider = ({ children }) => {
     const markNotificationAsRead = async (notificationId) => {
         if (!db || !notificationId) return;
         try {
-            // The notificationId is now correctly sourced from the Firestore snapshot
             await updateDoc(doc(db, "notifications", notificationId), { read: true });
         } catch (error) {
             console.error('Error marking notification as read:', error);
@@ -88,11 +87,8 @@ export const CollaborationProvider = ({ children }) => {
         processedNotifications.current.add(notification.id);
         console.log(`Received takeover notification for item: ${notification.itemId}. Setting flag.`);
 
-        // Authoritatively set the 'isBeingTakenOver' flag in the global state.
-        // This is the primary trigger for the original user's client.
         updateStoryTab(notification.itemId, { isBeingTakenOver: true });
 
-        // Mark the notification as read immediately.
         await markNotificationAsRead(notification.id);
 
     }, [updateStoryTab, markNotificationAsRead]);
@@ -111,7 +107,7 @@ export const CollaborationProvider = ({ children }) => {
                 (snapshot) => {
                     try {
                         const allUserNotifications = snapshot.docs.map(doc => ({
-                            id: doc.id, // This is the correct, Firestore-generated ID
+                            id: doc.id,
                             ...doc.data()
                         }));
                         
@@ -307,17 +303,12 @@ export const CollaborationProvider = ({ children }) => {
         try {
             console.log('Taking over story:', itemId, 'from user:', previousUserId);
             
-            // Send the notification to the other user.
-            await manager.sendTakeOverNotification(itemId, previousUserId);
-            
-            // Add a delay to give the other client time to receive the notification,
-            // trigger the auto-save, and close the tab.
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
             await manager.clearPreviousUserEditingState(previousUserId, itemId);
             await manager.setEditingItem(itemId.toString());
+            await manager.sendTakeOverNotification(itemId, previousUserId);
             
-            // Refresh the rundown data to get the latest version saved by the other user.
+            await new Promise(resolve => setTimeout(resolve, 1500)); 
+
             if (refreshStoryTabData) {
                  refreshStoryTabData(itemId);
             }
@@ -335,17 +326,15 @@ export const CollaborationProvider = ({ children }) => {
                 });
             }
             
-            setTimeout(() => {
-                setEditingSessions(prevSessions => {
-                    const newSessions = new Map(prevSessions);
-                    newSessions.set(itemId.toString(), {
-                        userId: currentUser.uid,
-                        userName: currentUser.name,
-                        timestamp: Date.now()
-                    });
-                    return newSessions;
+            setEditingSessions(prevSessions => {
+                const newSessions = new Map(prevSessions);
+                newSessions.set(itemId.toString(), {
+                    userId: currentUser.uid,
+                    userName: currentUser.name,
+                    timestamp: Date.now()
                 });
-            }, 200);
+                return newSessions;
+            });
             
             return true;
         } catch (error) {
