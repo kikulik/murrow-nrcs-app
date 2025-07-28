@@ -58,7 +58,6 @@ export const CollaborationProvider = ({ children }) => {
         }
     }, [currentUser]);
 
-    // FIX: Wrapped markNotificationAsRead in useCallback to stabilize its reference.
     const markNotificationAsRead = useCallback(async (notificationId) => {
         if (!db || !notificationId) return;
         try {
@@ -68,7 +67,6 @@ export const CollaborationProvider = ({ children }) => {
         }
     }, [db]);
 
-    // FIX: Wrapped clearAllNotifications in useCallback.
     const clearAllNotifications = useCallback(async () => {
         if (!db || !currentUser) return;
         try {
@@ -349,6 +347,8 @@ export const CollaborationProvider = ({ children }) => {
                 return newSessions;
             });
             
+            // FIX: This is the crucial step that was missing. After taking over,
+            // we now explicitly open the story tab for the current user (the producer).
             console.log('Opening story tab for new user');
             openStoryTab(itemId, currentItem);
             updateStoryTab(itemId, {
