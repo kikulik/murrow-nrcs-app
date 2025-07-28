@@ -1,4 +1,4 @@
-// src/context/CollaborationContext.jsx
+// src/context/CollaborationContext.jsx (Fixed)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -303,30 +303,24 @@ export const CollaborationProvider = ({ children }) => {
         if (!manager || manager.isDestroyed) return false;
         
         try {
-            await manager.clearPreviousUserEditingState(previousUserId, itemId);
-            await manager.setEditingItem(itemId.toString());
-            await manager.sendTakeOverNotification(itemId, previousUserId);
-
-            forceCloseStoryTab(itemId);
+            console.log('Starting takeover for item:', itemId, 'from user:', previousUserId);
             
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            if (refreshStoryTabData) {
-                refreshStoryTabData(itemId);
-            }
-            await new Promise(resolve => setTimeout(resolve, 200));
-
             const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
             const currentItem = rundownData?.items?.find(item => item.id.toString() === itemId.toString());
             
-            if (currentItem) {
-                openStoryTab(itemId, currentItem);
-                updateStoryTab(itemId, {
-                    isOwner: true,
-                    takenOver: false,
-                    takenOverBy: null
-                });
+            if (!currentItem) {
+                console.error('Item not found in rundown');
+                return false;
             }
+
+            await manager.clearPreviousUserEditingState(previousUserId, itemId);
+            
+            forceCloseStoryTab(itemId);
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await manager.setEditingItem(itemId.toString());
+            await manager.sendTakeOverNotification(itemId, previousUserId);
             
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
@@ -338,6 +332,16 @@ export const CollaborationProvider = ({ children }) => {
                 return newSessions;
             });
             
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            openStoryTab(itemId, currentItem);
+            updateStoryTab(itemId, {
+                isOwner: true,
+                takenOver: false,
+                takenOverBy: null
+            });
+            
+            console.log('Takeover completed successfully');
             return true;
         } catch (error) {
             console.error('Error taking over story:', error);
