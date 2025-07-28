@@ -8,7 +8,7 @@ export class CollaborationManager {
         this.presenceInterval = null;
         this.presenceListenerUnsubscribe = null;
         this.lastUpdate = 0;
-        this.updateThrottle = 2000;
+        this.updateThrottle = 1000;
         this.cleanup = () => { };
         this.isDestroyed = false;
     }
@@ -33,10 +33,9 @@ export class CollaborationManager {
                 rundownId,
                 lastSeen: new Date().toISOString(),
                 isActive: true,
-                editingItem: null
+                editingItem: this.currentEditingItem
             };
 
-            // Use setDoc with merge to create or update the presence document
             await setDoc(this.presenceRef, presenceData, { merge: true });
 
             this.presenceInterval = setInterval(async () => {
@@ -46,13 +45,14 @@ export class CollaborationManager {
                 if (now - this.lastUpdate < this.updateThrottle) return;
 
                 try {
-                    // Use updateDoc for subsequent updates
                     const { updateDoc } = await import("firebase/firestore");
                     await updateDoc(this.presenceRef, {
                         lastSeen: new Date().toISOString(),
-                        editingItem: this.currentEditingItem || null
+                        editingItem: this.currentEditingItem || null,
+                        isActive: true
                     });
                     this.lastUpdate = now;
+                    console.log('Updated presence with editingItem:', this.currentEditingItem);
                 } catch (error) {
                     if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
                         console.warn('User appears to be logged out, stopping presence tracking');
@@ -61,7 +61,7 @@ export class CollaborationManager {
                     }
                     console.error('Error updating presence:', error);
                 }
-            }, 3000);
+            }, 2000);
 
             const handleBeforeUnload = () => this.stopPresenceTracking();
             window.addEventListener('beforeunload', handleBeforeUnload);
@@ -112,7 +112,9 @@ export class CollaborationManager {
     async setEditingItem(itemId) {
         if (this.isDestroyed) return;
 
+        console.log('Setting editing item to:', itemId);
         this.currentEditingItem = itemId;
+        
         if (this.presenceRef && !this.isDestroyed) {
             try {
                 const { updateDoc } = await import("firebase/firestore");
@@ -121,6 +123,7 @@ export class CollaborationManager {
                     lastSeen: new Date().toISOString()
                 });
                 this.lastUpdate = Date.now();
+                console.log('Successfully updated editing item in Firestore:', itemId);
             } catch (error) {
                 if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
                     console.warn('User appears to be logged out, cannot update editing item');
@@ -171,15 +174,12 @@ export class CollaborationManager {
                 (snapshot) => {
                     if (this.isDestroyed) return;
                     
-                    // FIX: Process ALL active users, including the current user.
-                    // The UI components will decide how to filter or display this information.
                     const allActiveUsers = snapshot.docs
                         .map(doc => doc.data())
                         .filter(data => {
                             if (!data.lastSeen) return false;
                             const lastSeen = new Date(data.lastSeen);
                             const minutesAgo = (new Date() - lastSeen) / (1000 * 60);
-                            // Consider users active if seen in the last 5 minutes.
                             return minutesAgo < 5;
                         })
                         .map(data => ({
@@ -187,6 +187,8 @@ export class CollaborationManager {
                             userName: data.userName,
                             editingItem: data.editingItem
                         }));
+                    
+                    console.log('Presence update - all active users:', allActiveUsers);
                     callback(allActiveUsers);
                 },
                 (error) => {
