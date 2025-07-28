@@ -14,7 +14,10 @@ export class CollaborationManager {
     }
 
     async startPresenceTracking(rundownId) {
-        if (!this.db || !this.currentUser || this.isDestroyed) return;
+        if (!this.db || !this.currentUser || this.isDestroyed) {
+            console.error('Cannot start presence tracking:', { db: !!this.db, currentUser: !!this.currentUser, isDestroyed: this.isDestroyed });
+            return;
+        }
 
         if (this.presenceRef) {
             await this.stopPresenceTracking();
@@ -36,6 +39,7 @@ export class CollaborationManager {
                 editingItem: this.currentEditingItem
             };
 
+            console.log('Setting initial presence data:', presenceData);
             await setDoc(this.presenceRef, presenceData, { merge: true });
 
             this.presenceInterval = setInterval(async () => {
@@ -46,13 +50,14 @@ export class CollaborationManager {
 
                 try {
                     const { updateDoc } = await import("firebase/firestore");
-                    await updateDoc(this.presenceRef, {
+                    const updateData = {
                         lastSeen: new Date().toISOString(),
                         editingItem: this.currentEditingItem || null,
                         isActive: true
-                    });
+                    };
+                    console.log('Updating presence with:', updateData);
+                    await updateDoc(this.presenceRef, updateData);
                     this.lastUpdate = now;
-                    console.log('Updated presence with editingItem:', this.currentEditingItem);
                 } catch (error) {
                     if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
                         console.warn('User appears to be logged out, stopping presence tracking');
@@ -112,18 +117,32 @@ export class CollaborationManager {
     async setEditingItem(itemId) {
         if (this.isDestroyed) return;
 
-        console.log('Setting editing item to:', itemId);
+        console.log('CollaborationManager.setEditingItem called with:', itemId);
         this.currentEditingItem = itemId;
         
         if (this.presenceRef && !this.isDestroyed) {
             try {
                 const { updateDoc } = await import("firebase/firestore");
-                await updateDoc(this.presenceRef, {
+                const updateData = {
                     editingItem: itemId,
                     lastSeen: new Date().toISOString()
-                });
+                };
+                console.log('Updating presence document with:', updateData);
+                await updateDoc(this.presenceRef, updateData);
                 this.lastUpdate = Date.now();
                 console.log('Successfully updated editing item in Firestore:', itemId);
+                
+                // Force an immediate presence update
+                setTimeout(() => {
+                    if (!this.isDestroyed && this.presenceRef) {
+                        updateDoc(this.presenceRef, {
+                            editingItem: itemId,
+                            lastSeen: new Date().toISOString(),
+                            isActive: true
+                        }).catch(err => console.error('Force update failed:', err));
+                    }
+                }, 100);
+                
             } catch (error) {
                 if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
                     console.warn('User appears to be logged out, cannot update editing item');
@@ -131,6 +150,8 @@ export class CollaborationManager {
                 }
                 console.error('Error updating editing item:', error);
             }
+        } else {
+            console.warn('No presence ref available or manager destroyed');
         }
     }
 
