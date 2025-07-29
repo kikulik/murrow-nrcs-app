@@ -1,585 +1,332 @@
-// src/context/CollaborationContext.jsx (v3 - Fixed Manager Initialization)
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
-import { useAuth } from './AuthContext';
-import { useAppContext } from './AppContext';
-import { CollaborationManager } from '../services/CollaborationManager';
+// src/services/CollaborationManager.js (Fixed for Proper Takeover)
+export class CollaborationManager {
+    constructor(db, currentUser) {
+        this.db = db;
+        this.currentUser = currentUser;
+        this.presenceRef = null;
+        this.currentEditingItem = null;
+        this.presenceInterval = null;
+        this.presenceListenerUnsubscribe = null;
+        this.lastUpdate = 0;
+        this.updateThrottle = 500;
+        this.cleanup = () => { };
+        this.isDestroyed = false;
+    }
 
-const CollaborationContext = createContext();
-
-export const CollaborationProvider = ({ children }) => {
-    const { currentUser, db } = useAuth();
-    const { appState, setAppState, openStoryTab, updateStoryTab, forceCloseStoryTab, refreshStoryTabData } = useAppContext();
-    const [activeUsers, setActiveUsers] = useState([]);
-    const [editingSessions, setEditingSessions] = useState(new Map());
-    const [notifications, setNotifications] = useState([]);
-    const collaborationManagerRef = useRef(null);
-    const notificationsUnsubscribeRef = useRef(null);
-    const presenceInitialized = useRef(false);
-    const processedNotifications = useRef(new Set());
-    const takingOverItemRef = useRef(null);
-    const managerInitialized = useRef(false);
-
-    // FIX: Enhanced manager initialization
-    const ensureManagerInitialized = useCallback(async () => {
-        if (!db || !currentUser) {
-            console.log('Cannot initialize manager: missing db or currentUser');
-            return false;
-        }
-
-        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
-            console.log('Initializing new CollaborationManager');
-            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
-            managerInitialized.current = true;
-            
-            // Start presence tracking if we have an active rundown
-            if (appState.activeRundownId && !presenceInitialized.current) {
-                console.log('Starting presence tracking during manager initialization');
-                presenceInitialized.current = true;
-                await collaborationManagerRef.current.startPresenceTracking(appState.activeRundownId);
-                collaborationManagerRef.current.listenToPresence(
-                    appState.activeRundownId,
-                    (allUsers) => {
-                        setActiveUsers(allUsers);
-                        updateEditingSessions(allUsers);
-                    }
-                );
-            }
-        }
-        return true;
-    }, [db, currentUser, appState.activeRundownId]);
-
-    useEffect(() => {
-        if (db && currentUser) {
-            ensureManagerInitialized();
-        } else {
-            if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
-                collaborationManagerRef.current.stopPresenceTracking();
-            }
-            collaborationManagerRef.current = null;
-            managerInitialized.current = false;
-            presenceInitialized.current = false;
-        }
-    }, [db, currentUser, ensureManagerInitialized]);
-
-    useEffect(() => {
-        if (!currentUser) {
-            if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
-                collaborationManagerRef.current.stopPresenceTracking();
-            }
-            collaborationManagerRef.current = null;
-
-            if (notificationsUnsubscribeRef.current) {
-                try {
-                    notificationsUnsubscribeRef.current();
-                } catch (error) {
-                    console.warn('Error cleaning up notifications listener:', error);
-                }
-                notificationsUnsubscribeRef.current = null;
-            }
-
-            setActiveUsers([]);
-            setEditingSessions(new Map());
-            setNotifications([]);
-            managerInitialized.current = false;
-            presenceInitialized.current = false;
-            processedNotifications.current.clear();
-        }
-    }, [currentUser]);
-
-    const markNotificationAsRead = useCallback(async (notificationId) => {
-        if (!db || !notificationId) return;
-        try {
-            await updateDoc(doc(db, "notifications", notificationId), { read: true });
-        } catch (error) {
-            console.error('Error marking notification as read:', error);
-        }
-    }, [db]);
-
-    const clearAllNotifications = useCallback(async () => {
-        if (!db || !currentUser) return;
-        try {
-            const notificationsQuery = query(
-                collection(db, "notifications"),
-                where("userId", "==", currentUser.uid),
-                where("read", "==", false)
-            );
-            const snapshot = await getDocs(notificationsQuery);
-            
-            const deletePromises = snapshot.docs.map(docSnapshot => 
-                deleteDoc(doc(db, "notifications", docSnapshot.id))
-            );
-            
-            await Promise.all(deletePromises);
-            setNotifications([]);
-        } catch (error) {
-            console.error('Error clearing all notifications:', error);
-        }
-    }, [db, currentUser]);
-
-    const handleTakeOverNotification = useCallback(async (notification) => {
-        if (!notification || notification.type !== 'takeOver' || processedNotifications.current.has(notification.id)) {
+    async startPresenceTracking(rundownId) {
+        if (!this.db || !this.currentUser) {
+            console.error('Cannot start presence tracking: missing db or currentUser');
             return;
         }
 
-        processedNotifications.current.add(notification.id);
-        console.log('Processing takeover notification for item:', notification.itemId);
-        
-        try {
-            await markNotificationAsRead(notification.id);
-            forceCloseStoryTab(notification.itemId, true);
-            
-            setEditingSessions(prevSessions => {
-                const newSessions = new Map(prevSessions);
-                newSessions.delete(notification.itemId.toString());
-                return newSessions;
-            });
-            
-            console.log('Takeover notification processed successfully - tab closed');
-        } catch (error) {
-            console.error('Error processing takeover notification:', error);
+        if (this.isDestroyed) {
+            console.error('Cannot start presence tracking: instance is destroyed');
+            return;
         }
-    }, [markNotificationAsRead, forceCloseStoryTab]);
 
-    const setupNotificationListener = useCallback(async () => {
-        if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
-
-        console.log('Setting up notification listener for user:', currentUser.uid);
+        if (this.presenceRef) {
+            await this.stopPresenceTracking();
+        }
 
         try {
-            const notificationsQuery = query(
-                collection(db, "notifications"),
-                where("userId", "==", currentUser.uid),
-                where("read", "==", false)
+            const { doc, setDoc, collection } = await import("firebase/firestore");
+
+            const presenceCollection = collection(this.db, "presence");
+            const presenceDoc = doc(presenceCollection, `${rundownId}_${this.currentUser.uid}`);
+            this.presenceRef = presenceDoc;
+
+            const presenceData = {
+                userId: this.currentUser.uid,
+                userName: this.currentUser.name,
+                rundownId,
+                lastSeen: new Date().toISOString(),
+                isActive: true,
+                editingItem: this.currentEditingItem
+            };
+
+            await setDoc(this.presenceRef, presenceData, { merge: true });
+
+            this.presenceInterval = setInterval(async () => {
+                if (!this.presenceRef || this.isDestroyed) return;
+
+                const now = Date.now();
+                if (now - this.lastUpdate < this.updateThrottle) return;
+
+                try {
+                    const { updateDoc } = await import("firebase/firestore");
+                    const updateData = {
+                        lastSeen: new Date().toISOString(),
+                        editingItem: this.currentEditingItem || null,
+                        isActive: true
+                    };
+                    await updateDoc(this.presenceRef, updateData);
+                    this.lastUpdate = now;
+                } catch (error) {
+                    if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                        console.warn('User appears to be logged out, stopping presence tracking');
+                        this.stopPresenceTracking();
+                        return;
+                    }
+                    console.error('Error updating presence:', error);
+                }
+            }, 1000);
+
+            const handleBeforeUnload = () => this.stopPresenceTracking();
+            window.addEventListener('beforeunload', handleBeforeUnload);
+            this.cleanup = () => window.removeEventListener('beforeunload', handleBeforeUnload);
+        } catch (error) {
+            console.error('Error starting presence tracking:', error);
+        }
+    }
+
+    async stopPresenceTracking() {
+        if (this.presenceInterval) {
+            clearInterval(this.presenceInterval);
+            this.presenceInterval = null;
+        }
+
+        if (this.presenceListenerUnsubscribe) {
+            try {
+                this.presenceListenerUnsubscribe();
+            } catch (error) {
+                console.warn('Error unsubscribing from presence listener:', error);
+            }
+            this.presenceListenerUnsubscribe = null;
+        }
+
+        if (this.presenceRef) {
+            const refToDelete = this.presenceRef;
+            this.presenceRef = null;
+            try {
+                const { deleteDoc } = await import("firebase/firestore");
+                await deleteDoc(refToDelete);
+            } catch (error) {
+                console.warn('Could not delete presence document on cleanup (this is expected on logout):', error.message);
+            }
+        }
+
+        if (this.cleanup) {
+            try {
+                this.cleanup();
+            } catch (error) {
+                console.warn('Error during cleanup function:', error);
+            }
+            this.cleanup = () => { };
+        }
+
+        this.isDestroyed = true;
+    }
+
+    async setEditingItem(itemId) {
+        if (this.isDestroyed) {
+            console.warn('Cannot set editing item: instance is destroyed');
+            return;
+        }
+
+        this.currentEditingItem = itemId;
+        console.log('Setting editing item to:', itemId);
+        
+        if (this.presenceRef) {
+            try {
+                const { updateDoc, deleteField } = await import("firebase/firestore");
+                
+                const updateData = {
+                    lastSeen: new Date().toISOString(),
+                    isActive: true,
+                    editingItem: itemId ? itemId : deleteField()
+                };
+
+                await updateDoc(this.presenceRef, updateData);
+                this.lastUpdate = Date.now();
+                console.log('Updated presence with editing item:', itemId);
+            } catch (error) {
+                if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                    console.warn('User appears to be logged out, cannot update editing item');
+                    return;
+                }
+                console.error('Error updating editing item:', error);
+            }
+        }
+    }
+
+    // FIX: Enhanced notification sending with better error handling
+    async sendTakeOverNotification(itemId, previousUserId) {
+        if (!previousUserId || this.isDestroyed) return;
+        try {
+            console.log('Sending takeover notification to user:', previousUserId, 'for item:', itemId);
+            const { collection, addDoc } = await import("firebase/firestore");
+            
+            const notificationData = {
+                userId: previousUserId,
+                type: 'takeOver',
+                message: `${this.currentUser.name} has taken over editing the item.`,
+                itemId: itemId.toString(),
+                timestamp: new Date().toISOString(),
+                read: false,
+                takenOverBy: this.currentUser.uid,
+                takenOverByName: this.currentUser.name
+            };
+            
+            const docRef = await addDoc(collection(this.db, "notifications"), notificationData);
+            console.log('Takeover notification sent with ID:', docRef.id);
+            
+            // FIX: Also clear the previous user's editing state immediately
+            await this.clearPreviousUserEditingState(previousUserId, itemId);
+            
+        } catch (error) {
+            console.error('Error sending notification:', error);
+        }
+    }
+
+    async listenToPresence(rundownId, callback) {
+        if (!this.db || this.isDestroyed) return;
+
+        if (this.presenceListenerUnsubscribe) {
+            try {
+                this.presenceListenerUnsubscribe();
+            } catch (error) {
+                console.warn('Error cleaning up previous presence listener:', error);
+            }
+        }
+
+        try {
+            const { collection, query, where, onSnapshot } = await import("firebase/firestore");
+            const presenceQuery = query(
+                collection(this.db, "presence"),
+                where("rundownId", "==", rundownId)
             );
 
-            notificationsUnsubscribeRef.current = onSnapshot(
-                notificationsQuery,
+            this.presenceListenerUnsubscribe = onSnapshot(
+                presenceQuery,
                 (snapshot) => {
-                    try {
-                        const allUserNotifications = snapshot.docs.map(doc => ({
-                            id: doc.id,
-                            ...doc.data()
+                    if (this.isDestroyed) return;
+                    
+                    const allActiveUsers = snapshot.docs
+                        .map(doc => doc.data())
+                        .filter(data => {
+                            if (!data.lastSeen) return false;
+                            const lastSeen = new Date(data.lastSeen);
+                            const minutesAgo = (new Date() - lastSeen) / (1000 * 60);
+                            return minutesAgo < 2;
+                        })
+                        .map(data => ({
+                            userId: data.userId,
+                            userName: data.userName,
+                            editingItem: data.editingItem
                         }));
-                        
-                        const unreadNotifications = allUserNotifications.filter(n => n.read === false);
-                        unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                        setNotifications(unreadNotifications);
-                        
-                        const newNotifications = unreadNotifications.filter(n => 
-                            !processedNotifications.current.has(n.id)
-                        );
-                        
-                        newNotifications.forEach(notification => {
-                            if (notification.type === 'takeOver') {
-                                handleTakeOverNotification(notification);
-                            }
-                        });
-                    } catch (error) {
-                        console.error('Error processing notifications:', error);
-                    }
+                    
+                    callback(allActiveUsers);
                 },
                 (error) => {
-                    console.error('Notifications listener error:', error);
+                    if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                        console.warn('User appears to be logged out, stopping presence listener');
+                        return;
+                    }
+                    console.error('Error in presence listener:', error);
                 }
             );
         } catch (error) {
-            console.error('Error setting up notification listener:', error);
+            console.error('Error setting up presence listener:', error);
         }
-    }, [db, currentUser, handleTakeOverNotification]);
-
-    useEffect(() => {
-        if (currentUser && db) {
-            setupNotificationListener();
-        }
-
-        return () => {
-            if (notificationsUnsubscribeRef.current) {
-                try {
-                    notificationsUnsubscribeRef.current();
-                } catch (error) {
-                    console.warn('Error cleaning up notifications listener on unmount:', error);
-                }
-                notificationsUnsubscribeRef.current = null;
-            }
-        };
-    }, [setupNotificationListener, currentUser, db]);
-
-    const updateEditingSessions = useCallback((users) => {
-        if (!currentUser) return;
-
-        const sessions = new Map();
-        const myOpenTabs = new Set(appState.editingStoryTabs.map(t => t.itemId.toString()));
-
-        users.forEach(user => {
-            if (user.editingItem) {
-                const itemIdStr = user.editingItem.toString();
-                sessions.set(itemIdStr, {
-                    userId: user.userId,
-                    userName: user.userName,
-                    timestamp: Date.now()
-                });
-
-                if (myOpenTabs.has(itemIdStr) && user.userId !== currentUser.uid && takingOverItemRef.current !== itemIdStr) {
-                    console.log(`Proactive takeover detected for item ${itemIdStr} by ${user.userName}`);
-                    updateStoryTab(itemIdStr, { isBeingTakenOver: true });
-                }
-            }
-        });
-        
-        setEditingSessions(prevSessions => {
-            if (prevSessions.size !== sessions.size) {
-                return sessions;
-            }
-            
-            let hasChanged = false;
-            for (const [key, value] of sessions) {
-                const prevValue = prevSessions.get(key);
-                if (!prevValue || prevValue.userId !== value.userId) {
-                    hasChanged = true;
-                    break;
-                }
-            }
-            
-            return hasChanged ? sessions : prevSessions;
-        });
-    }, [appState.editingStoryTabs, currentUser, updateStoryTab]);
-
-    useEffect(() => {
-        const setupPresenceTracking = async () => {
-            if (!appState.activeRundownId || !currentUser) {
-                presenceInitialized.current = false;
-                return;
-            }
-
-            // Ensure manager is initialized
-            const managerReady = await ensureManagerInitialized();
-            if (!managerReady) return;
-
-            const manager = collaborationManagerRef.current;
-            
-            try {
-                if (manager && !manager.isDestroyed && !presenceInitialized.current) {
-                    console.log('Starting presence tracking for rundown:', appState.activeRundownId);
-                    presenceInitialized.current = true;
-                    await manager.startPresenceTracking(appState.activeRundownId);
-                    manager.listenToPresence(
-                        appState.activeRundownId,
-                        (allUsers) => {
-                            setActiveUsers(allUsers);
-                            updateEditingSessions(allUsers);
-                        }
-                    );
-                }
-            } catch (error) {
-                console.error('Error in presence tracking setup:', error);
-                presenceInitialized.current = false;
-            }
-        };
-
-        setupPresenceTracking();
-
-        return () => {
-            try {
-                const manager = collaborationManagerRef.current;
-                if (manager && !manager.isDestroyed && presenceInitialized.current) {
-                    manager.stopPresenceTracking();
-                    presenceInitialized.current = false;
-                }
-            } catch (error) {
-                console.error('Error cleaning up presence tracking:', error);
-            }
-        };
-    }, [appState.activeRundownId, currentUser, ensureManagerInitialized, updateEditingSessions]);
-
-    const startEditingStory = async (itemId, storyData) => {
-        try {
-            if (!itemId || !storyData || !currentUser) {
-                console.error('Missing required parameters for startEditingStory');
-                return false;
-            }
-
-            // FIX: Ensure manager is initialized before using
-            const managerReady = await ensureManagerInitialized();
-            if (!managerReady) {
-                console.error('Failed to initialize collaboration manager');
-                return false;
-            }
-
-            const manager = collaborationManagerRef.current;
-            if (!manager) {
-                console.error('CollaborationManager is still not available');
-                return false;
-            }
-        
-            const editingUser = editingSessions.get(itemId.toString());
-            const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
-
-            if (isBeingEditedByOther) {
-                console.log('Item is being edited by another user, opening in read-only mode');
-                if (openStoryTab) {
-                    openStoryTab(itemId, storyData);
-                }
-                if (updateStoryTab) {
-                    updateStoryTab(itemId, {
-                        isOwner: false,
-                        takenOver: true,
-                        takenOverBy: editingUser.userName,
-                    });
-                }
-            } else {
-                console.log('Opening item for editing');
-                await manager.setEditingItem(itemId.toString());
-                if (openStoryTab) {
-                    openStoryTab(itemId, storyData);
-                }
-                if (updateStoryTab) {
-                    updateStoryTab(itemId, {
-                        isOwner: true,
-                        takenOver: false,
-                        takenOverBy: null,
-                    });
-                }
-            }
-            return true;
-        } catch (error) {
-            console.error('Error in startEditingStory:', error);
-            return false;
-        }
-    };
-
-    const stopEditingStory = async (itemId) => {
-        // FIX: Ensure manager exists before using
-        await ensureManagerInitialized();
-        const manager = collaborationManagerRef.current;
-        
-        if (manager && !manager.isDestroyed) {
-            const editingUser = editingSessions.get(itemId?.toString());
-            if (editingUser && editingUser.userId === currentUser.uid) {
-                await manager.setEditingItem(null);
-                setEditingSessions(prevSessions => {
-                    const newSessions = new Map(prevSessions);
-                    newSessions.delete(itemId?.toString());
-                    return newSessions;
-                });
-            }
-        }
-    };
-
-    // FIX: Enhanced takeover with guaranteed manager initialization
-    const takeOverStory = async (itemId, previousUserId) => {
-        console.log('takeOverStory called for item:', itemId, 'from user:', previousUserId);
-        
-        // FIX: Ensure manager is initialized before attempting takeover
-        const managerReady = await ensureManagerInitialized();
-        if (!managerReady) {
-            console.error('Cannot takeover: Failed to initialize CollaborationManager');
-            return false;
-        }
-
-        const manager = collaborationManagerRef.current;
-        if (!manager || manager.isDestroyed) {
-            console.error('Cannot takeover: CollaborationManager not available');
-            return false;
-        }
-        
-        const itemIdStr = itemId.toString();
-        takingOverItemRef.current = itemIdStr;
-
-        try {
-            console.log('Starting takeover for item:', itemId, 'from user:', previousUserId);
-            
-            // 1. Send notification to the previous user
-            await manager.sendTakeOverNotification(itemId, previousUserId);
-            console.log('Takeover notification sent successfully');
-            
-            // 2. Update our presence to claim the item
-            await manager.setEditingItem(itemIdStr);
-            console.log('Updated presence to claim item');
-            
-            // 3. Update local editing sessions immediately
-            setEditingSessions(prevSessions => {
-                const newSessions = new Map(prevSessions);
-                newSessions.set(itemIdStr, {
-                    userId: currentUser.uid,
-                    userName: currentUser.name,
-                    timestamp: Date.now()
-                });
-                console.log('Updated local editing sessions');
-                return newSessions;
-            });
-
-            // 4. Wait for journalist to save changes
-            console.log('Waiting for journalist to save changes...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            // 5. Fetch latest rundown data
-            console.log('Fetching latest rundown data...');
-            if (!appState.activeRundownId) {
-                console.error('No active rundown ID');
-                return false;
-            }
-
-            const rundownRef = doc(db, "rundowns", appState.activeRundownId);
-            const freshRundownDoc = await getDoc(rundownRef);
-            let currentItem;
-
-            if (freshRundownDoc.exists()) {
-                const freshRundownData = freshRundownDoc.data();
-                console.log('Got fresh rundown data, updating app state...');
-                setAppState(prev => ({
-                    ...prev,
-                    rundowns: prev.rundowns.map(r => r.id === appState.activeRundownId ? { id: r.id, ...freshRundownData } : r)
-                }));
-                currentItem = freshRundownData.items.find(item => item.id.toString() === itemIdStr);
-            } else {
-                console.warn('Fresh rundown document not found, using existing data');
-                const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
-                currentItem = rundownData?.items?.find(item => item.id.toString() === itemIdStr);
-            }
-
-            if (!currentItem) {
-                console.error('Item not found after takeover refresh');
-                return false;
-            }
-
-            // 6. Wait for state propagation
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // 7. Open tab with force takeover
-            console.log('Opening story tab for producer with fresh data:', currentItem.title);
-            openStoryTab(itemId, currentItem, true);
-            
-            // 8. Force update tab ownership
-            setTimeout(() => {
-                updateStoryTab(itemId, {
-                    isOwner: true,
-                    takenOver: false,
-                    takenOverBy: null,
-                    isBeingTakenOver: false
-                });
-                console.log('Force updated tab ownership after takeover');
-            }, 200);
-            
-            console.log('Takeover completed successfully');
-            return true;
-            
-        } catch (error) {
-            console.error('Error during takeover:', error);
-            showTakeoverError(error);
-            return false;
-        } finally {
-            setTimeout(() => {
-                if (takingOverItemRef.current === itemIdStr) {
-                    takingOverItemRef.current = null;
-                }
-            }, 3000);
-        }
-    };
-
-    const showTakeoverError = (error) => {
-        let errorMessage = 'Takeover failed. Please try again.';
-        
-        if (error.code === 'permission-denied') {
-            errorMessage = 'Permission denied. You may not have access to this item.';
-        } else if (error.code === 'unavailable') {
-            errorMessage = 'Service temporarily unavailable. Please try again.';
-        } else if (error.message) {
-            errorMessage = `Takeover failed: ${error.message}`;
-        }
-        
-        console.error('Takeover error details:', errorMessage);
-    };
-
-    const saveStoryProgress = async (itemId, storyData) => {
-        if (!db || !itemId) return;
-        try {
-            await setDoc(doc(db, "storyDrafts", `${itemId}_${currentUser.uid}`), {
-                itemId,
-                userId: currentUser.uid,
-                storyData: storyData,
-                timestamp: new Date().toISOString(),
-                autoSaved: true
-            });
-        } catch (error) {
-            console.error('Error saving story progress:', error);
-        }
-    };
-
-    const getStoryProgress = async (itemId) => {
-        if (!db || !itemId) return null;
-        try {
-            const draftDoc = await getDoc(doc(db, "storyDrafts", `${itemId}_${currentUser.uid}`));
-            return draftDoc.exists() ? draftDoc.data().storyData : null;
-        } catch (error) {
-            console.error('Error getting story progress:', error);
-            return null;
-        }
-    };
-
-    const setEditingItem = async (itemId) => {
-        await ensureManagerInitialized();
-        const manager = collaborationManagerRef.current;
-        if (manager) {
-            await manager.setEditingItem(itemId);
-        }
-    };
-
-    const clearEditingItem = async () => {
-        await ensureManagerInitialized();
-        const manager = collaborationManagerRef.current;
-        if (manager) {
-            await manager.setEditingItem(null);
-        }
-    };
-
-    const safeUpdateRundown = async (rundownId, updateFunction) => {
-        await ensureManagerInitialized();
-        const manager = collaborationManagerRef.current;
-        if (manager && !manager.isDestroyed) {
-            return await manager.safeUpdateRundown(rundownId, updateFunction);
-        }
-    };
-
-    const getUserEditingItem = (itemId) => {
-        return editingSessions.get(itemId.toString());
-    };
-
-    const isItemBeingEdited = (itemId) => {
-        const session = editingSessions.get(itemId.toString());
-        return session && session.userId !== currentUser.uid;
-    };
-
-    const value = {
-        activeUsers,
-        editingSessions,
-        notifications,
-        startEditingStory,
-        stopEditingStory,
-        takeOverStory,
-        saveStoryProgress,
-        getStoryProgress,
-        setEditingItem,
-        clearEditingItem,
-        safeUpdateRundown,
-        getUserEditingItem,
-        isItemBeingEdited,
-        markNotificationAsRead,
-        clearAllNotifications,
-        CollaborationManager: collaborationManagerRef.current
-    };
-
-    return (
-        <CollaborationContext.Provider value={value}>
-            {children}
-        </CollaborationContext.Provider>
-    );
-};
-
-export const useCollaboration = () => {
-    const context = useContext(CollaborationContext);
-    if (!context) {
-        throw new Error('useCollaboration must be used within a CollaborationProvider');
     }
-    return context;
-};
+
+    generateTextOperations(oldText, newText) {
+        if (oldText === newText) return [];
+        return [{
+            type: 'replace',
+            position: 0,
+            oldLength: oldText.length,
+            newText: newText,
+            timestamp: Date.now()
+        }];
+    }
+
+    applyTextTransform(originalText, operations) {
+        let result = originalText;
+        let offset = 0;
+        const sortedOps = [...operations].sort((a, b) => a.position - b.position);
+        for (const op of sortedOps) {
+            const pos = op.position + offset;
+            switch (op.type) {
+                case 'insert':
+                    result = result.slice(0, pos) + op.text + result.slice(pos);
+                    offset += op.text.length;
+                    break;
+                case 'delete':
+                    result = result.slice(0, pos) + result.slice(pos + op.length);
+                    offset -= op.length;
+                    break;
+                case 'replace':
+                    result = result.slice(0, pos) + op.newText + result.slice(pos + op.oldLength);
+                    offset += op.newText.length - op.oldLength;
+                    break;
+            }
+        }
+        return result;
+    }
+
+    // FIX: Enhanced method to clear previous user's editing state
+    async clearPreviousUserEditingState(previousUserId, itemId) {
+        if (this.isDestroyed) return;
+
+        try {
+            console.log('Clearing editing state for user:', previousUserId, 'item:', itemId);
+            const { collection, query, where, getDocs, updateDoc, deleteField } = await import("firebase/firestore");
+            
+            const presenceQuery = query(
+                collection(this.db, "presence"),
+                where("userId", "==", previousUserId)
+            );
+            
+            const presenceSnapshot = await getDocs(presenceQuery);
+            
+            const updatePromises = presenceSnapshot.docs.map(doc => {
+                const data = doc.data();
+                if (data.editingItem === itemId.toString()) {
+                    console.log('Clearing editing item for presence doc:', doc.id);
+                    return updateDoc(doc.ref, {
+                        editingItem: deleteField(),
+                        lastSeen: new Date().toISOString()
+                    });
+                }
+                return Promise.resolve();
+            });
+            
+            await Promise.all(updatePromises);
+            console.log('Successfully cleared previous user editing state');
+            
+        } catch (error) {
+            console.error('Error clearing previous user editing state:', error);
+        }
+    }
+
+    async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
+        if (this.isDestroyed) return null;
+
+        for (let attempt = 0; attempt < retryCount; attempt++) {
+            try {
+                const { doc, getDoc, updateDoc } = await import("firebase/firestore");
+                const rundownRef = doc(this.db, "rundowns", rundownId);
+                const rundownDoc = await getDoc(rundownRef);
+                if (!rundownDoc.exists()) throw new Error("Rundown not found");
+                const currentData = rundownDoc.data();
+                const updatedData = updateFunction(currentData);
+                const versionedData = {
+                    ...updatedData,
+                    version: (currentData.version || 1) + 1,
+                    lastModified: new Date().toISOString(),
+                    lastModifiedBy: this.currentUser.uid
+                };
+                await updateDoc(rundownRef, versionedData);
+                return versionedData;
+            } catch (error) {
+                if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                    console.warn('User appears to be logged out, cannot update rundown');
+                    return null;
+                }
+                if (attempt === retryCount - 1) throw error;
+                await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+            }
+        }
+    }
+}
