@@ -1,4 +1,4 @@
-// src/context/CollaborationContext.jsx (Fixed Takeover Logic)
+// src/context/CollaborationContext.jsx (Notification Delivery Fix)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -102,25 +102,37 @@ export const CollaborationProvider = ({ children }) => {
     }, [updateStoryTab, markNotificationAsRead]);
 
     const setupNotificationListener = useCallback(async () => {
-        if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
+        if (!db || !currentUser) return;
+        
+        if (notificationsUnsubscribeRef.current) {
+            try {
+                notificationsUnsubscribeRef.current();
+            } catch (error) {
+                console.warn('Error cleaning up previous notification listener:', error);
+            }
+            notificationsUnsubscribeRef.current = null;
+        }
 
         console.log('Setting up notification listener for user:', currentUser.uid);
 
         try {
             const notificationsQuery = query(
                 collection(db, "notifications"),
-                where("userId", "==", currentUser.uid),
-                where("read", "==", false)
+                where("userId", "==", currentUser.uid)
             );
 
             notificationsUnsubscribeRef.current = onSnapshot(
                 notificationsQuery,
                 (snapshot) => {
                     try {
+                        console.log('Notification snapshot received, docs:', snapshot.docs.length);
+                        
                         const allUserNotifications = snapshot.docs.map(doc => ({
                             id: doc.id,
                             ...doc.data()
                         }));
+                        
+                        console.log('All user notifications:', allUserNotifications);
                         
                         const unreadNotifications = allUserNotifications.filter(n => n.read === false);
                         unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -130,7 +142,12 @@ export const CollaborationProvider = ({ children }) => {
                             !processedNotifications.current.has(n.id)
                         );
                         
-                        newNotifications.forEach(handleTakeOverNotification);
+                        console.log('New unprocessed notifications:', newNotifications);
+                        
+                        newNotifications.forEach(notification => {
+                            console.log('Processing new notification:', notification);
+                            handleTakeOverNotification(notification);
+                        });
                     } catch (error) {
                         console.error('Error processing notifications:', error);
                     }
@@ -149,6 +166,7 @@ export const CollaborationProvider = ({ children }) => {
 
     useEffect(() => {
         if (currentUser && db) {
+            console.log('Current user changed, setting up notification listener:', currentUser.uid);
             setupNotificationListener();
         }
 
@@ -326,16 +344,10 @@ export const CollaborationProvider = ({ children }) => {
         try {
             console.log('Starting takeover for item:', itemId, 'from user:', previousUserId);
             
-            // 1. Send takeover notification FIRST
             await manager.sendTakeOverNotification(itemId, previousUserId);
-            
-            // 2. Clear previous user's editing state
             await manager.clearPreviousUserEditingState(previousUserId, itemIdStr);
-            
-            // 3. Update our own presence to claim the item
             await manager.setEditingItem(itemIdStr);
 
-            // 4. Update local editing sessions immediately
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
                 newSessions.set(itemIdStr, {
@@ -346,11 +358,9 @@ export const CollaborationProvider = ({ children }) => {
                 return newSessions;
             });
 
-            // 5. Wait for notification to be processed and changes to be saved
             console.log('Waiting for previous user to save and close...');
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // 6. Fetch latest rundown data
             console.log('Fetching latest rundown data...');
             const rundownRef = doc(db, "rundowns", appState.activeRundownId);
             const freshRundownDoc = await getDoc(rundownRef);
@@ -374,14 +384,11 @@ export const CollaborationProvider = ({ children }) => {
                 return false;
             }
 
-            // 7. Wait for app state to update
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            // 8. Open tab with takeover flag and proper ownership
             console.log('Opening story tab for new user with fresh data:', currentItem);
             openStoryTab(itemId, currentItem, true);
             
-            // 9. Ensure correct ownership state
             setTimeout(() => {
                 updateStoryTab(itemId, {
                     isOwner: true,
