@@ -1,4 +1,4 @@
-// src/features/rundown/components/RundownDraggableItem.jsx (v2 - Better Error Handling)
+// src/features/rundown/components/RundownDraggableItem.jsx
 import React, { useRef } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import CustomIcon from '../../../components/ui/CustomIcon';
@@ -33,7 +33,6 @@ const RundownDraggableItem = ({
 
     const userPermissions = getUserPermissions(currentUser.role);
     
-    // FIX: More reliable presence detection
     const editingUser = getUserEditingItem(item.id);
     const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
     const canTakeOver = userPermissions.canTakeOverStories;
@@ -101,57 +100,23 @@ const RundownDraggableItem = ({
 
     const handleEdit = async () => {
         if (isBeingEditedByOther && !canTakeOver) {
-            console.log('Item is being edited by another user and cannot take over');
             return;
         }
 
         try {
-            console.log('Starting edit for item:', item.id);
-            const success = await startEditingStory(item.id, item);
-            if (!success) {
-                console.error('Failed to start editing story');
-            }
+            await startEditingStory(item.id, item);
         } catch (error) {
             console.error('Error starting edit:', error);
         }
     };
 
-    // FIX: Enhanced takeover with comprehensive error handling
     const handleTakeOver = async () => {
-        if (!canTakeOver || !editingUser) {
-            console.error('Cannot take over: insufficient permissions or no editing user');
-            return;
-        }
+        if (!canTakeOver || !editingUser) return;
 
-        console.log('RundownItem: Starting takeover for item:', item.id, 'from user:', editingUser.userId);
-        
-        try {
-            const success = await takeOverStory(item.id, editingUser.userId);
-            
-            if (success) {
-                console.log('RundownItem: Takeover successful, refreshing data and starting edit');
-                
-                // Refresh the tab data to get latest content
-                refreshStoryTabData(item.id);
-                
-                // Wait a bit for state to propagate, then start editing
-                setTimeout(async () => {
-                    try {
-                        await startEditingStory(item.id, item);
-                        console.log('Successfully started editing after takeover');
-                    } catch (error) {
-                        console.error('Error starting edit after takeover:', error);
-                    }
-                }, 300);
-                
-            } else {
-                console.error('RundownItem: Takeover failed');
-                // You could show a user notification here
-                alert('Failed to take over the item. Please try again.');
-            }
-        } catch (error) {
-            console.error('RundownItem: Takeover error:', error);
-            alert('An error occurred during takeover. Please try again.');
+        const success = await takeOverStory(item.id, editingUser.userId);
+        if (success) {
+            refreshStoryTabData(item.id);
+            await startEditingStory(item.id, item);
         }
     };
 
@@ -160,12 +125,10 @@ const RundownDraggableItem = ({
         e.stopPropagation();
         
         if (isLocked) {
-            console.log('Cannot edit: item is locked');
             return;
         }
         
         if (isBeingEditedByOther && !canTakeOver) {
-            console.log('Cannot edit: item is being edited by another user and cannot take over');
             return;
         }
         
@@ -208,15 +171,14 @@ const RundownDraggableItem = ({
                     </h4>
                 </div>
                 <div className="col-span-1 flex justify-center">
-                    {/* FIX: Enhanced presence indicator with debugging */}
-                    {isBeingEditedByOther && editingUser ? (
+                    {isBeingEditedByOther && (
                         <div 
-                            title={`${editingUser.userName} is editing (ID: ${editingUser.userId})`} 
+                            title={`${editingUser.userName} is editing`} 
                             className="w-6 h-6 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center animate-pulse"
                         >
-                            {editingUser.userName?.charAt(0) || 'U'}
+                            {editingUser.userName?.charAt(0)}
                         </div>
-                    ) : null}
+                    )}
                 </div>
                 <div className="col-span-2 flex gap-1 flex-wrap">
                     {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
