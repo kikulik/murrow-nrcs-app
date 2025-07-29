@@ -1,4 +1,4 @@
-// src/services/CollaborationManager.js (Fixed Real-time)
+// src/services/CollaborationManager.js (Original Working Version)
 export class CollaborationManager {
     constructor(db, currentUser) {
         this.db = db;
@@ -168,46 +168,8 @@ export class CollaborationManager {
             
             const docRef = await addDoc(collection(this.db, "notifications"), notificationData);
             console.log('Takeover notification sent with ID:', docRef.id);
-
-            // FIX: Also clear the previous user's editing state immediately
-            await this.clearUserEditingState(previousUserId, itemId);
         } catch (error) {
             console.error('Error sending notification:', error);
-        }
-    }
-
-    // FIX: New method to clear a specific user's editing state
-    async clearUserEditingState(userId, itemId) {
-        if (this.isDestroyed) return;
-
-        try {
-            console.log('Clearing editing state for user:', userId, 'item:', itemId);
-            const { collection, query, where, getDocs, updateDoc, deleteField } = await import("firebase/firestore");
-            
-            const presenceQuery = query(
-                collection(this.db, "presence"),
-                where("userId", "==", userId)
-            );
-            
-            const presenceSnapshot = await getDocs(presenceQuery);
-            
-            const updatePromises = presenceSnapshot.docs.map(docSnapshot => {
-                const data = docSnapshot.data();
-                if (data.editingItem === itemId.toString()) {
-                    console.log('Clearing editing item for presence doc:', docSnapshot.id);
-                    return updateDoc(docSnapshot.ref, {
-                        editingItem: deleteField(),
-                        lastSeen: new Date().toISOString()
-                    });
-                }
-                return Promise.resolve();
-            });
-            
-            await Promise.all(updatePromises);
-            console.log('Successfully cleared user editing state');
-            
-        } catch (error) {
-            console.error('Error clearing user editing state:', error);
         }
     }
 
@@ -235,11 +197,7 @@ export class CollaborationManager {
                     if (this.isDestroyed) return;
                     
                     const allActiveUsers = snapshot.docs
-                        .map(doc => {
-                            const data = doc.data();
-                            console.log('Presence data for user:', data.userId, 'editing:', data.editingItem);
-                            return data;
-                        })
+                        .map(doc => doc.data())
                         .filter(data => {
                             if (!data.lastSeen) return false;
                             const lastSeen = new Date(data.lastSeen);
@@ -252,7 +210,6 @@ export class CollaborationManager {
                             editingItem: data.editingItem
                         }));
                     
-                    console.log('Active users from presence:', allActiveUsers);
                     callback(allActiveUsers);
                 },
                 (error) => {
@@ -301,6 +258,40 @@ export class CollaborationManager {
             }
         }
         return result;
+    }
+
+    async clearPreviousUserEditingState(previousUserId, itemId) {
+        if (this.isDestroyed) return;
+
+        try {
+            console.log('Clearing editing state for user:', previousUserId, 'item:', itemId);
+            const { collection, query, where, getDocs, updateDoc } = await import("firebase/firestore");
+            
+            const presenceQuery = query(
+                collection(this.db, "presence"),
+                where("userId", "==", previousUserId)
+            );
+            
+            const presenceSnapshot = await getDocs(presenceQuery);
+            
+            const updatePromises = presenceSnapshot.docs.map(doc => {
+                const data = doc.data();
+                if (data.editingItem === itemId.toString()) {
+                    console.log('Clearing editing item for presence doc:', doc.id);
+                    return updateDoc(doc.ref, {
+                        editingItem: null,
+                        lastSeen: new Date().toISOString()
+                    });
+                }
+                return Promise.resolve();
+            });
+            
+            await Promise.all(updatePromises);
+            console.log('Successfully cleared previous user editing state');
+            
+        } catch (error) {
+            console.error('Error clearing previous user editing state:', error);
+        }
     }
 
     async safeUpdateRundown(rundownId, updateFunction, retryCount = 3) {
