@@ -1,4 +1,4 @@
-// src/services/CollaborationManager.js (Fixed Clear Previous User State)
+// src/services/CollaborationManager.js (Stop Premature Presence Clear)
 export class CollaborationManager {
     constructor(db, currentUser) {
         this.db = db;
@@ -11,6 +11,7 @@ export class CollaborationManager {
         this.updateThrottle = 500;
         this.cleanup = () => { };
         this.isDestroyed = false;
+        this.isActivelyEditing = false;
     }
 
     async startPresenceTracking(rundownId) {
@@ -124,7 +125,8 @@ export class CollaborationManager {
         }
 
         this.currentEditingItem = itemId;
-        console.log('Setting editing item to:', itemId);
+        this.isActivelyEditing = !!itemId;
+        console.log('Setting editing item to:', itemId, 'isActivelyEditing:', this.isActivelyEditing);
         
         if (this.presenceRef) {
             try {
