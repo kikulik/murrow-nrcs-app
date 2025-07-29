@@ -1,3 +1,4 @@
+// src/context/AppContext.jsx (Fixed Tab Management)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
@@ -6,57 +7,40 @@ const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
     const { db, currentUser } = useAuth();
-
-    const getInitialState = () => {
-        const savedTab = localStorage.getItem('murrow_active_tab');
-        const savedRundownId = localStorage.getItem('murrow_active_rundown_id');
-        const initialTab = (savedTab && !savedTab.startsWith('storyEdit-')) ? savedTab : 'stories';
-
-        return {
-            users: [],
-            groups: [],
-            stories: [],
-            assignments: [],
-            rundowns: [],
-            rundownTemplates: [],
-            messages: [],
-            activeRundownId: savedRundownId || null,
-            notifications: [],
-            activeTab: initialTab,
-            modal: null,
-            theme: 'light',
-            searchTerm: '',
-            showArchived: false,
-            createdFolders: [],
-            isLive: false,
-            liveTime: 0,
-            currentLiveItemIndex: 0,
-            liveRundownId: null,
-            editingStoryTabs: [],
-            quickEditItem: null,
-            recentlyClosed: new Set(),
-        };
-    };
-
-    const [appState, setAppState] = useState(getInitialState);
+    const [appState, setAppState] = useState({
+        users: [],
+        groups: [],
+        stories: [],
+        assignments: [],
+        rundowns: [],
+        rundownTemplates: [],
+        messages: [],
+        activeRundownId: null,
+        notifications: [],
+        activeTab: 'stories',
+        modal: null,
+        theme: 'light',
+        searchTerm: '',
+        showArchived: false,
+        createdFolders: [],
+        isLive: false,
+        liveTime: 0,
+        currentLiveItemIndex: 0,
+        liveRundownId: null,
+        editingStoryTabs: [],
+        quickEditItem: null,
+        recentlyClosed: new Set(),
+    });
     const unsubscribeRef = useRef(null);
-
-    useEffect(() => {
-        if (appState.activeTab && !appState.activeTab.startsWith('storyEdit-')) {
-            localStorage.setItem('murrow_active_tab', appState.activeTab);
-        }
-    }, [appState.activeTab]);
-
-    useEffect(() => {
-        if (appState.activeRundownId) {
-            localStorage.setItem('murrow_active_rundown_id', appState.activeRundownId);
-        } else {
-            localStorage.removeItem('murrow_active_rundown_id');
-        }
-    }, [appState.activeRundownId]);
+    const cleanupTimeoutRef = useRef(null);
 
     useEffect(() => {
         const initializeListeners = async () => {
+            if (cleanupTimeoutRef.current) {
+                clearTimeout(cleanupTimeoutRef.current);
+                cleanupTimeoutRef.current = null;
+            }
+
             if (unsubscribeRef.current) {
                 try {
                     unsubscribeRef.current();
@@ -92,7 +76,31 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         if (!currentUser && unsubscribeRef.current) {
             cleanupDataListeners();
-            setAppState(getInitialState());
+
+            setAppState({
+                users: [],
+                groups: [],
+                stories: [],
+                assignments: [],
+                rundowns: [],
+                rundownTemplates: [],
+                messages: [],
+                activeRundownId: null,
+                notifications: [],
+                activeTab: 'stories',
+                modal: null,
+                theme: 'light',
+                searchTerm: '',
+                showArchived: false,
+                createdFolders: [],
+                isLive: false,
+                liveTime: 0,
+                currentLiveItemIndex: 0,
+                liveRundownId: null,
+                editingStoryTabs: [],
+                quickEditItem: null,
+                recentlyClosed: new Set(),
+            });
         }
     }, [currentUser]);
 
@@ -110,10 +118,17 @@ export const AppProvider = ({ children }) => {
     const openStoryTab = useCallback((itemId, storyData, forceTakeover = false) => {
         setAppState(prev => {
             const itemIdStr = itemId.toString();
+            
             const newRecentlyClosed = new Set(prev.recentlyClosed);
             newRecentlyClosed.delete(itemIdStr);
+            
             const existingTabIndex = prev.editingStoryTabs.findIndex(tab => tab.itemId.toString() === itemIdStr);
-            const fullStoryData = { ...storyData, storyId: storyData.storyId || null };
+            
+            const fullStoryData = {
+                ...storyData,
+                storyId: storyData.storyId || null
+            };
+
             const newTab = {
                 itemId: itemIdStr,
                 storyData: fullStoryData,
@@ -124,37 +139,70 @@ export const AppProvider = ({ children }) => {
                 takenOverBy: null,
                 isBeingTakenOver: false
             };
+
             let updatedTabs;
+
             if (existingTabIndex !== -1) {
                 if (forceTakeover) {
+                    console.log('AppContext: Force takeover - replacing tab with fresh ownership for item:', itemIdStr);
                     updatedTabs = [...prev.editingStoryTabs];
-                    updatedTabs[existingTabIndex] = { ...newTab, isOwner: true, takenOver: false, takenOverBy: null, isBeingTakenOver: false };
+                    updatedTabs[existingTabIndex] = {
+                        ...newTab,
+                        isOwner: true,
+                        takenOver: false,
+                        takenOverBy: null,
+                        isBeingTakenOver: false
+                    };
                 } else {
+                    console.log('AppContext: Updating existing tab for item:', itemIdStr);
                     updatedTabs = prev.editingStoryTabs.map((tab, index) =>
-                        index === existingTabIndex ? { ...tab, storyData: fullStoryData, title: storyData?.title || tab.title } : tab
+                        index === existingTabIndex
+                            ? { 
+                                ...tab, 
+                                storyData: fullStoryData,
+                                title: storyData?.title || tab.title
+                            }
+                            : tab
                     );
                 }
             } else {
+                console.log('AppContext: Creating new tab for item:', itemIdStr);
                 updatedTabs = [...prev.editingStoryTabs, newTab];
             }
-            return { ...prev, editingStoryTabs: updatedTabs, activeTab: `storyEdit-${itemId}`, recentlyClosed: newRecentlyClosed };
+
+            return {
+                ...prev,
+                editingStoryTabs: updatedTabs,
+                activeTab: `storyEdit-${itemId}`,
+                recentlyClosed: newRecentlyClosed
+            };
         });
     }, []);
-
+    
     const closeStoryTab = useCallback((itemId, isForced = false, isForTakeover = false) => {
         const itemIdStr = itemId.toString();
         setAppState(prev => {
             const updatedTabs = prev.editingStoryTabs.filter(tab => tab.itemId.toString() !== itemIdStr);
             let newActiveTab = prev.activeTab;
+    
             if (prev.activeTab === `storyEdit-${itemIdStr}`) {
                 newActiveTab = updatedTabs.length > 0 ? updatedTabs[updatedTabs.length - 1].tabId : 'rundown';
             }
+    
             const newRecentlyClosed = new Set(prev.recentlyClosed);
+            
             if (isForced && !isForTakeover) {
                 newRecentlyClosed.add(itemIdStr);
             }
-            return { ...prev, editingStoryTabs: updatedTabs, activeTab: newActiveTab, recentlyClosed: newRecentlyClosed };
+
+            return {
+                ...prev,
+                editingStoryTabs: updatedTabs,
+                activeTab: newActiveTab,
+                recentlyClosed: newRecentlyClosed,
+            };
         });
+
         if (isForced && !isForTakeover) {
             setTimeout(() => {
                 setAppState(prev => {
@@ -165,13 +213,20 @@ export const AppProvider = ({ children }) => {
             }, 5000);
         }
     }, []);
-
+    
     const updateStoryTab = useCallback((itemId, updates) => {
+        console.log('AppContext: updateStoryTab called for item:', itemId, 'with updates:', updates);
         setAppState(prev => ({
             ...prev,
-            editingStoryTabs: prev.editingStoryTabs.map(tab =>
-                tab.itemId.toString() === itemId.toString() ? { ...tab, ...updates } : tab
-            )
+            editingStoryTabs: prev.editingStoryTabs.map(tab => {
+                if (tab.itemId.toString() === itemId.toString()) {
+                    const updatedTab = { ...tab, ...updates };
+                    console.log('AppContext: Updated tab state:', updatedTab);
+                    return updatedTab;
+                } else {
+                    return tab;
+                }
+            })
         }));
     }, []);
 
@@ -187,12 +242,16 @@ export const AppProvider = ({ children }) => {
         setAppState(prev => {
             const rundown = prev.rundowns.find(r => r.id === prev.activeRundownId);
             if (!rundown) return prev;
+
             const updatedItem = rundown.items.find(item => item.id.toString() === itemId.toString());
             if (!updatedItem) return prev;
+
             return {
                 ...prev,
                 editingStoryTabs: prev.editingStoryTabs.map(tab =>
-                    tab.itemId.toString() === itemId.toString() ? { ...tab, storyData: updatedItem } : tab
+                    tab.itemId.toString() === itemId.toString()
+                        ? { ...tab, storyData: updatedItem }
+                        : tab
                 )
             };
         });
@@ -210,7 +269,11 @@ export const AppProvider = ({ children }) => {
         refreshStoryTabData
     };
 
-    return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
+    return (
+        <AppContext.Provider value={contextValue}>
+            {children}
+        </AppContext.Provider>
+    );
 };
 
 export const useAppContext = () => {
