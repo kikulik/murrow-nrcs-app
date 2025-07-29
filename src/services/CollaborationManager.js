@@ -299,4 +299,28 @@ export class CollaborationManager {
 
         for (let attempt = 0; attempt < retryCount; attempt++) {
             try {
-                const { doc, getDoc,
+                const { doc, getDoc, updateDoc } = await import("firebase/firestore");
+                const rundownRef = doc(this.db, "rundowns", rundownId);
+                const rundownDoc = await getDoc(rundownRef);
+                if (!rundownDoc.exists()) throw new Error("Rundown not found");
+                const currentData = rundownDoc.data();
+                const updatedData = updateFunction(currentData);
+                const versionedData = {
+                    ...updatedData,
+                    version: (currentData.version || 1) + 1,
+                    lastModified: new Date().toISOString(),
+                    lastModifiedBy: this.currentUser.uid
+                };
+                await updateDoc(rundownRef, versionedData);
+                return versionedData;
+            } catch (error) {
+                if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                    console.warn('User appears to be logged out, cannot update rundown');
+                    return null;
+                }
+                if (attempt === retryCount - 1) throw error;
+                await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+            }
+        }
+    }
+}
