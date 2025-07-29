@@ -1,4 +1,4 @@
-// src/context/CollaborationContext.jsx (Real-time Fixed - Minimal Changes)
+// src/context/CollaborationContext.jsx
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -97,9 +97,21 @@ export const CollaborationProvider = ({ children }) => {
         processedNotifications.current.add(notification.id);
         console.log('Processing takeover notification for item:', notification.itemId);
         
-        updateStoryTab(notification.itemId, { isBeingTakenOver: true });
+        // Mark notification as read immediately
         await markNotificationAsRead(notification.id);
-    }, [updateStoryTab, markNotificationAsRead]);
+        
+        // Force close the tab for the journalist who got taken over
+        forceCloseStoryTab(notification.itemId, true);
+        
+        // Update editing sessions to remove the old user
+        setEditingSessions(prevSessions => {
+            const newSessions = new Map(prevSessions);
+            newSessions.delete(notification.itemId.toString());
+            return newSessions;
+        });
+        
+        console.log('Takeover notification processed - tab closed for journalist');
+    }, [markNotificationAsRead, forceCloseStoryTab]);
 
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
@@ -126,11 +138,16 @@ export const CollaborationProvider = ({ children }) => {
                         unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                         setNotifications(unreadNotifications);
                         
+                        // Process new takeover notifications immediately
                         const newNotifications = unreadNotifications.filter(n => 
                             !processedNotifications.current.has(n.id)
                         );
                         
-                        newNotifications.forEach(handleTakeOverNotification);
+                        newNotifications.forEach(notification => {
+                            if (notification.type === 'takeOver') {
+                                handleTakeOverNotification(notification);
+                            }
+                        });
                     } catch (error) {
                         console.error('Error processing notifications:', error);
                     }
@@ -164,6 +181,7 @@ export const CollaborationProvider = ({ children }) => {
         };
     }, [setupNotificationListener, currentUser, db]);
 
+    // editing sessions update with proper cleanup
     const updateEditingSessions = useCallback((users) => {
         if (!currentUser) return;
 
@@ -179,6 +197,7 @@ export const CollaborationProvider = ({ children }) => {
                     timestamp: Date.now()
                 });
 
+                // Check if someone else took over my item
                 if (myOpenTabs.has(itemIdStr) && user.userId !== currentUser.uid && takingOverItemRef.current !== itemIdStr) {
                     console.log(`Proactive takeover detected for item ${itemIdStr} by ${user.userName}`);
                     updateStoryTab(itemIdStr, { isBeingTakenOver: true });
@@ -187,6 +206,7 @@ export const CollaborationProvider = ({ children }) => {
         });
         
         setEditingSessions(prevSessions => {
+            // Only update if there are actual changes
             if (prevSessions.size !== sessions.size) {
                 return sessions;
             }
@@ -203,7 +223,6 @@ export const CollaborationProvider = ({ children }) => {
             return hasChanged ? sessions : prevSessions;
         });
     }, [appState.editingStoryTabs, currentUser, updateStoryTab]);
-
 
     useEffect(() => {
         const manager = collaborationManagerRef.current;
@@ -317,6 +336,7 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
+    // Enhanced takeover with better state management
     const takeOverStory = async (itemId, previousUserId) => {
         const manager = collaborationManagerRef.current;
         if (!manager || manager.isDestroyed) return false;
@@ -327,11 +347,14 @@ export const CollaborationProvider = ({ children }) => {
         try {
             console.log('Starting takeover for item:', itemId, 'from user:', previousUserId);
             
-            // 1. Update remote state (Firestore presence)
-            await manager.setEditingItem(itemIdStr);
+            // 1. Send notification to the previous user first
             await manager.sendTakeOverNotification(itemId, previousUserId);
-
-            // 2. Manually update local state to reflect the takeover IMMEDIATELY.
+            console.log('Takeover notification sent');
+            
+            // 2. Update our own presence to claim the item
+            await manager.setEditingItem(itemIdStr);
+            
+            // 3. Immediately update local editing sessions
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
                 newSessions.set(itemIdStr, {
@@ -342,11 +365,11 @@ export const CollaborationProvider = ({ children }) => {
                 return newSessions;
             });
 
-            // 3. Give the system more time for the journalist's client to save and update the rundown.
+            // 4. Wait for journalist to save and update
             console.log('Waiting for journalist to save changes...');
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // 4. Fetch the absolute latest version of the rundown to get the final save.
+            // 5. Fetch latest data
             console.log('Fetching latest rundown data...');
             const rundownRef = doc(db, "rundowns", appState.activeRundownId);
             const freshRundownDoc = await getDoc(rundownRef);
@@ -355,14 +378,12 @@ export const CollaborationProvider = ({ children }) => {
             if (freshRundownDoc.exists()) {
                 const freshRundownData = freshRundownDoc.data();
                 console.log('Got fresh rundown data, updating app state...');
-                // Update the entire rundown in the app state to ensure all components have the fresh data.
                 setAppState(prev => ({
                     ...prev,
                     rundowns: prev.rundowns.map(r => r.id === appState.activeRundownId ? { id: r.id, ...freshRundownData } : r)
                 }));
                 currentItem = freshRundownData.items.find(item => item.id.toString() === itemIdStr);
             } else {
-                // Fallback to existing item if the fetch somehow fails
                 const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
                 currentItem = rundownData?.items?.find(item => item.id.toString() === itemIdStr);
             }
@@ -372,14 +393,14 @@ export const CollaborationProvider = ({ children }) => {
                 return false;
             }
 
-            // 5. Wait a bit more to ensure the app state has been updated
-            await new Promise(resolve => setTimeout(resolve, 300));
+            // 6. Wait a bit more for state propagation
+            await new Promise(resolve => setTimeout(resolve, 500));
 
-            // 6. Open the tab with force takeover flag and immediately update ownership
-            console.log('Opening story tab for new user with fresh data:', currentItem);
-            openStoryTab(itemId, currentItem, true); // Pass true as forceTakeover flag
+            // 7. Open tab with force takeover and set ownership immediately
+            console.log('Opening story tab for producer with fresh data:', currentItem);
+            openStoryTab(itemId, currentItem, true);
             
-            // 7. Force update the tab ownership immediately after opening
+            // 8. Force update tab ownership immediately
             setTimeout(() => {
                 updateStoryTab(itemId, {
                     isOwner: true,
@@ -400,7 +421,7 @@ export const CollaborationProvider = ({ children }) => {
                 if (takingOverItemRef.current === itemIdStr) {
                     takingOverItemRef.current = null;
                 }
-            }, 2000);
+            }, 3000);
         }
     };
 
