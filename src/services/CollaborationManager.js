@@ -1,4 +1,4 @@
-// src/services/CollaborationManager.js (Original Working Version)
+// src/services/CollaborationManager.js (Fixed Clear Previous User State)
 export class CollaborationManager {
     constructor(db, currentUser) {
         this.db = db;
@@ -265,7 +265,7 @@ export class CollaborationManager {
 
         try {
             console.log('Clearing editing state for user:', previousUserId, 'item:', itemId);
-            const { collection, query, where, getDocs, updateDoc } = await import("firebase/firestore");
+            const { collection, query, where, getDocs, updateDoc, deleteField } = await import("firebase/firestore");
             
             const presenceQuery = query(
                 collection(this.db, "presence"),
@@ -279,7 +279,7 @@ export class CollaborationManager {
                 if (data.editingItem === itemId.toString()) {
                     console.log('Clearing editing item for presence doc:', doc.id);
                     return updateDoc(doc.ref, {
-                        editingItem: null,
+                        editingItem: deleteField(),
                         lastSeen: new Date().toISOString()
                     });
                 }
@@ -299,28 +299,4 @@ export class CollaborationManager {
 
         for (let attempt = 0; attempt < retryCount; attempt++) {
             try {
-                const { doc, getDoc, updateDoc } = await import("firebase/firestore");
-                const rundownRef = doc(this.db, "rundowns", rundownId);
-                const rundownDoc = await getDoc(rundownRef);
-                if (!rundownDoc.exists()) throw new Error("Rundown not found");
-                const currentData = rundownDoc.data();
-                const updatedData = updateFunction(currentData);
-                const versionedData = {
-                    ...updatedData,
-                    version: (currentData.version || 1) + 1,
-                    lastModified: new Date().toISOString(),
-                    lastModifiedBy: this.currentUser.uid
-                };
-                await updateDoc(rundownRef, versionedData);
-                return versionedData;
-            } catch (error) {
-                if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
-                    console.warn('User appears to be logged out, cannot update rundown');
-                    return null;
-                }
-                if (attempt === retryCount - 1) throw error;
-                await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
-            }
-        }
-    }
-}
+                const { doc, getDoc,
