@@ -31,9 +31,8 @@ const StoryEditTab = ({ itemId }) => {
     const initialData = tab?.storyData || {};
     const editingUser = getUserEditingItem(itemId);
 
-    // FIX: This is the definitive fix. The logic now trusts the `tab.isOwner` property
-    // passed during tab creation, which solves the race condition where the component
-    // would render with stale real-time data.
+    // FIX: The logic now trusts the `tab.isOwner` property passed during tab creation,
+    // which solves the race condition where the component would render with stale real-time data.
     const isOwner = tab?.isOwner && !tab?.isBeingTakenOver;
     const isTakenOverByOther = !isOwner && editingUser && editingUser.userId !== currentUser.uid;
     const takenOverBy = isTakenOverByOther ? editingUser.userName : null;
@@ -51,19 +50,36 @@ const StoryEditTab = ({ itemId }) => {
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [notification, setNotification] = useState(null);
+    const [isInitializing, setIsInitializing] = useState(true);
+
+    // FIX: Add initialization state tracking
+    useEffect(() => {
+        // Give a moment for the tab data to settle after takeover
+        const initTimer = setTimeout(() => {
+            setIsInitializing(false);
+        }, 500);
+
+        return () => clearTimeout(initTimer);
+    }, []);
 
     // When the tab data is refreshed from the context (e.g., after a takeover),
     // update the form data to show the latest content.
     useEffect(() => {
-        setFormData({
+        console.log('StoryEditTab: Updating form data with initial data:', initialData);
+        const newFormData = {
             title: initialData.title || '',
             content: initialData.content || '',
             duration: initialData.duration || '01:00',
             type: Array.isArray(initialData.type) ? initialData.type : [initialData.type || 'STD'],
             authorId: initialData.authorId || currentUser.uid
-        });
+        };
+        
+        // Only update if there are actual changes to prevent unnecessary re-renders
+        if (JSON.stringify(newFormData) !== JSON.stringify(formData)) {
+            console.log('StoryEditTab: Form data changed, updating:', newFormData);
+            setFormData(newFormData);
+        }
     }, [initialData, currentUser.uid]);
-
 
     const showNotification = (message, type = 'info') => {
         setNotification({ message, type });
@@ -116,7 +132,6 @@ const StoryEditTab = ({ itemId }) => {
         }
     }, [itemId, formData, appState.activeRundownId, safeUpdateRundown, initialData.storyId, db, isSaving]);
 
-
     const autoSave = useCallback(async () => {
         if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db) {
             return false;
@@ -152,7 +167,6 @@ const StoryEditTab = ({ itemId }) => {
             console.log('Force closed tab for takeover.');
         }
     }, [saveChanges, clearEditingItem, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
-
 
     useEffect(() => {
         if (tab?.isBeingTakenOver) {
@@ -216,6 +230,18 @@ const StoryEditTab = ({ itemId }) => {
         return (
             <div className="flex items-center justify-center h-64">
                 <p className="text-gray-500">No item ID provided</p>
+            </div>
+        );
+    }
+
+    // FIX: Show loading state during initialization to prevent flashing of stale content
+    if (isInitializing) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <p className="text-gray-500">Loading story...</p>
+                </div>
             </div>
         );
     }
@@ -311,7 +337,7 @@ const StoryEditTab = ({ itemId }) => {
                                 </label>
                                 {wordCount > 0 && (
                                     <p className="text-xs text-gray-500 mt-1">
-                                        {wordCount} words Ã¢â‚¬Â¢ Est. {calculatedDuration} reading time
+                                        {wordCount} words • Est. {calculatedDuration} reading time
                                     </p>
                                 )}
                             </div>
