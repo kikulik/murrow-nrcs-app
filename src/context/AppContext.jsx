@@ -1,4 +1,4 @@
-// src/context/AppContext.jsx (Fixed Tab Management)
+// src/context/AppContext.jsx
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
@@ -7,32 +7,51 @@ const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
     const { db, currentUser } = useAuth();
-    const [appState, setAppState] = useState({
-        users: [],
-        groups: [],
-        stories: [],
-        assignments: [],
-        rundowns: [],
-        rundownTemplates: [],
-        messages: [],
-        activeRundownId: null,
-        notifications: [],
-        activeTab: 'stories',
-        modal: null,
-        theme: 'light',
-        searchTerm: '',
-        showArchived: false,
-        createdFolders: [],
-        isLive: false,
-        liveTime: 0,
-        currentLiveItemIndex: 0,
-        liveRundownId: null,
-        editingStoryTabs: [],
-        quickEditItem: null,
-        recentlyClosed: new Set(),
+
+    // Initialize state from localStorage to persist active tab and rundown across refreshes.
+    const [appState, setAppState] = useState(() => {
+        const activeTab = localStorage.getItem('murrow_active_tab') || 'stories';
+        const activeRundownId = localStorage.getItem('murrow_active_rundown_id') || null;
+        
+        return {
+            users: [],
+            groups: [],
+            stories: [],
+            assignments: [],
+            rundowns: [],
+            rundownTemplates: [],
+            messages: [],
+            activeRundownId: activeRundownId,
+            notifications: [],
+            // If the persisted tab was a story edit tab, default to the rundown view for safety.
+            activeTab: activeTab.startsWith('storyEdit-') ? 'rundown' : activeTab,
+            modal: null,
+            theme: 'light',
+            searchTerm: '',
+            showArchived: false,
+            createdFolders: [],
+            isLive: false,
+            liveTime: 0,
+            currentLiveItemIndex: 0,
+            liveRundownId: null,
+            editingStoryTabs: [],
+            quickEditItem: null,
+            recentlyClosed: new Set(),
+        };
     });
+
     const unsubscribeRef = useRef(null);
     const cleanupTimeoutRef = useRef(null);
+
+    // Persist active tab and rundown ID to localStorage whenever they change.
+    useEffect(() => {
+        localStorage.setItem('murrow_active_tab', appState.activeTab);
+        if (appState.activeRundownId) {
+            localStorage.setItem('murrow_active_rundown_id', appState.activeRundownId);
+        } else {
+            localStorage.removeItem('murrow_active_rundown_id');
+        }
+    }, [appState.activeTab, appState.activeRundownId]);
 
     useEffect(() => {
         const initializeListeners = async () => {
@@ -74,8 +93,14 @@ export const AppProvider = ({ children }) => {
     }, [db, currentUser]);
 
     useEffect(() => {
-        if (!currentUser && unsubscribeRef.current) {
-            cleanupDataListeners();
+        // On logout, clear persisted state from localStorage and reset the app state.
+        if (!currentUser) {
+            if (unsubscribeRef.current) {
+                cleanupDataListeners();
+            }
+
+            localStorage.removeItem('murrow_active_tab');
+            localStorage.removeItem('murrow_active_rundown_id');
 
             setAppState({
                 users: [],
