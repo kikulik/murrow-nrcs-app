@@ -1,4 +1,4 @@
-// src/services/CollaborationManager.js (Fixed for Proper Takeover)
+// src/services/CollaborationManager.js (Original Working Version)
 export class CollaborationManager {
     constructor(db, currentUser) {
         this.db = db;
@@ -149,7 +149,6 @@ export class CollaborationManager {
         }
     }
 
-    // FIX: Enhanced notification sending with better error handling
     async sendTakeOverNotification(itemId, previousUserId) {
         if (!previousUserId || this.isDestroyed) return;
         try {
@@ -169,10 +168,6 @@ export class CollaborationManager {
             
             const docRef = await addDoc(collection(this.db, "notifications"), notificationData);
             console.log('Takeover notification sent with ID:', docRef.id);
-            
-            // FIX: Also clear the previous user's editing state immediately
-            await this.clearPreviousUserEditingState(previousUserId, itemId);
-            
         } catch (error) {
             console.error('Error sending notification:', error);
         }
@@ -265,13 +260,12 @@ export class CollaborationManager {
         return result;
     }
 
-    // FIX: Enhanced method to clear previous user's editing state
     async clearPreviousUserEditingState(previousUserId, itemId) {
         if (this.isDestroyed) return;
 
         try {
             console.log('Clearing editing state for user:', previousUserId, 'item:', itemId);
-            const { collection, query, where, getDocs, updateDoc, deleteField } = await import("firebase/firestore");
+            const { collection, query, where, getDocs, updateDoc } = await import("firebase/firestore");
             
             const presenceQuery = query(
                 collection(this.db, "presence"),
@@ -285,7 +279,7 @@ export class CollaborationManager {
                 if (data.editingItem === itemId.toString()) {
                     console.log('Clearing editing item for presence doc:', doc.id);
                     return updateDoc(doc.ref, {
-                        editingItem: deleteField(),
+                        editingItem: null,
                         lastSeen: new Date().toISOString()
                     });
                 }
