@@ -1,4 +1,4 @@
-// src/context/CollaborationContext.jsx (Notification Delivery Fix)
+// src/context/CollaborationContext.jsx (Notification Processing Fix)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -18,6 +18,7 @@ export const CollaborationProvider = ({ children }) => {
     const presenceInitialized = useRef(false);
     const processedNotifications = useRef(new Set());
     const takingOverItemRef = useRef(null);
+    const lastNotificationCheck = useRef(0);
 
     useEffect(() => {
         if (db && currentUser) {
@@ -56,6 +57,7 @@ export const CollaborationProvider = ({ children }) => {
             setNotifications([]);
             presenceInitialized.current = false;
             processedNotifications.current.clear();
+            lastNotificationCheck.current = 0;
         }
     }, [currentUser]);
 
@@ -95,7 +97,7 @@ export const CollaborationProvider = ({ children }) => {
         }
 
         processedNotifications.current.add(notification.id);
-        console.log('Processing takeover notification for item:', notification.itemId);
+        console.log('Processing takeover notification for item:', notification.itemId, 'by:', notification.takenOverByName);
         
         updateStoryTab(notification.itemId, { isBeingTakenOver: true });
         await markNotificationAsRead(notification.id);
@@ -134,15 +136,31 @@ export const CollaborationProvider = ({ children }) => {
                         
                         console.log('All user notifications:', allUserNotifications);
                         
+                        const currentTime = Date.now();
+                        const newNotifications = allUserNotifications.filter(n => {
+                            const notificationTime = new Date(n.timestamp).getTime();
+                            const isNew = notificationTime > lastNotificationCheck.current;
+                            const isUnprocessed = !processedNotifications.current.has(n.id);
+                            const isUnread = n.read === false;
+                            
+                            console.log('Notification check:', {
+                                id: n.id,
+                                isNew,
+                                isUnprocessed,
+                                isUnread,
+                                notificationTime,
+                                lastCheck: lastNotificationCheck.current
+                            });
+                            
+                            return isNew && isUnprocessed && isUnread;
+                        });
+                        
+                        console.log('New notifications to process:', newNotifications);
+                        lastNotificationCheck.current = currentTime;
+                        
                         const unreadNotifications = allUserNotifications.filter(n => n.read === false);
                         unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                         setNotifications(unreadNotifications);
-                        
-                        const newNotifications = unreadNotifications.filter(n => 
-                            !processedNotifications.current.has(n.id)
-                        );
-                        
-                        console.log('New unprocessed notifications:', newNotifications);
                         
                         newNotifications.forEach(notification => {
                             console.log('Processing new notification:', notification);
@@ -167,6 +185,7 @@ export const CollaborationProvider = ({ children }) => {
     useEffect(() => {
         if (currentUser && db) {
             console.log('Current user changed, setting up notification listener:', currentUser.uid);
+            lastNotificationCheck.current = Date.now();
             setupNotificationListener();
         }
 
