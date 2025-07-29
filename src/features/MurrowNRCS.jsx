@@ -1,3 +1,4 @@
+// src/features/MurrowNRCS.jsx
 /*
 ================================================================================
 File: murrow-nrcs-app.git/src/features/MurrowNRCS.jsx
@@ -16,7 +17,7 @@ import AssignmentsTab from './assignments/AssignmentsTab';
 import AdminTab from './admin/AdminTab.jsx';
 import LiveModeTab from './rundown/LiveModeTab';
 import StoryEditTab from '../components/collaboration/StoryEditTab';
-import QuickEditModal from '../components/modals/QuickEditModal'; // ADD THIS IMPORT
+import QuickEditModal from '../components/modals/QuickEditModal';
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
 import NotificationPanel from '../components/collaboration/NotificationPanel';
@@ -29,7 +30,6 @@ const MurrowNRCS = () => {
     const { CollaborationManager } = useCollaboration();
 
     const userPermissions = getUserPermissions(currentUser.role);
-
     const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
     const liveMode = useLiveMode(activeRundown, appState.activeRundownId);
 
@@ -47,7 +47,6 @@ const MurrowNRCS = () => {
 
             // Step 3: Small delay to ensure cleanup completes
             await new Promise(resolve => setTimeout(resolve, 150));
-
             // Step 4: Finally logout (this will trigger AuthContext cleanup)
             await logout();
         } catch (error) {
@@ -184,7 +183,6 @@ const MurrowNRCS = () => {
 
             <ModalManager />
             
-            {/* ADD QuickEditModal */}
             {appState.quickEditItem && <QuickEditModal />}
         </div>
     );
