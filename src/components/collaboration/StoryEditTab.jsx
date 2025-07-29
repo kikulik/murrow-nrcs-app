@@ -1,267 +1,344 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import CustomIcon from '../ui/CustomIcon';
-import { useAuth } from '../../context/AuthContext';
-import { useAppContext } from '../../context/AppContext';
-import { useCollaboration } from '../../context/CollaborationContext';
-import InputField from '../ui/InputField';
-import UserPresenceIndicator from './UserPresenceIndicator';
-import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
-import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { collection, query, where, onSnapshot, doc, updateDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
+import { useAuth } from './AuthContext';
+import { useAppContext } from './AppContext';
+import { CollaborationManager } from '../services/CollaborationManager';
 
-export const StoryEditTab = ({ itemId }) => {
+const CollaborationContext = createContext();
+
+export const CollaborationProvider = ({ children }) => {
     const { currentUser, db } = useAuth();
-    const { appState, closeStoryTab } = useAppContext();
-    const { safeUpdateRundown, getUserEditingItem, stopEditingStory } = useCollaboration();
-    const tab = appState.editingStoryTabs.find(t => t.itemId.toString() === itemId.toString());
-    const editingUser = getUserEditingItem(itemId);
-    const isOwner = tab?.isOwner && !tab?.isBeingTakenOver;
-    const takeoverInitiatorName = tab?.takenOverBy || editingUser?.userName;
-    const isTakenOverByOther = !isOwner && editingUser && editingUser.userId !== currentUser.uid;
-    const takenOverBy = isTakenOverByOther ? takeoverInitiatorName : null;
-    const [formData, setFormData] = useState({ title: '', content: '', duration: '01:00', type: ['STD'], authorId: currentUser.uid });
-    const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
-    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-    const [lastSaved, setLastSaved] = useState(null);
-    const [isSaving, setIsSaving] = useState(false);
-    const [notification, setNotification] = useState(null);
-    const isClosingRef = useRef(false);
-
-    const fetchFreshStory = useCallback(async () => {
-        if (!db || !tab?.storyData?.storyId) return;
-        try {
-            const storyRef = doc(db, 'stories', tab.storyData.storyId);
-            const snap = await getDoc(storyRef);
-            if (snap.exists()) {
-                const data = snap.data();
-                setFormData({
-                    title: data.title || '',
-                    content: data.content || '',
-                    duration: data.duration || '01:00',
-                    type: Array.isArray(data.tags) ? data.tags : [data.tags || 'STD'],
-                    authorId: data.authorId || currentUser.uid
-                });
-            }
-        } catch (error) {
-            console.error('Error fetching fresh story:', error);
-        }
-    }, [db, tab?.storyData?.storyId, currentUser.uid]);
+    const { appState, setAppState, openStoryTab, updateStoryTab } = useAppContext();
+    const [activeUsers, setActiveUsers] = useState([]);
+    const [editingSessions, setEditingSessions] = useState(new Map());
+    const [notifications, setNotifications] = useState([]);
+    const collaborationManagerRef = useRef(null);
+    const notificationsUnsubscribeRef = useRef(null);
+    const presenceInitialized = useRef(false);
+    const processedNotifications = useRef(new Set());
+    const takingOverItemRef = useRef(null);
 
     useEffect(() => {
-        if (isOwner && tab?.storyData?.storyId) {
-            fetchFreshStory();
-        } else {
-            setFormData({
-                title: tab?.storyData?.title || '',
-                content: tab?.storyData?.content || '',
-                duration: tab?.storyData?.duration || '01:00',
-                type: Array.isArray(tab?.storyData?.type) ? tab.storyData.type : [tab?.storyData?.type || 'STD'],
-                authorId: tab?.storyData?.authorId || currentUser.uid
-            });
-        }
-    }, [tab?.storyData, isOwner, fetchFreshStory]);
-
-    const showNotification = (message, type = 'info') => {
-        setNotification({ message, type });
-        setTimeout(() => setNotification(null), 4000);
-    };
-
-    const saveChanges = useCallback(async () => {
-        if (!itemId || !appState.activeRundownId || !safeUpdateRundown || !db || isSaving) return false;
-        try {
-            setIsSaving(true);
-            const rundownUpdatePromise = safeUpdateRundown(appState.activeRundownId, (rundownData) => {
-                const newItems = rundownData.items.map(item =>
-                    item.id.toString() === itemId.toString() ? { ...item, ...formData, id: item.id } : item
-                );
-                return { ...rundownData, items: newItems };
-            });
-            let storyUpdatePromise = Promise.resolve();
-            if (tab?.storyData?.storyId) {
-                const storyRef = doc(db, "stories", tab.storyData.storyId);
-                const storyUpdates = {
-                    title: formData.title,
-                    content: formData.content,
-                    duration: formData.duration,
-                    tags: formData.type,
-                    authorId: formData.authorId,
-                };
-                storyUpdatePromise = updateDoc(storyRef, storyUpdates);
+        if (db && currentUser) {
+            if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+                presenceInitialized.current = false;
             }
-            await Promise.all([rundownUpdatePromise, storyUpdatePromise]);
-            setLastSaved(new Date());
-            setHasUnsavedChanges(false);
+        } else {
+            if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current.stopPresenceTracking();
+            }
+            collaborationManagerRef.current = null;
+            presenceInitialized.current = false;
+        }
+    }, [db, currentUser]);
+
+    useEffect(() => {
+        if (!currentUser) {
+            if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current.stopPresenceTracking();
+            }
+            collaborationManagerRef.current = null;
+            if (notificationsUnsubscribeRef.current) {
+                try {
+                    notificationsUnsubscribeRef.current();
+                } catch (error) {
+                    console.warn('Error cleaning up notifications listener:', error);
+                }
+                notificationsUnsubscribeRef.current = null;
+            }
+            setActiveUsers([]);
+            setEditingSessions(new Map());
+            setNotifications([]);
+            presenceInitialized.current = false;
+            processedNotifications.current.clear();
+        }
+    }, [currentUser]);
+
+    const markNotificationAsRead = useCallback(async (notificationId) => {
+        if (!db || !notificationId) return;
+        try {
+            await updateDoc(doc(db, "notifications", notificationId), { read: true });
+        } catch (error) {
+            console.error('Error marking notification as read:', error);
+        }
+    }, [db]);
+
+    const clearAllNotifications = useCallback(async () => {
+        if (!db || !currentUser) return;
+        try {
+            const notificationsQuery = query(collection(db, "notifications"), where("userId", "==", currentUser.uid), where("read", "==", false));
+            const snapshot = await getDocs(notificationsQuery);
+            const deletePromises = snapshot.docs.map(docSnapshot => deleteDoc(doc(db, "notifications", docSnapshot.id)));
+            await Promise.all(deletePromises);
+            setNotifications([]);
+        } catch (error) {
+            console.error('Error clearing all notifications:', error);
+        }
+    }, [db, currentUser]);
+
+    const handleTakeOverNotification = useCallback(async (notification) => {
+        if (!notification || notification.type !== 'takeOver' || processedNotifications.current.has(notification.id)) {
+            return;
+        }
+        processedNotifications.current.add(notification.id);
+        updateStoryTab(notification.itemId, { isBeingTakenOver: true, takenOverBy: notification.takenOverByName });
+        await markNotificationAsRead(notification.id);
+    }, [updateStoryTab, markNotificationAsRead]);
+
+    const setupNotificationListener = useCallback(async () => {
+        if (!db || !currentUser) return;
+        if (notificationsUnsubscribeRef.current) {
+            try {
+                notificationsUnsubscribeRef.current();
+            } catch (error) {
+                console.warn('Error cleaning up previous notification listener:', error);
+            }
+            notificationsUnsubscribeRef.current = null;
+        }
+        try {
+            const notificationsQuery = query(collection(db, "notifications"), where("userId", "==", currentUser.uid), where("read", "==", false));
+            notificationsUnsubscribeRef.current = onSnapshot(notificationsQuery, (snapshot) => {
+                try {
+                    const allUserNotifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const unreadNotifications = allUserNotifications.filter(n => n.read === false);
+                    unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    setNotifications(unreadNotifications);
+                    const unprocessedNotifications = unreadNotifications.filter(n => !processedNotifications.current.has(n.id));
+                    unprocessedNotifications.forEach(notification => {
+                        handleTakeOverNotification(notification);
+                    });
+                } catch (error) {
+                    console.error('Error processing notifications:', error);
+                }
+            }, (error) => {
+                console.error('Notifications listener error:', error);
+                if (error.code === 'permission-denied') {
+                    console.warn('Permission denied for notifications, user may need to re-login');
+                }
+            });
+        } catch (error) {
+            console.error('Error setting up notification listener:', error);
+        }
+    }, [db, currentUser, handleTakeOverNotification]);
+
+    useEffect(() => {
+        if (currentUser && db) {
+            setupNotificationListener();
+        }
+        return () => {
+            if (notificationsUnsubscribeRef.current) {
+                try {
+                    notificationsUnsubscribeRef.current();
+                } catch (error) {
+                    console.warn('Error cleaning up notifications listener on unmount:', error);
+                }
+                notificationsUnsubscribeRef.current = null;
+            }
+        };
+    }, [setupNotificationListener, currentUser, db]);
+
+    const updateEditingSessions = useCallback((users) => {
+        if (!currentUser) return;
+        const sessions = new Map();
+        const myOpenTabs = new Set(appState.editingStoryTabs.map(t => t.itemId.toString()));
+        users.forEach(user => {
+            if (user.editingItem) {
+                const itemIdStr = user.editingItem.toString();
+                sessions.set(itemIdStr, { userId: user.userId, userName: user.userName, timestamp: Date.now() });
+                if (myOpenTabs.has(itemIdStr) && user.userId !== currentUser.uid && takingOverItemRef.current !== itemIdStr) {
+                    updateStoryTab(itemIdStr, { isBeingTakenOver: true });
+                }
+            }
+        });
+        setEditingSessions(prevSessions => {
+            if (prevSessions.size !== sessions.size) return sessions;
+            let hasChanged = false;
+            for (const [key, value] of sessions) {
+                const prevValue = prevSessions.get(key);
+                if (!prevValue || prevValue.userId !== value.userId) {
+                    hasChanged = true;
+                    break;
+                }
+            }
+            return hasChanged ? sessions : prevSessions;
+        });
+    }, [appState.editingStoryTabs, currentUser, updateStoryTab]);
+
+    useEffect(() => {
+        const manager = collaborationManagerRef.current;
+        try {
+            if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser) {
+                if (!presenceInitialized.current) {
+                    presenceInitialized.current = true;
+                    manager.startPresenceTracking(appState.activeRundownId);
+                    manager.listenToPresence(appState.activeRundownId, (allUsers) => {
+                        setActiveUsers(allUsers);
+                        updateEditingSessions(allUsers);
+                    });
+                }
+            } else if (!appState.activeRundownId) {
+                presenceInitialized.current = false;
+            }
+        } catch (error) {
+            console.error('Error in presence tracking setup:', error);
+        }
+        return () => {
+            try {
+                if (manager && !manager.isDestroyed && presenceInitialized.current) {
+                    if (!manager.isActivelyEditing) {
+                        manager.stopPresenceTracking();
+                        presenceInitialized.current = false;
+                    }
+                }
+            } catch (error) {
+                console.error('Error cleaning up presence tracking:', error);
+            }
+        };
+    }, [appState.activeRundownId, currentUser, updateEditingSessions]);
+
+    const startEditingStory = async (itemId, storyData) => {
+        try {
+            if (!itemId || !storyData || !currentUser) return false;
+            if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+                if (appState.activeRundownId) {
+                    collaborationManagerRef.current.startPresenceTracking(appState.activeRundownId);
+                    collaborationManagerRef.current.listenToPresence(appState.activeRundownId, (allUsers) => {
+                        setActiveUsers(allUsers);
+                        updateEditingSessions(allUsers);
+                    });
+                }
+            }
+            const manager = collaborationManagerRef.current;
+            if (!manager) return false;
+            const editingUser = editingSessions.get(itemId.toString());
+            const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
+            if (isBeingEditedByOther) {
+                if (openStoryTab) openStoryTab(itemId, storyData);
+                if (updateStoryTab) updateStoryTab(itemId, { isOwner: false, takenOver: true, takenOverBy: editingUser.userName });
+            } else {
+                await manager.setEditingItem(itemId.toString());
+                if (openStoryTab) openStoryTab(itemId, storyData);
+                if (updateStoryTab) updateStoryTab(itemId, { isOwner: true, takenOver: false, takenOverBy: null });
+            }
             return true;
         } catch (error) {
-            console.error("Failed to save changes:", error);
-            showNotification("Failed to save changes.", "error");
+            console.error('Error in startEditingStory:', error);
+            return false;
+        }
+    };
+
+    const stopEditingStory = async (itemId) => {
+        const manager = collaborationManagerRef.current;
+        if (manager && !manager.isDestroyed) {
+            const editingUser = editingSessions.get(itemId?.toString());
+            if (editingUser && editingUser.userId === currentUser.uid) {
+                await manager.setEditingItem(null);
+                setEditingSessions(prevSessions => {
+                    const newSessions = new Map(prevSessions);
+                    newSessions.delete(itemId?.toString());
+                    return newSessions;
+                });
+            }
+        }
+    };
+
+    const takeOverStory = async (itemId, previousUserId) => {
+        const manager = collaborationManagerRef.current;
+        if (!manager || manager.isDestroyed) return false;
+        const itemIdStr = itemId.toString();
+        takingOverItemRef.current = itemIdStr;
+        try {
+            await manager.sendTakeOverNotification(itemId, previousUserId);
+            await manager.clearPreviousUserEditingState(previousUserId, itemIdStr);
+            await manager.setEditingItem(itemIdStr);
+            setEditingSessions(prevSessions => {
+                const newSessions = new Map(prevSessions);
+                newSessions.set(itemIdStr, { userId: currentUser.uid, userName: currentUser.name, timestamp: Date.now() });
+                return newSessions;
+            });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const rundownRef = doc(db, "rundowns", appState.activeRundownId);
+            const freshRundownDoc = await getDoc(rundownRef);
+            let currentItem;
+            if (freshRundownDoc.exists()) {
+                const freshRundownData = freshRundownDoc.data();
+                setAppState(prev => ({ ...prev, rundowns: prev.rundowns.map(r => r.id === appState.activeRundownId ? { id: r.id, ...freshRundownData } : r) }));
+                currentItem = freshRundownData.items.find(item => item.id.toString() === itemIdStr);
+            } else {
+                const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
+                currentItem = rundownData?.items?.find(item => item.id.toString() === itemIdStr);
+            }
+            if (!currentItem) return false;
+            await new Promise(resolve => setTimeout(resolve, 500));
+            openStoryTab(itemId, currentItem, true);
+            setTimeout(() => {
+                updateStoryTab(itemId, { isOwner: true, takenOver: false, takenOverBy: null, isBeingTakenOver: false });
+            }, 200);
+            return true;
+        } catch (error) {
+            console.error('Error taking over story:', error);
             return false;
         } finally {
-            setIsSaving(false);
-        }
-    }, [itemId, formData, appState.activeRundownId, safeUpdateRundown, tab?.storyData?.storyId, db, isSaving]);
-
-    const saveAndCloseForTakeover = useCallback(async () => {
-        if (isSaving) return;
-        isClosingRef.current = true;
-        setIsSaving(true);
-        try {
-            if (hasUnsavedChanges) await saveChanges();
-        } catch (error) {
-            console.error("Failed to force save during takeover:", error);
-        } finally {
-            setIsSaving(false);
-            await stopEditingStory(itemId);
-            closeStoryTab(itemId, true, true);
-            isClosingRef.current = false;
-        }
-    }, [saveChanges, stopEditingStory, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
-
-    useEffect(() => {
-        const currentEditorIsSomeoneElse = editingUser && editingUser.userId !== currentUser.uid;
-        const isBeingForciblyTakenOver = tab?.isBeingTakenOver;
-        const wasIOwnerOfTab = tab?.isOwner;
-        if (wasIOwnerOfTab && (isBeingForciblyTakenOver || currentEditorIsSomeoneElse)) {
-            showNotification(`This story was taken over by ${takeoverInitiatorName || 'another user'}. Closing tab...`, 'info');
-            const takeoverTimeout = setTimeout(() => {
-                saveAndCloseForTakeover();
-            }, 2500);
-            return () => clearTimeout(takeoverTimeout);
-        }
-    }, [tab?.isOwner, tab?.isBeingTakenOver, editingUser, currentUser.uid, saveAndCloseForTakeover, takeoverInitiatorName]);
-
-    const calculatedDuration = calculateReadingTime(formData.content);
-    const wordCount = getWordCount(formData.content);
-
-    useEffect(() => {
-        if (useCalculatedDuration && isOwner) {
-            setFormData(prev => ({ ...prev, duration: calculatedDuration }));
-        }
-    }, [calculatedDuration, useCalculatedDuration, isOwner]);
-
-    const autoSave = useCallback(async () => {
-        if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db || isClosingRef.current) return false;
-        return await saveChanges();
-    }, [itemId, hasUnsavedChanges, isOwner, saveChanges]);
-
-    useEffect(() => {
-        if (isOwner && hasUnsavedChanges && !tab?.isBeingTakenOver && !isClosingRef.current) {
-            const autoSaveInterval = setInterval(autoSave, 5000);
-            return () => clearInterval(autoSaveInterval);
-        }
-    }, [autoSave, isOwner, hasUnsavedChanges, tab?.isBeingTakenOver]);
-
-    const handleFormChange = (field, value) => {
-        if (!isOwner || isClosingRef.current) return;
-        setFormData(prev => ({ ...prev, [field]: value }));
-        setHasUnsavedChanges(true);
-    };
-
-    const handleTypeChange = (type) => {
-        if (!isOwner || isClosingRef.current) return;
-        const newTypes = formData.type.includes(type) ? formData.type.filter(t => t !== type) : [...formData.type, type];
-        handleFormChange('type', newTypes);
-    };
-
-    const handleClose = async () => {
-        isClosingRef.current = true;
-        try {
-            if (hasUnsavedChanges && isOwner && !tab?.isBeingTakenOver) {
-                const shouldSave = window.confirm('You have unsaved changes. Save before closing?');
-                if (shouldSave) await saveChanges();
-            }
-            await stopEditingStory(itemId);
-            if (closeStoryTab && itemId) closeStoryTab(itemId);
-        } catch (error) {
-            console.error('Error in handleClose:', error);
-        } finally {
-            isClosingRef.current = false;
+            setTimeout(() => {
+                if (takingOverItemRef.current === itemIdStr) {
+                    takingOverItemRef.current = null;
+                }
+            }, 3000);
         }
     };
 
-    const handleSaveAndClose = useCallback(async () => {
-        isClosingRef.current = true;
-        try {
-            if (hasUnsavedChanges && isOwner) await saveChanges();
-            await stopEditingStory(itemId);
-            closeStoryTab(itemId);
-        } finally {
-            isClosingRef.current = false;
+    const setEditingItem = async (itemId) => {
+        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
         }
-    }, [hasUnsavedChanges, isOwner, saveChanges, stopEditingStory, closeStoryTab, itemId]);
+        const manager = collaborationManagerRef.current;
+        if (manager) await manager.setEditingItem(itemId);
+    };
 
-    const containerClasses = `space-y-6 ${isTakenOverByOther ? 'opacity-60 pointer-events-none' : ''}`;
+    const clearEditingItem = async () => {
+        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+        }
+        const manager = collaborationManagerRef.current;
+        if (manager) await manager.setEditingItem(null);
+    };
 
-    return (
-        <div className={containerClasses}>
-            {notification && (
-                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
-                    notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
-                    notification.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
-                    'bg-blue-100 text-blue-800 border border-blue-200'
-                }`}>
-                    <div className="flex items-center justify-between">
-                        <span>{notification.message}</span>
-                        <button onClick={() => setNotification(null)} className="ml-4 text-gray-500 hover:text-gray-700">&times;</button>
-                    </div>
-                </div>
-            )}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-xl font-semibold">Edit Story</h2>
-                    <UserPresenceIndicator itemId={itemId} />
-                    {isTakenOverByOther && takenOverBy && (
-                        <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
-                            <CustomIcon name="lock" size={32} className="text-orange-600" />
-                            <span className="text-sm text-orange-800 dark:text-orange-200">{takenOverBy} is editing</span>
-                        </div>
-                    )}
-                </div>
-                <div className="flex items-center gap-4">
-                    {lastSaved && isOwner && (<span className="text-sm text-gray-500">Last saved: {lastSaved.toLocaleTimeString()}</span>)}
-                    {isSaving && (<span className="text-sm text-blue-600 flex items-center gap-1"><CustomIcon name="save" size={32} className="animate-pulse" /> Saving...</span>)}
-                    {hasUnsavedChanges && !isSaving && isOwner && (<span className="text-sm text-orange-600">Unsaved changes</span>)}
-                    <button onClick={handleClose} className="btn-secondary pointer-events-auto" type="button"><CustomIcon name="cancel" size={40} /> <span>Close</span></button>
-                </div>
-            </div>
-            <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6 ${!isOwner ? 'opacity-75' : ''}`}>
-                <div className="space-y-6">
-                    <InputField label="Title" value={formData.title} onChange={(e) => handleFormChange('title', e.target.value)} disabled={!isOwner} />
-                    <div className="grid grid-cols-2 gap-4">
-                        <InputField label="Duration" value={formData.duration} onChange={(e) => handleFormChange('duration', e.target.value)} placeholder="MM:SS" disabled={useCalculatedDuration || !isOwner} />
-                        <div className="flex flex-col justify-end">
-                            <label className="flex items-center space-x-2 text-sm">
-                                <input type="checkbox" checked={useCalculatedDuration} onChange={(e) => setUseCalculatedDuration(e.target.checked)} disabled={!isOwner} className="rounded" />
-                                <span>Auto-calculate from text</span>
-                            </label>
-                            {wordCount > 0 && (<p className="text-xs text-gray-500 mt-1">{wordCount} words &bull; Est. {calculatedDuration} reading time</p>)}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Item Type(s)</label>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
-                                <label key={abbr} className={`flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 ${!isOwner ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                    <input type="checkbox" checked={Array.isArray(formData.type) && formData.type.includes(abbr)} onChange={() => handleTypeChange(abbr)} disabled={!isOwner} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                    <span className="text-sm font-medium">{abbr}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
-                        <textarea value={formData.content} onChange={(e) => handleFormChange('content', e.target.value)} disabled={!isOwner} placeholder="Enter story content..." rows={12} className="w-full form-input min-h-[300px]" />
-                    </div>
-                    {isOwner && !tab?.isBeingTakenOver && (
-                        <div className="flex items-center justify-between pt-4 border-t">
-                            <div className="text-xs text-gray-500">Auto-save every 5 seconds</div>
-                            <div className="flex gap-3">
-                                <button onClick={handleSaveAndClose} disabled={isSaving} className="btn-primary" type="button"><CustomIcon name="save" size={40} /> <span>{isSaving ? 'Saving & Closing...' : 'Save & Close'}</span></button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
+    const safeUpdateRundown = async (rundownId, updateFunction) => {
+        const manager = collaborationManagerRef.current;
+        if (manager && !manager.isDestroyed) {
+            return await manager.safeUpdateRundown(rundownId, updateFunction);
+        }
+    };
+
+    const getUserEditingItem = (itemId) => {
+        return editingSessions.get(itemId.toString());
+    };
+
+    const value = {
+        activeUsers,
+        editingSessions,
+        notifications,
+        startEditingStory,
+        stopEditingStory,
+        takeOverStory,
+        setEditingItem,
+        clearEditingItem,
+        safeUpdateRundown,
+        getUserEditingItem,
+        markNotificationAsRead,
+        clearAllNotifications,
+        CollaborationManager: collaborationManagerRef.current
+    };
+
+    return <CollaborationContext.Provider value={value}>{children}</CollaborationContext.Provider>;
+};
+
+export const useCollaboration = () => {
+    const context = useContext(CollaborationContext);
+    if (!context) {
+        throw new Error('useCollaboration must be used within a CollaborationProvider');
+    }
+    return context;
 };
