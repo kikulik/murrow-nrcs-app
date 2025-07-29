@@ -140,6 +140,7 @@ export const AppProvider = ({ children }) => {
                                 ...tab, 
                                 storyData: fullStoryData,
                                 isBeingTakenOver: false
+                                isOwner: true
                             }
                             : tab
                     ),
