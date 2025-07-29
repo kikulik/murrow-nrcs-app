@@ -1,4 +1,4 @@
-// src/context/CollaborationContext.jsx (Notification Detection Fix)
+// src/context/CollaborationContext.jsx
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -93,13 +93,23 @@ export const CollaborationProvider = ({ children }) => {
         if (!notification || notification.type !== 'takeOver' || processedNotifications.current.has(notification.id)) {
             return;
         }
-
+    
         processedNotifications.current.add(notification.id);
         console.log('Processing takeover notification for item:', notification.itemId, 'by:', notification.takenOverByName);
-        
-        updateStoryTab(notification.itemId, { isBeingTakenOver: true });
-        await markNotificationAsRead(notification.id);
-    }, [updateStoryTab, markNotificationAsRead]);
+    
+        // Instead of directly forcing a close, show a modal to the user.
+        // The modal will then handle the next steps.
+        setAppState(prev => ({
+            ...prev,
+            modal: {
+                type: 'takeoverAlert',
+                message: notification.message,
+                itemId: notification.itemId,
+                notificationId: notification.id
+            }
+        }));
+    
+    }, [setAppState]);
 
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser) return;
