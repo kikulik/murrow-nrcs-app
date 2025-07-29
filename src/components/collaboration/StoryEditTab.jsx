@@ -1,4 +1,4 @@
-// src/components/collaboration/StoryEditTab.jsx (Fixed Race Condition)
+// src/components/collaboration/StoryEditTab.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
