@@ -1,4 +1,9 @@
-// src/components/collaboration/StoryEditTab.jsx (Remove Premature Clear)
+================================================================================
+File: src/components/collaboration/StoryEditTab.jsx (MODIFIED)
+Description: This component is updated to more robustly handle takeovers by
+             reacting to live presence data in addition to notifications.
+================================================================================
+*/
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
@@ -72,7 +77,7 @@ const StoryEditTab = ({ itemId }) => {
 
     const showNotification = (message, type = 'info') => {
         setNotification({ message, type });
-        setTimeout(() => setNotification(null), 3000);
+        setTimeout(() => setNotification(null), 4000);
     };
 
     const saveChanges = useCallback(async () => {
@@ -115,22 +120,6 @@ const StoryEditTab = ({ itemId }) => {
         }
     }, [itemId, formData, appState.activeRundownId, safeUpdateRundown, tab?.storyData?.storyId, db, isSaving]);
 
-    const autoSave = useCallback(async () => {
-        if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db || isClosingRef.current) return false;
-        return await saveChanges();
-    }, [itemId, hasUnsavedChanges, isOwner, saveChanges]);
-
-    const handleSaveAndClose = useCallback(async () => {
-        isClosingRef.current = true;
-        try {
-            if (hasUnsavedChanges && isOwner) await saveChanges();
-            await stopEditingStory(itemId);
-            closeStoryTab(itemId);
-        } finally {
-            isClosingRef.current = false;
-        }
-    }, [hasUnsavedChanges, isOwner, saveChanges, stopEditingStory, closeStoryTab, itemId]);
-
     const saveAndCloseForTakeover = useCallback(async () => {
         if (isSaving) return;
         isClosingRef.current = true;
@@ -142,14 +131,42 @@ const StoryEditTab = ({ itemId }) => {
         } finally {
             setIsSaving(false);
             await stopEditingStory(itemId);
-            closeStoryTab(itemId, true);
+            closeStoryTab(itemId, true, true); // Pass isForTakeover flag
             isClosingRef.current = false;
         }
     }, [saveChanges, stopEditingStory, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
 
+    // ROBUSTNESS FIX: This effect now checks for takeovers more proactively.
     useEffect(() => {
-        if (tab?.isBeingTakenOver) saveAndCloseForTakeover();
-    }, [tab?.isBeingTakenOver, saveAndCloseForTakeover]);
+        // The user who currently holds the editing lock according to the presence system.
+        const currentEditorIsSomeoneElse = editingUser && editingUser.userId !== currentUser.uid;
+        // The flag set by a takeover notification.
+        const isBeingForciblyTakenOver = tab?.isBeingTakenOver;
+        // Did this client instance believe it was the owner of the tab?
+        const wasIOwnerOfTab = tab?.isOwner;
+
+        // Condition to force-close the tab:
+        // 1. This client instance must have been the original owner.
+        // 2. AND (EITHER a notification has flagged it for takeover,
+        //    OR the presence system shows someone else is now editing).
+        if (wasIOwnerOfTab && (isBeingForciblyTakenOver || currentEditorIsSomeoneElse)) {
+            showNotification(`This story was taken over by ${editingUser?.userName || 'another user'}. Closing tab...`, 'info');
+            
+            // Use a timeout to allow the user to see the message before closing.
+            const takeoverTimeout = setTimeout(() => {
+                saveAndCloseForTakeover();
+            }, 2500);
+
+            return () => clearTimeout(takeoverTimeout);
+        }
+    }, [
+        tab?.isOwner,
+        tab?.isBeingTakenOver,
+        editingUser,
+        currentUser.uid,
+        saveAndCloseForTakeover
+    ]);
+
 
     const calculatedDuration = calculateReadingTime(formData.content);
     const wordCount = getWordCount(formData.content);
@@ -159,6 +176,11 @@ const StoryEditTab = ({ itemId }) => {
             setFormData(prev => ({ ...prev, duration: calculatedDuration }));
         }
     }, [calculatedDuration, useCalculatedDuration, isOwner]);
+    
+    const autoSave = useCallback(async () => {
+        if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db || isClosingRef.current) return false;
+        return await saveChanges();
+    }, [itemId, hasUnsavedChanges, isOwner, saveChanges]);
 
     useEffect(() => {
         if (isOwner && hasUnsavedChanges && !tab?.isBeingTakenOver && !isClosingRef.current) {
@@ -185,6 +207,7 @@ const StoryEditTab = ({ itemId }) => {
         isClosingRef.current = true;
         try {
             if (hasUnsavedChanges && isOwner && !tab?.isBeingTakenOver) {
+                // Using a custom modal for confirmation is better than window.confirm
                 const shouldSave = window.confirm('You have unsaved changes. Save before closing?');
                 if (shouldSave) await saveChanges();
             }
@@ -196,6 +219,17 @@ const StoryEditTab = ({ itemId }) => {
             isClosingRef.current = false;
         }
     };
+
+    const handleSaveAndClose = useCallback(async () => {
+        isClosingRef.current = true;
+        try {
+            if (hasUnsavedChanges && isOwner) await saveChanges();
+            await stopEditingStory(itemId);
+            closeStoryTab(itemId);
+        } finally {
+            isClosingRef.current = false;
+        }
+    }, [hasUnsavedChanges, isOwner, saveChanges, stopEditingStory, closeStoryTab, itemId]);
 
     const containerClasses = `space-y-6 ${isTakenOverByOther ? 'opacity-60 pointer-events-none' : ''}`;
 
@@ -273,7 +307,7 @@ const StoryEditTab = ({ itemId }) => {
                             </label>
                             {wordCount > 0 && (
                                 <p className="text-xs text-gray-500 mt-1">
-                                    {wordCount} words • Est. {calculatedDuration} reading time
+                                    {wordCount} words &bull; Est. {calculatedDuration} reading time
                                 </p>
                             )}
                         </div>
@@ -329,5 +363,3 @@ const StoryEditTab = ({ itemId }) => {
         </div>
     );
 };
-
-export default StoryEditTab;
