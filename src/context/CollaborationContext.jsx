@@ -342,16 +342,19 @@ export const CollaborationProvider = ({ children }) => {
                 return newSessions;
             });
 
-            // 3. Give the system a moment for the journalist's client to save and update the rundown.
-            await new Promise(resolve => setTimeout(resolve, 500)); 
+            // 3. Give the system more time for the journalist's client to save and update the rundown.
+            console.log('Waiting for journalist to save changes...');
+            await new Promise(resolve => setTimeout(resolve, 1500)); // Increased from 500ms
 
             // 4. Fetch the absolute latest version of the rundown to get the final save.
+            console.log('Fetching latest rundown data...');
             const rundownRef = doc(db, "rundowns", appState.activeRundownId);
             const freshRundownDoc = await getDoc(rundownRef);
             let currentItem;
 
             if (freshRundownDoc.exists()) {
                 const freshRundownData = freshRundownDoc.data();
+                console.log('Got fresh rundown data, updating app state...');
                 // Update the entire rundown in the app state to ensure all components have the fresh data.
                 setAppState(prev => ({
                     ...prev,
@@ -369,8 +372,11 @@ export const CollaborationProvider = ({ children }) => {
                 return false;
             }
 
-            // 5. Now, with all local state correct, open the tab.
-            console.log('Opening story tab for new user with fresh data');
+            // 5. Wait a bit more to ensure the app state has been updated
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // 6. Now, with all local state correct, open the tab with the fresh data.
+            console.log('Opening story tab for new user with fresh data:', currentItem);
             openStoryTab(itemId, currentItem);
             updateStoryTab(itemId, {
                 isOwner: true,
