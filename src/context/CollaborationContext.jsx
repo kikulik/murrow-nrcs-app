@@ -344,7 +344,7 @@ export const CollaborationProvider = ({ children }) => {
 
             // 3. Give the system more time for the journalist's client to save and update the rundown.
             console.log('Waiting for journalist to save changes...');
-            await new Promise(resolve => setTimeout(resolve, 1500)); // Increased from 500ms
+            await new Promise(resolve => setTimeout(resolve, 1500));
 
             // 4. Fetch the absolute latest version of the rundown to get the final save.
             console.log('Fetching latest rundown data...');
@@ -375,14 +375,20 @@ export const CollaborationProvider = ({ children }) => {
             // 5. Wait a bit more to ensure the app state has been updated
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            // 6. Now, with all local state correct, open the tab with the fresh data.
+            // 6. FIX: Open the tab with force takeover flag and immediately update ownership
             console.log('Opening story tab for new user with fresh data:', currentItem);
-            openStoryTab(itemId, currentItem);
-            updateStoryTab(itemId, {
-                isOwner: true,
-                takenOver: false,
-                takenOverBy: null
-            });
+            openStoryTab(itemId, currentItem, true); // Pass true as forceTakeover flag
+            
+            // 7. FIX: Force update the tab ownership immediately after opening
+            setTimeout(() => {
+                updateStoryTab(itemId, {
+                    isOwner: true,
+                    takenOver: false,
+                    takenOverBy: null,
+                    isBeingTakenOver: false
+                });
+                console.log('Force updated tab ownership after takeover');
+            }, 100);
             
             console.log('Takeover completed successfully');
             return true;
