@@ -1,4 +1,4 @@
-// src/components/collaboration/StoryEditTab.jsx (Fixed Tab State Management)
+// src/components/collaboration/StoryEditTab.jsx (Presence Reset Fix)
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
@@ -17,6 +17,7 @@ const StoryEditTab = ({ itemId }) => {
         safeUpdateRundown,
         clearEditingItem,
         getUserEditingItem,
+        stopEditingStory
     } = useCollaboration();
 
     const tab = appState.editingStoryTabs.find(t => t.itemId.toString() === itemId.toString());
@@ -121,9 +122,10 @@ const StoryEditTab = ({ itemId }) => {
 
     const handleSaveAndClose = useCallback(async () => {
         if (hasUnsavedChanges && isOwner) await saveChanges();
+        await stopEditingStory(itemId);
         await clearEditingItem();
         closeStoryTab(itemId);
-    }, [hasUnsavedChanges, isOwner, saveChanges, clearEditingItem, closeStoryTab, itemId]);
+    }, [hasUnsavedChanges, isOwner, saveChanges, stopEditingStory, clearEditingItem, closeStoryTab, itemId]);
 
     const saveAndCloseForTakeover = useCallback(async () => {
         if (isSaving) return;
@@ -134,10 +136,11 @@ const StoryEditTab = ({ itemId }) => {
             console.error("Failed to force save during takeover:", error);
         } finally {
             setIsSaving(false);
+            await stopEditingStory(itemId);
             await clearEditingItem();
             closeStoryTab(itemId, true);
         }
-    }, [saveChanges, clearEditingItem, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
+    }, [saveChanges, stopEditingStory, clearEditingItem, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
 
     useEffect(() => {
         if (tab?.isBeingTakenOver) saveAndCloseForTakeover();
@@ -179,6 +182,7 @@ const StoryEditTab = ({ itemId }) => {
                 const shouldSave = window.confirm('You have unsaved changes. Save before closing?');
                 if (shouldSave) await saveChanges();
             }
+            await stopEditingStory(itemId);
             if (clearEditingItem) await clearEditingItem();
             if (closeStoryTab && itemId) closeStoryTab(itemId);
         } catch (error) {
