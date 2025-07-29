@@ -327,26 +327,33 @@ export const CollaborationProvider = ({ children }) => {
         try {
             console.log('Starting takeover for item:', itemId, 'from user:', previousUserId);
             
-            // 1. Update remote state (Firestore presence)
-            await manager.setEditingItem(itemIdStr);
+            // 1. Send notification FIRST before changing anything else
+            console.log('Sending takeover notification...');
             await manager.sendTakeOverNotification(itemId, previousUserId);
 
-            // 2. Manually update local state to reflect the takeover IMMEDIATELY.
+            // 2. Update remote state (Firestore presence) for current user
+            console.log('Updating presence for current user...');
+            await manager.setEditingItem(itemIdStr);
+
+            // 3. Manually update local state to reflect the takeover IMMEDIATELY.
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
+                // Remove previous user and add current user
+                newSessions.delete(itemIdStr);
                 newSessions.set(itemIdStr, {
                     userId: currentUser.uid,
                     userName: currentUser.name,
                     timestamp: Date.now()
                 });
+                console.log('Updated local editing sessions:', newSessions);
                 return newSessions;
             });
 
-            // 3. Give the system more time for the journalist's client to save and update the rundown.
+            // 4. Give the system more time for the journalist's client to save and update the rundown.
             console.log('Waiting for journalist to save changes...');
             await new Promise(resolve => setTimeout(resolve, 1500));
 
-            // 4. Fetch the absolute latest version of the rundown to get the final save.
+            // 5. Fetch the absolute latest version of the rundown to get the final save.
             console.log('Fetching latest rundown data...');
             const rundownRef = doc(db, "rundowns", appState.activeRundownId);
             const freshRundownDoc = await getDoc(rundownRef);
@@ -372,14 +379,14 @@ export const CollaborationProvider = ({ children }) => {
                 return false;
             }
 
-            // 5. Wait a bit more to ensure the app state has been updated
+            // 6. Wait a bit more to ensure the app state has been updated
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            // 6. FIX: Open the tab with force takeover flag and immediately update ownership
+            // 7. Open the tab with force takeover flag and immediately update ownership
             console.log('Opening story tab for new user with fresh data:', currentItem);
             openStoryTab(itemId, currentItem, true); // Pass true as forceTakeover flag
             
-            // 7. FIX: Force update the tab ownership immediately after opening
+            // 8. Force update the tab ownership immediately after opening
             setTimeout(() => {
                 updateStoryTab(itemId, {
                     isOwner: true,
@@ -389,6 +396,21 @@ export const CollaborationProvider = ({ children }) => {
                 });
                 console.log('Force updated tab ownership after takeover');
             }, 100);
+
+            // 9. FIX: Force a presence refresh to ensure UI updates
+            setTimeout(() => {
+                console.log('Forcing presence refresh...');
+                setEditingSessions(prevSessions => {
+                    const newSessions = new Map(prevSessions);
+                    // Ensure only current user is editing this item
+                    newSessions.set(itemIdStr, {
+                        userId: currentUser.uid,
+                        userName: currentUser.name,
+                        timestamp: Date.now()
+                    });
+                    return newSessions;
+                });
+            }, 500);
             
             console.log('Takeover completed successfully');
             return true;
