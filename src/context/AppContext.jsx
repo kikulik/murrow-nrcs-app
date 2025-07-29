@@ -1,4 +1,4 @@
-// src/context/AppContext.jsx (Fixed)
+// src/context/AppContext.jsx (Fixed Tab Management)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
@@ -115,7 +115,6 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    // FIX: Enhanced openStoryTab to properly handle takeover scenarios
     const openStoryTab = useCallback((itemId, storyData, forceTakeover = false) => {
         setAppState(prev => {
             const itemIdStr = itemId.toString();
@@ -135,7 +134,7 @@ export const AppProvider = ({ children }) => {
                 storyData: fullStoryData,
                 tabId: `storyEdit-${itemId}`,
                 title: storyData?.title || 'Untitled Story',
-                isOwner: true, // Always true when opening a new tab or taking over
+                isOwner: true,
                 takenOver: false,
                 takenOverBy: null,
                 isBeingTakenOver: false
@@ -144,28 +143,29 @@ export const AppProvider = ({ children }) => {
             let updatedTabs;
 
             if (existingTabIndex !== -1) {
-                // FIX: If tab exists and this is a takeover, completely replace the tab
-                // instead of just updating properties to ensure clean state
                 if (forceTakeover) {
-                    console.log('AppContext: Replacing existing tab due to takeover for item:', itemIdStr);
+                    console.log('AppContext: Force takeover - replacing tab with fresh ownership for item:', itemIdStr);
                     updatedTabs = [...prev.editingStoryTabs];
-                    updatedTabs[existingTabIndex] = newTab;
+                    updatedTabs[existingTabIndex] = {
+                        ...newTab,
+                        isOwner: true,
+                        takenOver: false,
+                        takenOverBy: null,
+                        isBeingTakenOver: false
+                    };
                 } else {
-                    // Normal update for existing tab
                     console.log('AppContext: Updating existing tab for item:', itemIdStr);
                     updatedTabs = prev.editingStoryTabs.map((tab, index) =>
                         index === existingTabIndex
                             ? { 
                                 ...tab, 
                                 storyData: fullStoryData,
-                                isBeingTakenOver: false,
                                 title: storyData?.title || tab.title
                             }
                             : tab
                     );
                 }
             } else {
-                // Create new tab
                 console.log('AppContext: Creating new tab for item:', itemIdStr);
                 updatedTabs = [...prev.editingStoryTabs, newTab];
             }
@@ -221,7 +221,7 @@ export const AppProvider = ({ children }) => {
             editingStoryTabs: prev.editingStoryTabs.map(tab => {
                 if (tab.itemId.toString() === itemId.toString()) {
                     const updatedTab = { ...tab, ...updates };
-                    console.log('AppContext: Updated tab:', updatedTab);
+                    console.log('AppContext: Updated tab state:', updatedTab);
                     return updatedTab;
                 } else {
                     return tab;
