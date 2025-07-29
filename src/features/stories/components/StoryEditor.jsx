@@ -1,3 +1,4 @@
+// src/features/stories/components/StoryEditor.jsx
 import React, { useState, useEffect } from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAuth } from '../../../context/AuthContext';
@@ -31,11 +32,9 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
         duration: story?.duration || '01:00',
         folder: story?.folder || defaultFolder || generateDateFolder()
     });
-
     const [selectedTypes, setSelectedTypes] = useState(
         story?.types || ['STD']
     );
-
     const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
     const [showCreateFolder, setShowCreateFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
@@ -109,13 +108,25 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
         setShowCreateFolder(false);
     };
 
+    const openAIGenerator = () => {
+        setAppState(prev => ({
+            ...prev,
+            modal: {
+                type: 'aiGenerator',
+                onGenerate: (generatedContent) => {
+                    setFormData(currentData => ({
+                        ...currentData,
+                        content: generatedContent
+                    }));
+                }
+            }
+        }));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-
         try {
-            // FIX: Standardized dynamic import to use 'firebase/firestore'
             const { collection, addDoc, doc, updateDoc } = await import("firebase/firestore");
-
             const storyToSave = {
                 ...formData,
                 tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
@@ -142,7 +153,6 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
             }
 
             onCancel();
-
         } catch (error) {
             console.error('Error saving story:', error);
         }
@@ -268,7 +278,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                         </label>
                         {wordCount > 0 && (
                             <p className="text-xs text-gray-500 mt-1">
-                                {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                                {wordCount} words • Est. {calculatedDuration} reading time
                             </p>
                         )}
                     </div>
@@ -282,9 +292,19 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                 />
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Content
-                    </label>
+                    <div className="flex justify-between items-center mb-1">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Content
+                        </label>
+                        <button
+                            type="button"
+                            onClick={openAIGenerator}
+                            className="btn-secondary text-xs !py-1"
+                        >
+                            <CustomIcon name="stories" size={16} />
+                            Generate with AI
+                        </button>
+                    </div>
                     <textarea
                         value={formData.content}
                         onChange={handleContentChange}
