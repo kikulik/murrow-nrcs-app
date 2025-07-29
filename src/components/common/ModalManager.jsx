@@ -2,17 +2,20 @@
 import React from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useCollaboration } from '../../context/CollaborationContext';
 import StoryEditor from '../../features/stories/components/StoryEditor';
 import RundownEditor from '../modals/RundownEditor';
 import AddStoryToRundownModal from '../modals/AddStoryToRundownModal';
 import SendMultipleToStoriesModal from '../modals/SendMultipleToStoriesModal';
 import CreateFolderModal from '../../features/stories/components/CreateFolderModal';
 import ConfirmationDialog from './ConfirmationDialog';
+import AlertDialog from './AlertDialog';
 import { doc, deleteDoc } from 'firebase/firestore';
 
 const ModalManager = () => {
-    const { appState, setAppState } = useAppContext();
+    const { appState, setAppState, updateStoryTab } = useAppContext();
     const { db } = useAuth();
+    const { markNotificationAsRead } = useCollaboration();
 
     const closeModal = () => {
         setAppState(prev => ({ ...prev, modal: null }));
@@ -65,6 +68,27 @@ const ModalManager = () => {
                     title="Confirm Deletion"
                     message="Are you sure you want to delete this item? This action cannot be undone."
                     {...modalProps}
+                />
+            );
+        case 'takeoverAlert':
+            const handleCloseAlert = () => {
+                // When the user acknowledges the alert, trigger the tab closure logic.
+                updateStoryTab(modalProps.itemId, { isBeingTakenOver: true });
+
+                // Find the original notification to mark it as read.
+                const notification = appState.notifications.find(n =>
+                    n.itemId === modalProps.itemId && n.type === 'takeOver' && !n.read
+                );
+                if (notification) {
+                    markNotificationAsRead(notification.id);
+                }
+                closeModal();
+            };
+            return (
+                <AlertDialog
+                    title="Edit Session Taken Over"
+                    message={modalProps.message}
+                    onClose={handleCloseAlert}
                 />
             );
         default:
