@@ -72,6 +72,17 @@ const ModalManager = () => {
                     {...modalProps}
                 />
             );
+        
+        // Add this case to handle the AI Generator Modal
+        case 'aiGenerator':
+            return (
+                <AIGeneratorModal
+                    onCancel={closeModal}
+                    onGenerate={modalProps.onGenerate}
+                    {...modalProps}
+                />
+            );
+
         case 'takeoverAlert':
             const handleCloseAlert = () => {
                 // When the user acknowledges the alert, trigger the tab closure logic.
