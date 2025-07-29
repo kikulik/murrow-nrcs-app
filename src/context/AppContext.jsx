@@ -115,54 +115,64 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    // FIX: Wrapped functions with useCallback to prevent re-creation on every render,
-    // which was causing an infinite loop in the CollaborationContext.
-    const openStoryTab = useCallback((itemId, storyData) => {
+    // FIX: Enhanced openStoryTab to properly handle takeover scenarios
+    const openStoryTab = useCallback((itemId, storyData, forceTakeover = false) => {
         setAppState(prev => {
             const itemIdStr = itemId.toString();
             
             const newRecentlyClosed = new Set(prev.recentlyClosed);
             newRecentlyClosed.delete(itemIdStr);
             
-            const existingTab = prev.editingStoryTabs.find(tab => tab.itemId.toString() === itemIdStr);
+            const existingTabIndex = prev.editingStoryTabs.findIndex(tab => tab.itemId.toString() === itemIdStr);
             
             const fullStoryData = {
                 ...storyData,
                 storyId: storyData.storyId || null
             };
 
-            if (existingTab) {
-                return {
-                    ...prev,
-                    editingStoryTabs: prev.editingStoryTabs.map(tab =>
-                        tab.itemId.toString() === itemIdStr
-                            ? { 
-                                ...tab, 
-                                storyData: fullStoryData,
-                                isBeingTakenOver: false,
-                                isOwner: true
-                            }
-                            : tab
-                    ),
-                    activeTab: `storyEdit-${itemId}`,
-                    recentlyClosed: newRecentlyClosed
-                };
-            }
-    
             const newTab = {
                 itemId: itemIdStr,
                 storyData: fullStoryData,
                 tabId: `storyEdit-${itemId}`,
                 title: storyData?.title || 'Untitled Story',
-                isOwner: true,
+                isOwner: true, // Always true when opening a new tab or taking over
                 takenOver: false,
                 takenOverBy: null,
                 isBeingTakenOver: false
             };
-    
+
+            let updatedTabs;
+
+            if (existingTabIndex !== -1) {
+                // FIX: If tab exists and this is a takeover, completely replace the tab
+                // instead of just updating properties to ensure clean state
+                if (forceTakeover) {
+                    console.log('AppContext: Replacing existing tab due to takeover for item:', itemIdStr);
+                    updatedTabs = [...prev.editingStoryTabs];
+                    updatedTabs[existingTabIndex] = newTab;
+                } else {
+                    // Normal update for existing tab
+                    console.log('AppContext: Updating existing tab for item:', itemIdStr);
+                    updatedTabs = prev.editingStoryTabs.map((tab, index) =>
+                        index === existingTabIndex
+                            ? { 
+                                ...tab, 
+                                storyData: fullStoryData,
+                                isBeingTakenOver: false,
+                                title: storyData?.title || tab.title
+                            }
+                            : tab
+                    );
+                }
+            } else {
+                // Create new tab
+                console.log('AppContext: Creating new tab for item:', itemIdStr);
+                updatedTabs = [...prev.editingStoryTabs, newTab];
+            }
+
             return {
                 ...prev,
-                editingStoryTabs: [...prev.editingStoryTabs, newTab],
+                editingStoryTabs: updatedTabs,
                 activeTab: `storyEdit-${itemId}`,
                 recentlyClosed: newRecentlyClosed
             };
@@ -205,11 +215,18 @@ export const AppProvider = ({ children }) => {
     }, []);
     
     const updateStoryTab = useCallback((itemId, updates) => {
+        console.log('AppContext: updateStoryTab called for item:', itemId, 'with updates:', updates);
         setAppState(prev => ({
             ...prev,
-            editingStoryTabs: prev.editingStoryTabs.map(tab =>
-                tab.itemId.toString() === itemId.toString() ? { ...tab, ...updates } : tab
-            )
+            editingStoryTabs: prev.editingStoryTabs.map(tab => {
+                if (tab.itemId.toString() === itemId.toString()) {
+                    const updatedTab = { ...tab, ...updates };
+                    console.log('AppContext: Updated tab:', updatedTab);
+                    return updatedTab;
+                } else {
+                    return tab;
+                }
+            })
         }));
     }, []);
 
