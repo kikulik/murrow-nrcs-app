@@ -1,6 +1,8 @@
 /*
 ================================================================================
-File: murrow-nrcs-app.git/src/features/MurrowNRCS.jsx
+File: src/features/MurrowNRCS.jsx (MODIFIED)
+Description: This file is updated to use a named import for StoryEditTab
+             to match the export change and fix the build error.
 ================================================================================
 */
 import React from 'react';
@@ -15,8 +17,9 @@ import RundownTab from './rundown/RundownTab';
 import AssignmentsTab from './assignments/AssignmentsTab';
 import AdminTab from './admin/AdminTab.jsx';
 import LiveModeTab from './rundown/LiveModeTab';
-import StoryEditTab from '../components/collaboration/StoryEditTab';
-import QuickEditModal from '../components/modals/QuickEditModal'; // ADD THIS IMPORT
+// FIX: Changed to a named import to match the export from the component file.
+import { StoryEditTab } from '../components/collaboration/StoryEditTab';
+import QuickEditModal from '../components/modals/QuickEditModal';
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
 import NotificationPanel from '../components/collaboration/NotificationPanel';
@@ -35,29 +38,20 @@ const MurrowNRCS = () => {
 
     const handleLogout = async () => {
         try {
-            // Step 1: Clean up collaboration manager first
             if (CollaborationManager) {
                 await CollaborationManager.stopPresenceTracking();
             }
-
-            // Step 2: Clean up data listeners
             if (cleanupDataListeners) {
                 cleanupDataListeners();
             }
-
-            // Step 3: Small delay to ensure cleanup completes
             await new Promise(resolve => setTimeout(resolve, 150));
-
-            // Step 4: Finally logout (this will trigger AuthContext cleanup)
             await logout();
         } catch (error) {
             console.error('Error during logout process:', error);
-            // Even if there's an error, force logout
             try {
                 await logout();
             } catch (finalError) {
                 console.error('Final logout attempt failed:', finalError);
-                // Force reload as last resort
                 window.location.reload();
             }
         }
@@ -86,7 +80,6 @@ const MurrowNRCS = () => {
         }
     };
 
-    // Helper function to get the active story edit tab
     const getActiveStoryEditTab = () => {
         if (appState.activeTab.startsWith('storyEdit-')) {
             const itemId = appState.activeTab.replace('storyEdit-', '');
@@ -101,7 +94,6 @@ const MurrowNRCS = () => {
         { id: 'assignments', label: 'Assignments', icon: 'assignments', permission: userPermissions.canCreateAssignments || appState.assignments.some(a => a.assigneeId === currentUser.uid) },
         { id: 'admin', label: 'Admin', icon: 'admin', permission: userPermissions.canManageUsers },
         { id: 'live', label: 'Live Mode', icon: 'golive', permission: liveMode.isLive },
-        // Dynamic story edit tabs
         ...appState.editingStoryTabs.map(tab => ({
             id: tab.tabId,
             label: `Editing: ${tab.title || 'Story'}`,
@@ -184,7 +176,6 @@ const MurrowNRCS = () => {
 
             <ModalManager />
             
-            {/* ADD QuickEditModal */}
             {appState.quickEditItem && <QuickEditModal />}
         </div>
     );
