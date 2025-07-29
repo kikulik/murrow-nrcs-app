@@ -1,3 +1,4 @@
+/*
 ================================================================================
 File: src/components/collaboration/StoryEditTab.jsx (MODIFIED)
 Description: This component is updated to more robustly handle takeovers by
@@ -151,7 +152,7 @@ const StoryEditTab = ({ itemId }) => {
         //    OR the presence system shows someone else is now editing).
         if (wasIOwnerOfTab && (isBeingForciblyTakenOver || currentEditorIsSomeoneElse)) {
             showNotification(`This story was taken over by ${editingUser?.userName || 'another user'}. Closing tab...`, 'info');
-            
+
             // Use a timeout to allow the user to see the message before closing.
             const takeoverTimeout = setTimeout(() => {
                 saveAndCloseForTakeover();
@@ -176,7 +177,7 @@ const StoryEditTab = ({ itemId }) => {
             setFormData(prev => ({ ...prev, duration: calculatedDuration }));
         }
     }, [calculatedDuration, useCalculatedDuration, isOwner]);
-    
+
     const autoSave = useCallback(async () => {
         if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db || isClosingRef.current) return false;
         return await saveChanges();
@@ -236,11 +237,10 @@ const StoryEditTab = ({ itemId }) => {
     return (
         <div className={containerClasses}>
             {notification && (
-                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
-                    notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
-                    notification.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
-                    'bg-blue-100 text-blue-800 border border-blue-200'
-                }`}>
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
+                        notification.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
+                            'bg-blue-100 text-blue-800 border border-blue-200'
+                    }`}>
                     <div className="flex items-center justify-between">
                         <span>{notification.message}</span>
                         <button onClick={() => setNotification(null)} className="ml-4 text-gray-500 hover:text-gray-700">&times;</button>
