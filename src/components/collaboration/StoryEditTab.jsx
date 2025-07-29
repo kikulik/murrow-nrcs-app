@@ -1,4 +1,4 @@
-// src/components/collaboration/StoryEditTab.jsx (Presence Reset Fix)
+// src/components/collaboration/StoryEditTab.jsx (Remove Premature Clear)
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
@@ -15,7 +15,6 @@ const StoryEditTab = ({ itemId }) => {
     const { appState, closeStoryTab } = useAppContext();
     const {
         safeUpdateRundown,
-        clearEditingItem,
         getUserEditingItem,
         stopEditingStory
     } = useCollaboration();
@@ -35,6 +34,7 @@ const StoryEditTab = ({ itemId }) => {
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [notification, setNotification] = useState(null);
+    const isClosingRef = useRef(false);
 
     const fetchFreshStory = useCallback(async () => {
         if (!db || !tab?.storyData?.storyId) return;
@@ -116,19 +116,24 @@ const StoryEditTab = ({ itemId }) => {
     }, [itemId, formData, appState.activeRundownId, safeUpdateRundown, tab?.storyData?.storyId, db, isSaving]);
 
     const autoSave = useCallback(async () => {
-        if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db) return false;
+        if (!itemId || !hasUnsavedChanges || !isOwner || !appState.activeRundownId || !safeUpdateRundown || !db || isClosingRef.current) return false;
         return await saveChanges();
     }, [itemId, hasUnsavedChanges, isOwner, saveChanges]);
 
     const handleSaveAndClose = useCallback(async () => {
-        if (hasUnsavedChanges && isOwner) await saveChanges();
-        await stopEditingStory(itemId);
-        await clearEditingItem();
-        closeStoryTab(itemId);
-    }, [hasUnsavedChanges, isOwner, saveChanges, stopEditingStory, clearEditingItem, closeStoryTab, itemId]);
+        isClosingRef.current = true;
+        try {
+            if (hasUnsavedChanges && isOwner) await saveChanges();
+            await stopEditingStory(itemId);
+            closeStoryTab(itemId);
+        } finally {
+            isClosingRef.current = false;
+        }
+    }, [hasUnsavedChanges, isOwner, saveChanges, stopEditingStory, closeStoryTab, itemId]);
 
     const saveAndCloseForTakeover = useCallback(async () => {
         if (isSaving) return;
+        isClosingRef.current = true;
         setIsSaving(true);
         try {
             if (hasUnsavedChanges) await saveChanges();
@@ -137,10 +142,10 @@ const StoryEditTab = ({ itemId }) => {
         } finally {
             setIsSaving(false);
             await stopEditingStory(itemId);
-            await clearEditingItem();
             closeStoryTab(itemId, true);
+            isClosingRef.current = false;
         }
-    }, [saveChanges, stopEditingStory, clearEditingItem, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
+    }, [saveChanges, stopEditingStory, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
 
     useEffect(() => {
         if (tab?.isBeingTakenOver) saveAndCloseForTakeover();
@@ -156,20 +161,20 @@ const StoryEditTab = ({ itemId }) => {
     }, [calculatedDuration, useCalculatedDuration, isOwner]);
 
     useEffect(() => {
-        if (isOwner && hasUnsavedChanges && !tab?.isBeingTakenOver) {
+        if (isOwner && hasUnsavedChanges && !tab?.isBeingTakenOver && !isClosingRef.current) {
             const autoSaveInterval = setInterval(autoSave, 5000);
             return () => clearInterval(autoSaveInterval);
         }
     }, [autoSave, isOwner, hasUnsavedChanges, tab?.isBeingTakenOver]);
 
     const handleFormChange = (field, value) => {
-        if (!isOwner) return;
+        if (!isOwner || isClosingRef.current) return;
         setFormData(prev => ({ ...prev, [field]: value }));
         setHasUnsavedChanges(true);
     };
 
     const handleTypeChange = (type) => {
-        if (!isOwner) return;
+        if (!isOwner || isClosingRef.current) return;
         const newTypes = formData.type.includes(type)
             ? formData.type.filter(t => t !== type)
             : [...formData.type, type];
@@ -177,16 +182,18 @@ const StoryEditTab = ({ itemId }) => {
     };
 
     const handleClose = async () => {
+        isClosingRef.current = true;
         try {
             if (hasUnsavedChanges && isOwner && !tab?.isBeingTakenOver) {
                 const shouldSave = window.confirm('You have unsaved changes. Save before closing?');
                 if (shouldSave) await saveChanges();
             }
             await stopEditingStory(itemId);
-            if (clearEditingItem) await clearEditingItem();
             if (closeStoryTab && itemId) closeStoryTab(itemId);
         } catch (error) {
             console.error('Error in handleClose:', error);
+        } finally {
+            isClosingRef.current = false;
         }
     };
 
