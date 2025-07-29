@@ -1,6 +1,4 @@
-// PATCHED: StoryEditTab.jsx
-// Fix: After takeover, Producer re-fetches latest story content from Firestore and can edit immediately
-
+// src/components/collaboration/StoryEditTab.jsx (Fixed Tab State Management)
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
@@ -37,7 +35,6 @@ const StoryEditTab = ({ itemId }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [notification, setNotification] = useState(null);
 
-    // 🆕 Fetch fresh story data from Firestore
     const fetchFreshStory = useCallback(async () => {
         if (!db || !tab?.storyData?.storyId) return;
         try {
@@ -58,7 +55,6 @@ const StoryEditTab = ({ itemId }) => {
         }
     }, [db, tab?.storyData?.storyId, currentUser.uid]);
 
-    // Load story data: from Firestore if owner, else from tab
     useEffect(() => {
         if (isOwner && tab?.storyData?.storyId) {
             fetchFreshStory();
