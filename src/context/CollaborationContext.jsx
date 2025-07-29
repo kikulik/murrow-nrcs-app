@@ -1,6 +1,6 @@
-// src/context/CollaborationContext.jsx (Final Notification & Presence Fix)
+// src/context/CollaborationContext.jsx (Notification Detection Fix)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { useAppContext } from './AppContext';
 import { CollaborationManager } from '../services/CollaborationManager';
@@ -90,18 +90,12 @@ export const CollaborationProvider = ({ children }) => {
     }, [db, currentUser]);
 
     const handleTakeOverNotification = useCallback(async (notification) => {
-        if (!notification || notification.type !== 'takeOver') {
+        if (!notification || notification.type !== 'takeOver' || processedNotifications.current.has(notification.id)) {
             return;
         }
 
-        const notificationKey = `${notification.userId}_${notification.itemId}_${notification.takenOverBy}`;
-        if (processedNotifications.current.has(notificationKey)) {
-            console.log('Notification already processed:', notificationKey);
-            return;
-        }
-
-        processedNotifications.current.add(notificationKey);
-        console.log('Processing takeover notification:', notification);
+        processedNotifications.current.add(notification.id);
+        console.log('Processing takeover notification for item:', notification.itemId, 'by:', notification.takenOverByName);
         
         updateStoryTab(notification.itemId, { isBeingTakenOver: true });
         await markNotificationAsRead(notification.id);
@@ -125,8 +119,7 @@ export const CollaborationProvider = ({ children }) => {
             const notificationsQuery = query(
                 collection(db, "notifications"),
                 where("userId", "==", currentUser.uid),
-                orderBy("timestamp", "desc"),
-                limit(50)
+                where("read", "==", false)
             );
 
             notificationsUnsubscribeRef.current = onSnapshot(
@@ -140,20 +133,22 @@ export const CollaborationProvider = ({ children }) => {
                             ...doc.data()
                         }));
                         
-                        console.log('All recent notifications:', allUserNotifications);
+                        console.log('All user notifications:', allUserNotifications);
                         
                         const unreadNotifications = allUserNotifications.filter(n => n.read === false);
+                        unreadNotifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                         setNotifications(unreadNotifications);
                         
-                        snapshot.docChanges().forEach(change => {
-                            if (change.type === 'added') {
-                                const notification = { id: change.doc.id, ...change.doc.data() };
-                                console.log('New notification detected:', notification);
-                                
-                                if (notification.read === false && notification.type === 'takeOver') {
-                                    handleTakeOverNotification(notification);
-                                }
-                            }
+                        const unprocessedNotifications = unreadNotifications.filter(n => 
+                            !processedNotifications.current.has(n.id)
+                        );
+                        
+                        console.log('Unprocessed notifications found:', unprocessedNotifications.length);
+                        console.log('Unprocessed notifications:', unprocessedNotifications);
+                        
+                        unprocessedNotifications.forEach(notification => {
+                            console.log('Processing notification:', notification);
+                            handleTakeOverNotification(notification);
                         });
                     } catch (error) {
                         console.error('Error processing notifications:', error);
@@ -174,7 +169,6 @@ export const CollaborationProvider = ({ children }) => {
     useEffect(() => {
         if (currentUser && db) {
             console.log('Current user changed, setting up notification listener:', currentUser.uid);
-            processedNotifications.current.clear();
             setupNotificationListener();
         }
 
@@ -189,40 +183,6 @@ export const CollaborationProvider = ({ children }) => {
             }
         };
     }, [setupNotificationListener, currentUser, db]);
-
-    const cleanupStalePresence = useCallback(async () => {
-        if (!db || !appState.activeRundownId) return;
-        
-        try {
-            const { collection, query, where, getDocs, deleteDoc, doc: firestoreDoc } = await import("firebase/firestore");
-            
-            const presenceQuery = query(
-                collection(db, "presence"),
-                where("rundownId", "==", appState.activeRundownId)
-            );
-            
-            const snapshot = await getDocs(presenceQuery);
-            const now = new Date();
-            
-            const deletePromises = snapshot.docs
-                .filter(doc => {
-                    const data = doc.data();
-                    if (!data.lastSeen) return true;
-                    
-                    const lastSeen = new Date(data.lastSeen);
-                    const minutesAgo = (now - lastSeen) / (1000 * 60);
-                    return minutesAgo > 5;
-                })
-                .map(doc => deleteDoc(firestoreDoc(db, "presence", doc.id)));
-            
-            if (deletePromises.length > 0) {
-                await Promise.all(deletePromises);
-                console.log('Cleaned up', deletePromises.length, 'stale presence documents');
-            }
-        } catch (error) {
-            console.error('Error cleaning up stale presence:', error);
-        }
-    }, [db, appState.activeRundownId]);
 
     const updateEditingSessions = useCallback((users) => {
         if (!currentUser) return;
@@ -272,9 +232,6 @@ export const CollaborationProvider = ({ children }) => {
                 if (!presenceInitialized.current) {
                     console.log('Starting presence tracking for rundown:', appState.activeRundownId);
                     presenceInitialized.current = true;
-                    
-                    cleanupStalePresence();
-                    
                     manager.startPresenceTracking(appState.activeRundownId);
                     manager.listenToPresence(
                         appState.activeRundownId,
@@ -294,19 +251,16 @@ export const CollaborationProvider = ({ children }) => {
         return () => {
             try {
                 if (manager && !manager.isDestroyed && presenceInitialized.current) {
-                    manager.stopPresenceTracking();
-                    presenceInitialized.current = false;
+                    if (!manager.isActivelyEditing) {
+                        manager.stopPresenceTracking();
+                        presenceInitialized.current = false;
+                    }
                 }
             } catch (error) {
                 console.error('Error cleaning up presence tracking:', error);
             }
         };
-    }, [appState.activeRundownId, currentUser, updateEditingSessions, cleanupStalePresence]);
-
-    useEffect(() => {
-        const interval = setInterval(cleanupStalePresence, 30000);
-        return () => clearInterval(interval);
-    }, [cleanupStalePresence]);
+    }, [appState.activeRundownId, currentUser, updateEditingSessions]);
 
     const startEditingStory = async (itemId, storyData) => {
         try {
