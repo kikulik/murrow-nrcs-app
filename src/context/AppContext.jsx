@@ -1,4 +1,10 @@
-// src/context/AppContext.jsx (Fixed Tab Management)
+/*
+================================================================================
+File: src/context/AppContext.jsx (MODIFIED)
+Description: This file is updated to persist the active tab and rundown
+             across page refreshes using localStorage.
+================================================================================
+*/
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
@@ -7,40 +13,65 @@ const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
     const { db, currentUser } = useAuth();
-    const [appState, setAppState] = useState({
-        users: [],
-        groups: [],
-        stories: [],
-        assignments: [],
-        rundowns: [],
-        rundownTemplates: [],
-        messages: [],
-        activeRundownId: null,
-        notifications: [],
-        activeTab: 'stories',
-        modal: null,
-        theme: 'light',
-        searchTerm: '',
-        showArchived: false,
-        createdFolders: [],
-        isLive: false,
-        liveTime: 0,
-        currentLiveItemIndex: 0,
-        liveRundownId: null,
-        editingStoryTabs: [],
-        quickEditItem: null,
-        recentlyClosed: new Set(),
-    });
+
+    // Helper function to initialize state from localStorage
+    const getInitialState = () => {
+        const savedTab = localStorage.getItem('murrow_active_tab');
+        const savedRundownId = localStorage.getItem('murrow_active_rundown_id');
+
+        // We don't restore story edit tabs on refresh because their
+        // collaborative state is volatile. Default to a safe tab.
+        const initialTab = (savedTab && !savedTab.startsWith('storyEdit-')) ? savedTab : 'stories';
+
+        return {
+            users: [],
+            groups: [],
+            stories: [],
+            assignments: [],
+            rundowns: [],
+            rundownTemplates: [],
+            messages: [],
+            activeRundownId: savedRundownId || null,
+            notifications: [],
+            activeTab: initialTab,
+            modal: null,
+            theme: 'light',
+            searchTerm: '',
+            showArchived: false,
+            createdFolders: [],
+            isLive: false,
+            liveTime: 0,
+            currentLiveItemIndex: 0,
+            liveRundownId: null,
+            editingStoryTabs: [], // Always start with a clean slate for editing tabs
+            quickEditItem: null,
+            recentlyClosed: new Set(),
+        };
+    };
+
+    const [appState, setAppState] = useState(getInitialState);
     const unsubscribeRef = useRef(null);
-    const cleanupTimeoutRef = useRef(null);
+
+    // EFFECT: Persist active tab to localStorage
+    useEffect(() => {
+        // Persist the active tab, but not story edit tabs as they are transient.
+        if (appState.activeTab && !appState.activeTab.startsWith('storyEdit-')) {
+            localStorage.setItem('murrow_active_tab', appState.activeTab);
+        }
+    }, [appState.activeTab]);
+
+    // EFFECT: Persist active rundown ID to localStorage
+    useEffect(() => {
+        if (appState.activeRundownId) {
+            localStorage.setItem('murrow_active_rundown_id', appState.activeRundownId);
+        } else {
+            localStorage.removeItem('murrow_active_rundown_id');
+        }
+    }, [appState.activeRundownId]);
+
 
     useEffect(() => {
         const initializeListeners = async () => {
-            if (cleanupTimeoutRef.current) {
-                clearTimeout(cleanupTimeoutRef.current);
-                cleanupTimeoutRef.current = null;
-            }
-
             if (unsubscribeRef.current) {
                 try {
                     unsubscribeRef.current();
@@ -76,31 +107,8 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         if (!currentUser && unsubscribeRef.current) {
             cleanupDataListeners();
-
-            setAppState({
-                users: [],
-                groups: [],
-                stories: [],
-                assignments: [],
-                rundowns: [],
-                rundownTemplates: [],
-                messages: [],
-                activeRundownId: null,
-                notifications: [],
-                activeTab: 'stories',
-                modal: null,
-                theme: 'light',
-                searchTerm: '',
-                showArchived: false,
-                createdFolders: [],
-                isLive: false,
-                liveTime: 0,
-                currentLiveItemIndex: 0,
-                liveRundownId: null,
-                editingStoryTabs: [],
-                quickEditItem: null,
-                recentlyClosed: new Set(),
-            });
+            // Reset state on logout
+            setAppState(getInitialState());
         }
     }, [currentUser]);
 
@@ -144,7 +152,6 @@ export const AppProvider = ({ children }) => {
 
             if (existingTabIndex !== -1) {
                 if (forceTakeover) {
-                    console.log('AppContext: Force takeover - replacing tab with fresh ownership for item:', itemIdStr);
                     updatedTabs = [...prev.editingStoryTabs];
                     updatedTabs[existingTabIndex] = {
                         ...newTab,
@@ -154,7 +161,6 @@ export const AppProvider = ({ children }) => {
                         isBeingTakenOver: false
                     };
                 } else {
-                    console.log('AppContext: Updating existing tab for item:', itemIdStr);
                     updatedTabs = prev.editingStoryTabs.map((tab, index) =>
                         index === existingTabIndex
                             ? { 
@@ -166,7 +172,6 @@ export const AppProvider = ({ children }) => {
                     );
                 }
             } else {
-                console.log('AppContext: Creating new tab for item:', itemIdStr);
                 updatedTabs = [...prev.editingStoryTabs, newTab];
             }
 
@@ -215,17 +220,13 @@ export const AppProvider = ({ children }) => {
     }, []);
     
     const updateStoryTab = useCallback((itemId, updates) => {
-        console.log('AppContext: updateStoryTab called for item:', itemId, 'with updates:', updates);
         setAppState(prev => ({
             ...prev,
             editingStoryTabs: prev.editingStoryTabs.map(tab => {
                 if (tab.itemId.toString() === itemId.toString()) {
-                    const updatedTab = { ...tab, ...updates };
-                    console.log('AppContext: Updated tab state:', updatedTab);
-                    return updatedTab;
-                } else {
-                    return tab;
+                    return { ...tab, ...updates };
                 }
+                return tab;
             })
         }));
     }, []);
