@@ -1,3 +1,8 @@
+/*
+================================================================================
+File: murrow-nrcs-app.git/src/features/MurrowNRCS.jsx
+================================================================================
+*/
 import React from 'react';
 import CustomIcon from '../components/ui/CustomIcon';
 import { useAuth } from '../context/AuthContext';
@@ -10,8 +15,8 @@ import RundownTab from './rundown/RundownTab';
 import AssignmentsTab from './assignments/AssignmentsTab';
 import AdminTab from './admin/AdminTab.jsx';
 import LiveModeTab from './rundown/LiveModeTab';
-import { StoryEditTab } from '../components/collaboration/StoryEditTab';
-import QuickEditModal from '../components/modals/QuickEditModal';
+import StoryEditTab from '../components/collaboration/StoryEditTab';
+import QuickEditModal from '../components/modals/QuickEditModal'; // ADD THIS IMPORT
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
 import NotificationPanel from '../components/collaboration/NotificationPanel';
@@ -22,26 +27,37 @@ const MurrowNRCS = () => {
     const { currentUser, logout, db } = useAuth();
     const { appState, setAppState, cleanupDataListeners } = useAppContext();
     const { CollaborationManager } = useCollaboration();
+
     const userPermissions = getUserPermissions(currentUser.role);
+
     const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
     const liveMode = useLiveMode(activeRundown, appState.activeRundownId);
 
     const handleLogout = async () => {
         try {
+            // Step 1: Clean up collaboration manager first
             if (CollaborationManager) {
                 await CollaborationManager.stopPresenceTracking();
             }
+
+            // Step 2: Clean up data listeners
             if (cleanupDataListeners) {
                 cleanupDataListeners();
             }
+
+            // Step 3: Small delay to ensure cleanup completes
             await new Promise(resolve => setTimeout(resolve, 150));
+
+            // Step 4: Finally logout (this will trigger AuthContext cleanup)
             await logout();
         } catch (error) {
             console.error('Error during logout process:', error);
+            // Even if there's an error, force logout
             try {
                 await logout();
             } catch (finalError) {
                 console.error('Final logout attempt failed:', finalError);
+                // Force reload as last resort
                 window.location.reload();
             }
         }
@@ -70,12 +86,22 @@ const MurrowNRCS = () => {
         }
     };
 
+    // Helper function to get the active story edit tab
+    const getActiveStoryEditTab = () => {
+        if (appState.activeTab.startsWith('storyEdit-')) {
+            const itemId = appState.activeTab.replace('storyEdit-', '');
+            return appState.editingStoryTabs.find(tab => tab.itemId === itemId);
+        }
+        return null;
+    };
+
     const tabs = [
         { id: 'stories', label: 'Stories', icon: 'stories', permission: true },
         { id: 'rundown', label: 'Rundown', icon: 'rundown', permission: true },
         { id: 'assignments', label: 'Assignments', icon: 'assignments', permission: userPermissions.canCreateAssignments || appState.assignments.some(a => a.assigneeId === currentUser.uid) },
         { id: 'admin', label: 'Admin', icon: 'admin', permission: userPermissions.canManageUsers },
         { id: 'live', label: 'Live Mode', icon: 'golive', permission: liveMode.isLive },
+        // Dynamic story edit tabs
         ...appState.editingStoryTabs.map(tab => ({
             id: tab.tabId,
             label: `Editing: ${tab.title || 'Story'}`,
@@ -96,15 +122,22 @@ const MurrowNRCS = () => {
                             </div>
                             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Murrow</h1>
                         </div>
+
                         <div className="flex items-center space-x-4">
                             <ActiveUsersPanel />
-                            <span className="text-sm hidden sm:inline">Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})</span>
+
+                            <span className="text-sm hidden sm:inline">
+                                Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})
+                            </span>
                             <NotificationPanel />
-                            <button onClick={handleLogout} className="btn-secondary !px-3"><CustomIcon name="logout" size={40} /></button>
+                            <button onClick={handleLogout} className="btn-secondary !px-3">
+                                <CustomIcon name="logout" size={40} />
+                            </button>
                         </div>
                     </div>
                 </div>
             </header>
+
             <nav className="bg-white dark:bg-gray-800 shadow-sm">
                 <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex space-x-8">
@@ -130,6 +163,7 @@ const MurrowNRCS = () => {
                     </div>
                 </div>
             </nav>
+
             <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {appState.activeTab === 'stories' && <StoriesTab />}
                 {appState.activeTab === 'rundown' && <RundownTab liveMode={liveMode} />}
@@ -140,13 +174,17 @@ const MurrowNRCS = () => {
                     <StoryEditTab itemId={appState.activeTab.replace('storyEdit-', '')} />
                 )}
             </main>
+
             <Chatbox
                 messages={appState.messages}
                 onSendMessage={handleSendMessage}
                 currentUser={currentUser}
                 getUserById={(id) => appState.users.find(u => u.uid === id)}
             />
+
             <ModalManager />
+            
+            {/* ADD QuickEditModal */}
             {appState.quickEditItem && <QuickEditModal />}
         </div>
     );
