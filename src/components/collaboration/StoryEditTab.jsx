@@ -1,22 +1,24 @@
 /*
 ================================================================================
 File: src/components/collaboration/StoryEditTab.jsx (MODIFIED)
-Description: This component is updated to use a named export to resolve
-             build issues.
+Description: This component is updated to use information from takeover
+             notifications to display the correct user name immediately,
+             fixing the race condition and blinking.
 ================================================================================
 */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
-import { useAppContext } from '../../context/AppContext';
-import { useCollaboration } from '../../context/CollaborationContext';
+// The useAppContext import is now relative to its new position in the combined file
+// import { useAppContext } from '../../context/AppContext';
+// The useCollaboration import is now relative to its new position in the combined file
+// import { useCollaboration } from '../../context/CollaborationContext';
 import InputField from '../ui/InputField';
 import UserPresenceIndicator from './UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 
-// FIX: Changed to a named export
 export const StoryEditTab = ({ itemId }) => {
     const { currentUser, db } = useAuth();
     const { appState, closeStoryTab } = useAppContext();
@@ -30,8 +32,15 @@ export const StoryEditTab = ({ itemId }) => {
     const editingUser = getUserEditingItem(itemId);
 
     const isOwner = tab?.isOwner && !tab?.isBeingTakenOver;
+
+    // FIX: Prioritize the name from the takeover notification stored in the tab state.
+    // This is more immediate and reliable than waiting for the presence system to update.
+    const takeoverInitiatorName = tab?.takenOverBy || editingUser?.userName;
+    
     const isTakenOverByOther = !isOwner && editingUser && editingUser.userId !== currentUser.uid;
-    const takenOverBy = isTakenOverByOther ? editingUser.userName : null;
+    
+    // FIX: Use the more reliable takeoverInitiatorName for display to prevent showing the wrong user.
+    const takenOverBy = isTakenOverByOther ? takeoverInitiatorName : null;
 
     const [formData, setFormData] = useState({
         title: '', content: '', duration: '01:00', type: ['STD'], authorId: currentUser.uid
@@ -133,7 +142,7 @@ export const StoryEditTab = ({ itemId }) => {
         } finally {
             setIsSaving(false);
             await stopEditingStory(itemId);
-            closeStoryTab(itemId, true, true); // Pass isForTakeover flag
+            closeStoryTab(itemId, true, true);
             isClosingRef.current = false;
         }
     }, [saveChanges, stopEditingStory, closeStoryTab, itemId, hasUnsavedChanges, isSaving]);
@@ -144,7 +153,8 @@ export const StoryEditTab = ({ itemId }) => {
         const wasIOwnerOfTab = tab?.isOwner;
 
         if (wasIOwnerOfTab && (isBeingForciblyTakenOver || currentEditorIsSomeoneElse)) {
-            showNotification(`This story was taken over by ${editingUser?.userName || 'another user'}. Closing tab...`, 'info');
+            // FIX: Use the more reliable takeoverInitiatorName in the notification message.
+            showNotification(`This story was taken over by ${takeoverInitiatorName || 'another user'}. Closing tab...`, 'info');
             
             const takeoverTimeout = setTimeout(() => {
                 saveAndCloseForTakeover();
@@ -157,7 +167,8 @@ export const StoryEditTab = ({ itemId }) => {
         tab?.isBeingTakenOver,
         editingUser,
         currentUser.uid,
-        saveAndCloseForTakeover
+        saveAndCloseForTakeover,
+        takeoverInitiatorName // Add dependency
     ]);
 
 
@@ -247,6 +258,7 @@ export const StoryEditTab = ({ itemId }) => {
                     {isTakenOverByOther && takenOverBy && (
                         <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
                             <CustomIcon name="lock" size={32} className="text-orange-600" />
+                            {/* FIX: This now uses the corrected 'takenOverBy' variable */}
                             <span className="text-sm text-orange-800 dark:text-orange-200">{takenOverBy} is editing</span>
                         </div>
                     )}
