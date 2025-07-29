@@ -11,8 +11,8 @@ const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
  * @returns {Promise<string>} A formatted string of search results for the AI model.
  */
 async function searchWeb(query) {
-    const apiKey = import.meta.env.VITE_Google Search_API_KEY;
-    const cx = import.meta.env.VITE_Google Search_CX;
+    const apiKey = import.meta.env.VITE_GOOGLE_SEARCH_API_KEY;
+    const cx = import.meta.env.VITE_GOOGLE_SEARCH_CX;
     
     // API endpoint for Google Custom Search. We include parameters to search in both English and Georgian.
     const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&lr=lang_en|lang_ka&cr=countryGE`;
