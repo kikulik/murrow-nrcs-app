@@ -1,17 +1,8 @@
-/*
-================================================================================
-File: src/features/MurrowNRCS.jsx
-Description: This file is updated to use a named import for StoryEditTab
-             to match the export change and fix the build error.
-================================================================================
-*/
 import React from 'react';
 import CustomIcon from '../components/ui/CustomIcon';
 import { useAuth } from '../context/AuthContext';
-// The useAppContext import is now relative to its new position in the combined file
-// import { useAppContext } from '../context/AppContext';
-// The useCollaboration import is now relative to its new position in the combined file
-// import { useCollaboration } from '../context/CollaborationContext';
+import { useAppContext } from '../context/AppContext';
+import { useCollaboration } from '../context/CollaborationContext';
 import { getUserPermissions } from '../lib/permissions';
 import { useLiveMode } from '../hooks/useLiveMode';
 import StoriesTab from './stories/StoriesTab';
@@ -19,8 +10,7 @@ import RundownTab from './rundown/RundownTab';
 import AssignmentsTab from './assignments/AssignmentsTab';
 import AdminTab from './admin/AdminTab.jsx';
 import LiveModeTab from './rundown/LiveModeTab';
-// The StoryEditTab import is now relative to its new position in the combined file
-// import { StoryEditTab } from '../components/collaboration/StoryEditTab';
+import { StoryEditTab } from '../components/collaboration/StoryEditTab';
 import QuickEditModal from '../components/modals/QuickEditModal';
 import Chatbox from '../components/common/Chatbox';
 import ModalManager from '../components/common/ModalManager';
@@ -32,9 +22,7 @@ const MurrowNRCS = () => {
     const { currentUser, logout, db } = useAuth();
     const { appState, setAppState, cleanupDataListeners } = useAppContext();
     const { CollaborationManager } = useCollaboration();
-
     const userPermissions = getUserPermissions(currentUser.role);
-
     const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
     const liveMode = useLiveMode(activeRundown, appState.activeRundownId);
 
@@ -82,14 +70,6 @@ const MurrowNRCS = () => {
         }
     };
 
-    const getActiveStoryEditTab = () => {
-        if (appState.activeTab.startsWith('storyEdit-')) {
-            const itemId = appState.activeTab.replace('storyEdit-', '');
-            return appState.editingStoryTabs.find(tab => tab.itemId === itemId);
-        }
-        return null;
-    };
-
     const tabs = [
         { id: 'stories', label: 'Stories', icon: 'stories', permission: true },
         { id: 'rundown', label: 'Rundown', icon: 'rundown', permission: true },
@@ -116,22 +96,15 @@ const MurrowNRCS = () => {
                             </div>
                             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Murrow</h1>
                         </div>
-
                         <div className="flex items-center space-x-4">
                             <ActiveUsersPanel />
-
-                            <span className="text-sm hidden sm:inline">
-                                Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})
-                            </span>
+                            <span className="text-sm hidden sm:inline">Logged in as: <strong>{currentUser.name}</strong> ({currentUser.role})</span>
                             <NotificationPanel />
-                            <button onClick={handleLogout} className="btn-secondary !px-3">
-                                <CustomIcon name="logout" size={40} />
-                            </button>
+                            <button onClick={handleLogout} className="btn-secondary !px-3"><CustomIcon name="logout" size={40} /></button>
                         </div>
                     </div>
                 </div>
             </header>
-
             <nav className="bg-white dark:bg-gray-800 shadow-sm">
                 <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex space-x-8">
@@ -157,7 +130,6 @@ const MurrowNRCS = () => {
                     </div>
                 </div>
             </nav>
-
             <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {appState.activeTab === 'stories' && <StoriesTab />}
                 {appState.activeTab === 'rundown' && <RundownTab liveMode={liveMode} />}
@@ -168,16 +140,13 @@ const MurrowNRCS = () => {
                     <StoryEditTab itemId={appState.activeTab.replace('storyEdit-', '')} />
                 )}
             </main>
-
             <Chatbox
                 messages={appState.messages}
                 onSendMessage={handleSendMessage}
                 currentUser={currentUser}
                 getUserById={(id) => appState.users.find(u => u.uid === id)}
             />
-
             <ModalManager />
-            
             {appState.quickEditItem && <QuickEditModal />}
         </div>
     );
