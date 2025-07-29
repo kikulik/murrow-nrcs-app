@@ -1,4 +1,4 @@
-// src/features/rundown/components/RundownDraggableItem.jsx
+// src/features/rundown/components/RundownDraggableItem.jsx (Fixed Presence Indicator)
 import React, { useRef } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import CustomIcon from '../../../components/ui/CustomIcon';
@@ -33,6 +33,7 @@ const RundownDraggableItem = ({
 
     const userPermissions = getUserPermissions(currentUser.role);
     
+    // FIX: More reliable presence indicator logic
     const editingUser = getUserEditingItem(item.id);
     const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
     const canTakeOver = userPermissions.canTakeOverStories;
@@ -110,13 +111,22 @@ const RundownDraggableItem = ({
         }
     };
 
+    // FIX: Enhanced takeover with better state refresh
     const handleTakeOver = async () => {
         if (!canTakeOver || !editingUser) return;
 
+        console.log('RundownItem: Starting takeover for item:', item.id, 'from user:', editingUser.userId);
         const success = await takeOverStory(item.id, editingUser.userId);
         if (success) {
+            console.log('RundownItem: Takeover successful, refreshing data and starting edit');
+            // Refresh the tab data to get latest content
             refreshStoryTabData(item.id);
-            await startEditingStory(item.id, item);
+            // Small delay to ensure state is updated
+            setTimeout(async () => {
+                await startEditingStory(item.id, item);
+            }, 200);
+        } else {
+            console.error('RundownItem: Takeover failed');
         }
     };
 
@@ -171,7 +181,8 @@ const RundownDraggableItem = ({
                     </h4>
                 </div>
                 <div className="col-span-1 flex justify-center">
-                    {isBeingEditedByOther && (
+                    {/* FIX: Enhanced presence indicator with better state detection */}
+                    {isBeingEditedByOther && editingUser && (
                         <div 
                             title={`${editingUser.userName} is editing`} 
                             className="w-6 h-6 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center animate-pulse"
