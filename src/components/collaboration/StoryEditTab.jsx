@@ -1,5 +1,5 @@
-// PATCHED: StoryEditTab.jsx (v2 - Fixed Infinite Loops)
-// Fix: Eliminated infinite re-renders and improved ownership detection
+// PATCHED: StoryEditTab.jsx
+// Fix: After takeover, Producer re-fetches latest story content from Firestore and can edit immediately
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
@@ -24,9 +24,8 @@ const StoryEditTab = ({ itemId }) => {
     const tab = appState.editingStoryTabs.find(t => t.itemId.toString() === itemId.toString());
     const editingUser = getUserEditingItem(itemId);
 
-    // FIX: Simple and reliable ownership logic
     const isOwner = tab?.isOwner && !tab?.isBeingTakenOver;
-    const isTakenOverByOther = editingUser && editingUser.userId !== currentUser.uid;
+    const isTakenOverByOther = !isOwner && editingUser && editingUser.userId !== currentUser.uid;
     const takenOverBy = isTakenOverByOther ? editingUser.userName : null;
 
     const [formData, setFormData] = useState({
@@ -37,81 +36,42 @@ const StoryEditTab = ({ itemId }) => {
     const [lastSaved, setLastSaved] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [notification, setNotification] = useState(null);
-    const [dataLoaded, setDataLoaded] = useState(false);
-    
-    // FIX: Use refs to prevent infinite re-renders
-    const lastTabDataRef = useRef(null);
-    const lastOwnershipRef = useRef(null);
 
-    // FIX: Simplified data loading without infinite loops
-    const loadStoryData = useCallback(async () => {
-        if (!tab || dataLoaded) return;
-        
+    // 🆕 Fetch fresh story data from Firestore
+    const fetchFreshStory = useCallback(async () => {
+        if (!db || !tab?.storyData?.storyId) return;
         try {
-            console.log('Loading story data for item:', itemId, 'isOwner:', isOwner);
-            
-            let storyData;
-            
-            // If we're the owner and have a story ID, fetch fresh data
-            if (isOwner && tab.storyData?.storyId && db) {
-                try {
-                    const storyRef = doc(db, 'stories', tab.storyData.storyId);
-                    const snap = await getDoc(storyRef);
-                    if (snap.exists()) {
-                        const freshData = snap.data();
-                        storyData = {
-                            title: freshData.title || '',
-                            content: freshData.content || '',
-                            duration: freshData.duration || '01:00',
-                            type: Array.isArray(freshData.tags) ? freshData.tags : [freshData.tags || 'STD'],
-                            authorId: freshData.authorId || currentUser.uid
-                        };
-                        console.log('Loaded fresh story data from Firestore');
-                    } else {
-                        storyData = tab.storyData;
-                    }
-                } catch (error) {
-                    console.error('Error fetching fresh story data:', error);
-                    storyData = tab.storyData;
-                }
-            } else {
-                // Use tab data
-                storyData = tab.storyData;
+            const storyRef = doc(db, 'stories', tab.storyData.storyId);
+            const snap = await getDoc(storyRef);
+            if (snap.exists()) {
+                const data = snap.data();
+                setFormData({
+                    title: data.title || '',
+                    content: data.content || '',
+                    duration: data.duration || '01:00',
+                    type: Array.isArray(data.tags) ? data.tags : [data.tags || 'STD'],
+                    authorId: data.authorId || currentUser.uid
+                });
             }
-            
-            setFormData({
-                title: storyData?.title || '',
-                content: storyData?.content || '',
-                duration: storyData?.duration || '01:00',
-                type: Array.isArray(storyData?.type) ? storyData.type : [storyData?.type || 'STD'],
-                authorId: storyData?.authorId || currentUser.uid
-            });
-            
-            setDataLoaded(true);
-            lastTabDataRef.current = JSON.stringify(tab.storyData);
-            lastOwnershipRef.current = isOwner;
-            
         } catch (error) {
-            console.error('Error loading story data:', error);
-            setDataLoaded(true);
+            console.error('Error fetching fresh story:', error);
         }
-    }, [tab, isOwner, db, currentUser.uid, itemId, dataLoaded]);
+    }, [db, tab?.storyData?.storyId, currentUser.uid]);
 
-    // FIX: Only reload data when tab data actually changes or ownership changes
+    // Load story data: from Firestore if owner, else from tab
     useEffect(() => {
-        const currentTabData = JSON.stringify(tab?.storyData);
-        const currentOwnership = isOwner;
-        
-        if (tab && (
-            currentTabData !== lastTabDataRef.current || 
-            currentOwnership !== lastOwnershipRef.current ||
-            !dataLoaded
-        )) {
-            console.log('Tab data or ownership changed, reloading data');
-            setDataLoaded(false);
-            loadStoryData();
+        if (isOwner && tab?.storyData?.storyId) {
+            fetchFreshStory();
+        } else {
+            setFormData({
+                title: tab?.storyData?.title || '',
+                content: tab?.storyData?.content || '',
+                duration: tab?.storyData?.duration || '01:00',
+                type: Array.isArray(tab?.storyData?.type) ? tab.storyData.type : [tab?.storyData?.type || 'STD'],
+                authorId: tab?.storyData?.authorId || currentUser.uid
+            });
         }
-    }, [tab, isOwner, loadStoryData, dataLoaded]);
+    }, [tab?.storyData, isOwner, fetchFreshStory]);
 
     const showNotification = (message, type = 'info') => {
         setNotification({ message, type });
@@ -229,18 +189,6 @@ const StoryEditTab = ({ itemId }) => {
             console.error('Error in handleClose:', error);
         }
     };
-
-    // FIX: Show loading only when data is not loaded
-    if (!dataLoaded || !tab) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading story data...</p>
-                </div>
-            </div>
-        );
-    }
 
     const containerClasses = `space-y-6 ${isTakenOverByOther ? 'opacity-60 pointer-events-none' : ''}`;
 
