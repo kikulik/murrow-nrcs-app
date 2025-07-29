@@ -1,4 +1,4 @@
-// src/context/CollaborationContext.jsx
+// src/context/CollaborationContext.jsx (Real-time Fixed - Minimal Changes)
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, getDoc, addDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
@@ -18,49 +18,22 @@ export const CollaborationProvider = ({ children }) => {
     const presenceInitialized = useRef(false);
     const processedNotifications = useRef(new Set());
     const takingOverItemRef = useRef(null);
-    const managerInitialized = useRef(false);
-
-    // FIX: Enhanced manager initialization
-    const ensureManagerInitialized = useCallback(async () => {
-        if (!db || !currentUser) {
-            console.log('Cannot initialize manager: missing db or currentUser');
-            return false;
-        }
-
-        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
-            console.log('Initializing new CollaborationManager');
-            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
-            managerInitialized.current = true;
-            
-            // Start presence tracking if we have an active rundown
-            if (appState.activeRundownId && !presenceInitialized.current) {
-                console.log('Starting presence tracking during manager initialization');
-                presenceInitialized.current = true;
-                await collaborationManagerRef.current.startPresenceTracking(appState.activeRundownId);
-                collaborationManagerRef.current.listenToPresence(
-                    appState.activeRundownId,
-                    (allUsers) => {
-                        setActiveUsers(allUsers);
-                        updateEditingSessions(allUsers);
-                    }
-                );
-            }
-        }
-        return true;
-    }, [db, currentUser, appState.activeRundownId]);
 
     useEffect(() => {
         if (db && currentUser) {
-            ensureManagerInitialized();
+            if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                console.log('Creating new CollaborationManager');
+                collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+                presenceInitialized.current = false;
+            }
         } else {
             if (collaborationManagerRef.current && !collaborationManagerRef.current.isDestroyed) {
                 collaborationManagerRef.current.stopPresenceTracking();
             }
             collaborationManagerRef.current = null;
-            managerInitialized.current = false;
             presenceInitialized.current = false;
         }
-    }, [db, currentUser, ensureManagerInitialized]);
+    }, [db, currentUser]);
 
     useEffect(() => {
         if (!currentUser) {
@@ -81,7 +54,6 @@ export const CollaborationProvider = ({ children }) => {
             setActiveUsers([]);
             setEditingSessions(new Map());
             setNotifications([]);
-            managerInitialized.current = false;
             presenceInitialized.current = false;
             processedNotifications.current.clear();
         }
@@ -125,21 +97,9 @@ export const CollaborationProvider = ({ children }) => {
         processedNotifications.current.add(notification.id);
         console.log('Processing takeover notification for item:', notification.itemId);
         
-        try {
-            await markNotificationAsRead(notification.id);
-            forceCloseStoryTab(notification.itemId, true);
-            
-            setEditingSessions(prevSessions => {
-                const newSessions = new Map(prevSessions);
-                newSessions.delete(notification.itemId.toString());
-                return newSessions;
-            });
-            
-            console.log('Takeover notification processed successfully - tab closed');
-        } catch (error) {
-            console.error('Error processing takeover notification:', error);
-        }
-    }, [markNotificationAsRead, forceCloseStoryTab]);
+        updateStoryTab(notification.itemId, { isBeingTakenOver: true });
+        await markNotificationAsRead(notification.id);
+    }, [updateStoryTab, markNotificationAsRead]);
 
     const setupNotificationListener = useCallback(async () => {
         if (!db || !currentUser || notificationsUnsubscribeRef.current) return;
@@ -170,17 +130,16 @@ export const CollaborationProvider = ({ children }) => {
                             !processedNotifications.current.has(n.id)
                         );
                         
-                        newNotifications.forEach(notification => {
-                            if (notification.type === 'takeOver') {
-                                handleTakeOverNotification(notification);
-                            }
-                        });
+                        newNotifications.forEach(handleTakeOverNotification);
                     } catch (error) {
                         console.error('Error processing notifications:', error);
                     }
                 },
                 (error) => {
                     console.error('Notifications listener error:', error);
+                    if (error.code === 'permission-denied') {
+                        console.warn('Permission denied for notifications, user may need to re-login');
+                    }
                 }
             );
         } catch (error) {
@@ -245,24 +204,16 @@ export const CollaborationProvider = ({ children }) => {
         });
     }, [appState.editingStoryTabs, currentUser, updateStoryTab]);
 
+
     useEffect(() => {
-        const setupPresenceTracking = async () => {
-            if (!appState.activeRundownId || !currentUser) {
-                presenceInitialized.current = false;
-                return;
-            }
-
-            // Ensure manager is initialized
-            const managerReady = await ensureManagerInitialized();
-            if (!managerReady) return;
-
-            const manager = collaborationManagerRef.current;
-            
-            try {
-                if (manager && !manager.isDestroyed && !presenceInitialized.current) {
+        const manager = collaborationManagerRef.current;
+        
+        try {
+            if (manager && !manager.isDestroyed && appState.activeRundownId && currentUser) {
+                if (!presenceInitialized.current) {
                     console.log('Starting presence tracking for rundown:', appState.activeRundownId);
                     presenceInitialized.current = true;
-                    await manager.startPresenceTracking(appState.activeRundownId);
+                    manager.startPresenceTracking(appState.activeRundownId);
                     manager.listenToPresence(
                         appState.activeRundownId,
                         (allUsers) => {
@@ -271,17 +222,15 @@ export const CollaborationProvider = ({ children }) => {
                         }
                     );
                 }
-            } catch (error) {
-                console.error('Error in presence tracking setup:', error);
+            } else if (!appState.activeRundownId) {
                 presenceInitialized.current = false;
             }
-        };
-
-        setupPresenceTracking();
+        } catch (error) {
+            console.error('Error in presence tracking setup:', error);
+        }
 
         return () => {
             try {
-                const manager = collaborationManagerRef.current;
                 if (manager && !manager.isDestroyed && presenceInitialized.current) {
                     manager.stopPresenceTracking();
                     presenceInitialized.current = false;
@@ -290,7 +239,7 @@ export const CollaborationProvider = ({ children }) => {
                 console.error('Error cleaning up presence tracking:', error);
             }
         };
-    }, [appState.activeRundownId, currentUser, ensureManagerInitialized, updateEditingSessions]);
+    }, [appState.activeRundownId, currentUser, updateEditingSessions]);
 
     const startEditingStory = async (itemId, storyData) => {
         try {
@@ -299,16 +248,23 @@ export const CollaborationProvider = ({ children }) => {
                 return false;
             }
 
-            // FIX: Ensure manager is initialized before using
-            const managerReady = await ensureManagerInitialized();
-            if (!managerReady) {
-                console.error('Failed to initialize collaboration manager');
-                return false;
+            if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+                collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+                if (appState.activeRundownId) {
+                    collaborationManagerRef.current.startPresenceTracking(appState.activeRundownId);
+                    collaborationManagerRef.current.listenToPresence(
+                        appState.activeRundownId,
+                        (allUsers) => {
+                            setActiveUsers(allUsers);
+                            updateEditingSessions(allUsers);
+                        }
+                    );
+                }
             }
 
             const manager = collaborationManagerRef.current;
             if (!manager) {
-                console.error('CollaborationManager is still not available');
+                console.error('Failed to create collaboration manager');
                 return false;
             }
         
@@ -316,7 +272,6 @@ export const CollaborationProvider = ({ children }) => {
             const isBeingEditedByOther = editingUser && editingUser.userId !== currentUser.uid;
 
             if (isBeingEditedByOther) {
-                console.log('Item is being edited by another user, opening in read-only mode');
                 if (openStoryTab) {
                     openStoryTab(itemId, storyData);
                 }
@@ -328,7 +283,6 @@ export const CollaborationProvider = ({ children }) => {
                     });
                 }
             } else {
-                console.log('Opening item for editing');
                 await manager.setEditingItem(itemId.toString());
                 if (openStoryTab) {
                     openStoryTab(itemId, storyData);
@@ -349,10 +303,7 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const stopEditingStory = async (itemId) => {
-        // FIX: Ensure manager exists before using
-        await ensureManagerInitialized();
         const manager = collaborationManagerRef.current;
-        
         if (manager && !manager.isDestroyed) {
             const editingUser = editingSessions.get(itemId?.toString());
             if (editingUser && editingUser.userId === currentUser.uid) {
@@ -366,22 +317,9 @@ export const CollaborationProvider = ({ children }) => {
         }
     };
 
-    // FIX: Enhanced takeover with guaranteed manager initialization
     const takeOverStory = async (itemId, previousUserId) => {
-        console.log('takeOverStory called for item:', itemId, 'from user:', previousUserId);
-        
-        // FIX: Ensure manager is initialized before attempting takeover
-        const managerReady = await ensureManagerInitialized();
-        if (!managerReady) {
-            console.error('Cannot takeover: Failed to initialize CollaborationManager');
-            return false;
-        }
-
         const manager = collaborationManagerRef.current;
-        if (!manager || manager.isDestroyed) {
-            console.error('Cannot takeover: CollaborationManager not available');
-            return false;
-        }
+        if (!manager || manager.isDestroyed) return false;
         
         const itemIdStr = itemId.toString();
         takingOverItemRef.current = itemIdStr;
@@ -389,15 +327,11 @@ export const CollaborationProvider = ({ children }) => {
         try {
             console.log('Starting takeover for item:', itemId, 'from user:', previousUserId);
             
-            // 1. Send notification to the previous user
-            await manager.sendTakeOverNotification(itemId, previousUserId);
-            console.log('Takeover notification sent successfully');
-            
-            // 2. Update our presence to claim the item
+            // 1. Update remote state (Firestore presence)
             await manager.setEditingItem(itemIdStr);
-            console.log('Updated presence to claim item');
-            
-            // 3. Update local editing sessions immediately
+            await manager.sendTakeOverNotification(itemId, previousUserId);
+
+            // 2. Manually update local state to reflect the takeover IMMEDIATELY.
             setEditingSessions(prevSessions => {
                 const newSessions = new Map(prevSessions);
                 newSessions.set(itemIdStr, {
@@ -405,21 +339,15 @@ export const CollaborationProvider = ({ children }) => {
                     userName: currentUser.name,
                     timestamp: Date.now()
                 });
-                console.log('Updated local editing sessions');
                 return newSessions;
             });
 
-            // 4. Wait for journalist to save changes
+            // 3. Give the system more time for the journalist's client to save and update the rundown.
             console.log('Waiting for journalist to save changes...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 1500));
 
-            // 5. Fetch latest rundown data
+            // 4. Fetch the absolute latest version of the rundown to get the final save.
             console.log('Fetching latest rundown data...');
-            if (!appState.activeRundownId) {
-                console.error('No active rundown ID');
-                return false;
-            }
-
             const rundownRef = doc(db, "rundowns", appState.activeRundownId);
             const freshRundownDoc = await getDoc(rundownRef);
             let currentItem;
@@ -427,30 +355,31 @@ export const CollaborationProvider = ({ children }) => {
             if (freshRundownDoc.exists()) {
                 const freshRundownData = freshRundownDoc.data();
                 console.log('Got fresh rundown data, updating app state...');
+                // Update the entire rundown in the app state to ensure all components have the fresh data.
                 setAppState(prev => ({
                     ...prev,
                     rundowns: prev.rundowns.map(r => r.id === appState.activeRundownId ? { id: r.id, ...freshRundownData } : r)
                 }));
                 currentItem = freshRundownData.items.find(item => item.id.toString() === itemIdStr);
             } else {
-                console.warn('Fresh rundown document not found, using existing data');
+                // Fallback to existing item if the fetch somehow fails
                 const rundownData = appState.rundowns.find(r => r.id === appState.activeRundownId);
                 currentItem = rundownData?.items?.find(item => item.id.toString() === itemIdStr);
             }
 
             if (!currentItem) {
-                console.error('Item not found after takeover refresh');
+                console.error('Item not found after takeover refresh.');
                 return false;
             }
 
-            // 6. Wait for state propagation
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // 5. Wait a bit more to ensure the app state has been updated
+            await new Promise(resolve => setTimeout(resolve, 300));
 
-            // 7. Open tab with force takeover
-            console.log('Opening story tab for producer with fresh data:', currentItem.title);
-            openStoryTab(itemId, currentItem, true);
+            // 6. Open the tab with force takeover flag and immediately update ownership
+            console.log('Opening story tab for new user with fresh data:', currentItem);
+            openStoryTab(itemId, currentItem, true); // Pass true as forceTakeover flag
             
-            // 8. Force update tab ownership
+            // 7. Force update the tab ownership immediately after opening
             setTimeout(() => {
                 updateStoryTab(itemId, {
                     isOwner: true,
@@ -459,36 +388,20 @@ export const CollaborationProvider = ({ children }) => {
                     isBeingTakenOver: false
                 });
                 console.log('Force updated tab ownership after takeover');
-            }, 200);
+            }, 100);
             
             console.log('Takeover completed successfully');
             return true;
-            
         } catch (error) {
-            console.error('Error during takeover:', error);
-            showTakeoverError(error);
+            console.error('Error taking over story:', error);
             return false;
         } finally {
             setTimeout(() => {
                 if (takingOverItemRef.current === itemIdStr) {
                     takingOverItemRef.current = null;
                 }
-            }, 3000);
+            }, 2000);
         }
-    };
-
-    const showTakeoverError = (error) => {
-        let errorMessage = 'Takeover failed. Please try again.';
-        
-        if (error.code === 'permission-denied') {
-            errorMessage = 'Permission denied. You may not have access to this item.';
-        } else if (error.code === 'unavailable') {
-            errorMessage = 'Service temporarily unavailable. Please try again.';
-        } else if (error.message) {
-            errorMessage = `Takeover failed: ${error.message}`;
-        }
-        
-        console.error('Takeover error details:', errorMessage);
     };
 
     const saveStoryProgress = async (itemId, storyData) => {
@@ -518,7 +431,9 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const setEditingItem = async (itemId) => {
-        await ensureManagerInitialized();
+        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+        }
         const manager = collaborationManagerRef.current;
         if (manager) {
             await manager.setEditingItem(itemId);
@@ -526,7 +441,9 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const clearEditingItem = async () => {
-        await ensureManagerInitialized();
+        if (!collaborationManagerRef.current || collaborationManagerRef.current.isDestroyed) {
+            collaborationManagerRef.current = new CollaborationManager(db, currentUser);
+        }
         const manager = collaborationManagerRef.current;
         if (manager) {
             await manager.setEditingItem(null);
@@ -534,7 +451,6 @@ export const CollaborationProvider = ({ children }) => {
     };
 
     const safeUpdateRundown = async (rundownId, updateFunction) => {
-        await ensureManagerInitialized();
         const manager = collaborationManagerRef.current;
         if (manager && !manager.isDestroyed) {
             return await manager.safeUpdateRundown(rundownId, updateFunction);
