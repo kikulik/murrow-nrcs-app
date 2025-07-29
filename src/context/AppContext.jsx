@@ -1,4 +1,4 @@
-// src/context/AppContext.jsx (Fixed)
+// src/context/AppContext.jsx 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { setupFirestoreListeners } from '../hooks/useFirestoreData';
@@ -115,7 +115,6 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    // FIX: Enhanced openStoryTab to properly handle takeover scenarios
     const openStoryTab = useCallback((itemId, storyData, forceTakeover = false) => {
         setAppState(prev => {
             const itemIdStr = itemId.toString();
@@ -135,7 +134,7 @@ export const AppProvider = ({ children }) => {
                 storyData: fullStoryData,
                 tabId: `storyEdit-${itemId}`,
                 title: storyData?.title || 'Untitled Story',
-                isOwner: true, // Always true when opening a new tab or taking over
+                isOwner: true, 
                 takenOver: false,
                 takenOverBy: null,
                 isBeingTakenOver: false
@@ -144,14 +143,11 @@ export const AppProvider = ({ children }) => {
             let updatedTabs;
 
             if (existingTabIndex !== -1) {
-                // FIX: If tab exists and this is a takeover, completely replace the tab
-                // instead of just updating properties to ensure clean state
                 if (forceTakeover) {
-                    console.log('AppContext: Replacing existing tab due to takeover for item:', itemIdStr);
+                    console.log('AppContext: Force replacing tab due to takeover for item:', itemIdStr);
                     updatedTabs = [...prev.editingStoryTabs];
                     updatedTabs[existingTabIndex] = newTab;
                 } else {
-                    // Normal update for existing tab
                     console.log('AppContext: Updating existing tab for item:', itemIdStr);
                     updatedTabs = prev.editingStoryTabs.map((tab, index) =>
                         index === existingTabIndex
@@ -165,7 +161,6 @@ export const AppProvider = ({ children }) => {
                     );
                 }
             } else {
-                // Create new tab
                 console.log('AppContext: Creating new tab for item:', itemIdStr);
                 updatedTabs = [...prev.editingStoryTabs, newTab];
             }
@@ -195,6 +190,8 @@ export const AppProvider = ({ children }) => {
                 newRecentlyClosed.add(itemIdStr);
             }
 
+            console.log('AppContext: Closing tab for item:', itemIdStr, 'isForced:', isForced, 'isForTakeover:', isForTakeover);
+
             return {
                 ...prev,
                 editingStoryTabs: updatedTabs,
@@ -221,7 +218,7 @@ export const AppProvider = ({ children }) => {
             editingStoryTabs: prev.editingStoryTabs.map(tab => {
                 if (tab.itemId.toString() === itemId.toString()) {
                     const updatedTab = { ...tab, ...updates };
-                    console.log('AppContext: Updated tab:', updatedTab);
+                    console.log('AppContext: Updated tab from:', tab, 'to:', updatedTab);
                     return updatedTab;
                 } else {
                     return tab;
@@ -231,6 +228,7 @@ export const AppProvider = ({ children }) => {
     }, []);
 
     const forceCloseStoryTab = useCallback((itemId, isForTakeover = false) => {
+        console.log('AppContext: Force closing tab for item:', itemId, 'isForTakeover:', isForTakeover);
         closeStoryTab(itemId, true, isForTakeover);
     }, [closeStoryTab]);
 
@@ -246,11 +244,17 @@ export const AppProvider = ({ children }) => {
             const updatedItem = rundown.items.find(item => item.id.toString() === itemId.toString());
             if (!updatedItem) return prev;
 
+            console.log('AppContext: Refreshing tab data for item:', itemId, 'with:', updatedItem);
+
             return {
                 ...prev,
                 editingStoryTabs: prev.editingStoryTabs.map(tab =>
                     tab.itemId.toString() === itemId.toString()
-                        ? { ...tab, storyData: updatedItem }
+                        ? { 
+                            ...tab, 
+                            storyData: updatedItem,
+                            title: updatedItem.title || tab.title 
+                        }
                         : tab
                 )
             };
