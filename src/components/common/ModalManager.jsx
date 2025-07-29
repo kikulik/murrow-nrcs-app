@@ -11,6 +11,8 @@ import CreateFolderModal from '../../features/stories/components/CreateFolderMod
 import ConfirmationDialog from './ConfirmationDialog';
 import AlertDialog from './AlertDialog';
 import { doc, deleteDoc } from 'firebase/firestore';
+// Import the new AI modal
+import AIGeneratorModal from '../../features/stories/components/AIGeneratorModal';
 
 const ModalManager = () => {
     const { appState, setAppState, updateStoryTab } = useAppContext();
