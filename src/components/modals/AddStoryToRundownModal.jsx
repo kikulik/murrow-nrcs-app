@@ -109,10 +109,10 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     content: story.content,
                     storyId: story.id,
                     storyStatus: 'Not Ready',
-                    authorId: story.authorId
+                    authorId: story.authorId,
+                    highResPath: story.highResPath || null
                 };
             } else {
-                // FIX: Create a new story document first
                 const newStory = {
                     title: newStoryData.title || `New ${selectedTypes[0]} Item`,
                     content: newStoryData.content,
@@ -123,11 +123,30 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     created: new Date().toISOString(),
                     folder: generateDateFolder(),
                     tags: selectedTypes,
-                    comments: []
+                    comments: [],
+                    types: selectedTypes
                 };
+
+                const isVideoType = selectedTypes.some(type => ['PKG', 'VO', 'SOT', 'VID'].includes(type));
+                
+                if (isVideoType) {
+                    const primaryType = selectedTypes.find(type => ['PKG', 'VO', 'SOT', 'VID'].includes(type));
+                    const mediaId = `${primaryType}_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+                    
+                    newStory.mediaId = mediaId;
+                    newStory.hasVideo = true;
+                    newStory.videoStatus = 'Waiting for Video';
+                    newStory.highResPath = `C:\\Video\\HighRes\\${mediaId}.mp4`;
+                    newStory.proxyPath = null;
+                } else {
+                    newStory.hasVideo = false;
+                    newStory.videoStatus = 'No Media';
+                    newStory.highResPath = null;
+                    newStory.proxyPath = null;
+                }
+
                 const storyDocRef = await addDoc(collection(db, "stories"), newStory);
 
-                // FIX: Create the rundown item and link it to the new story
                 newRundownItem = {
                     id: Date.now(),
                     time: "00:00:00",
@@ -135,9 +154,10 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     duration: newStory.duration,
                     type: selectedTypes,
                     content: newStory.content,
-                    storyId: storyDocRef.id, // <-- This is the crucial link
+                    storyId: storyDocRef.id,
                     storyStatus: 'Ready for Air',
-                    authorId: newStory.authorId
+                    authorId: newStory.authorId,
+                    highResPath: newStory.highResPath
                 };
             }
 
@@ -273,6 +293,18 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                                 placeholder="Internal notes or script..."
                             />
                         </div>
+
+                        {selectedTypes.some(type => ['PKG', 'VO', 'SOT', 'VID'].includes(type)) && (
+                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                                <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2 flex items-center gap-2">
+                                    <CustomIcon name="stories" size={20} />
+                                    Video Item Configuration
+                                </h4>
+                                <p className="text-sm text-blue-700 dark:text-blue-300">
+                                    This will create a video item with auto-generated Media ID for NLE export.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 )}
 
