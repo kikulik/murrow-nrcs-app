@@ -19,6 +19,10 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
         onEdit(story);
     };
 
+    const handleSendToRundown = () => {
+        onSendToRundown(story);
+    };
+
     return (
         <div className="relative group/storycard">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
@@ -45,6 +49,12 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                     <span>{new Date(story.created).toLocaleDateString()}</span>
                 </div>
 
+                {story.mediaId && (
+                    <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-700 rounded text-xs">
+                        <strong>Media ID:</strong> {story.mediaId}
+                    </div>
+                )}
+
                 <CollapsibleVideoSection
                     story={story}
                     showControls={canEdit}
@@ -62,7 +72,7 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                     </button>
                 )}
                 <button
-                    onClick={() => onSendToRundown(story)}
+                    onClick={handleSendToRundown}
                     className="btn-secondary !p-3"
                     title="Send to Rundown"
                 >
