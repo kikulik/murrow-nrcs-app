@@ -65,7 +65,7 @@ const StoryEditTab = ({ itemId }) => {
     useEffect(() => {
         if (isOwner && tab?.storyData?.storyId) {
             fetchFreshStory();
-        } else if (tab?.storyData) { // MODIFIED: Check for tab.storyData
+        } else if (tab?.storyData) {
             // ADDED: video fields to setFormData
             setFormData({
                 title: tab.storyData.title || '',
@@ -77,7 +77,7 @@ const StoryEditTab = ({ itemId }) => {
                 videoStatus: tab.storyData.videoStatus || null,
             });
         }
-    }, [tab?.storyData, isOwner, fetchFreshStory, currentUser.uid]); // MODIFIED: Added currentUser.uid dependency
+    }, [tab?.storyData, isOwner, fetchFreshStory, currentUser.uid]);
 
     const showNotification = (message, type = 'info') => {
         setNotification({ message, type });
@@ -252,9 +252,9 @@ const StoryEditTab = ({ itemId }) => {
                 </div>
             </div>
 
-            {/* ADDED: flex container for two-column layout */}
+            {/* MODIFIED: Wrapped the editor and video player in a flex container */}
             <div className="flex gap-6">
-                {/* Main Editor Column */}
+                {/* Main Editor Column (your original code) */}
                 <div className={`flex-1 bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6 ${!isOwner ? 'opacity-75' : ''}`}>
                     <div className="space-y-6">
                         <InputField
@@ -338,7 +338,7 @@ const StoryEditTab = ({ itemId }) => {
                         )}
                     </div>
                 </div>
-                
+
                 {/* ADDED: Video Player Column */}
                 <div className="w-1/3">
                      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4 sticky top-20">
