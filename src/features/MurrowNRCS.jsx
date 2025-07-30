@@ -1,9 +1,4 @@
 // src/features/MurrowNRCS.jsx
-/*
-================================================================================
-File: murrow-nrcs-app.git/src/features/MurrowNRCS.jsx
-================================================================================
-*/
 import React from 'react';
 import CustomIcon from '../components/ui/CustomIcon';
 import { useAuth } from '../context/AuthContext';
@@ -31,7 +26,9 @@ const MurrowNRCS = () => {
 
     const userPermissions = getUserPermissions(currentUser.role);
     const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
-    const liveMode = useLiveMode(activeRundown, appState.activeRundownId);
+    
+    // Pass db to useLiveMode so it can set active rundown in Firestore
+    const liveMode = useLiveMode(activeRundown, appState.activeRundownId, db);
 
     const handleLogout = async () => {
         try {
@@ -120,6 +117,12 @@ const MurrowNRCS = () => {
                                 <CustomIcon name="logo" size={90} />
                             </div>
                             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Murrow</h1>
+                            {liveMode.isLive && (
+                                <div className="flex items-center gap-2 px-3 py-1 bg-red-500 text-white rounded-full animate-pulse">
+                                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                                    <span className="font-bold text-sm">LIVE</span>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex items-center space-x-4">
@@ -149,12 +152,16 @@ const MurrowNRCS = () => {
                                             ? 'border-sky-500 text-sky-600 dark:text-sky-400'
                                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                         } ${tab.isEditing ? 'bg-blue-50 dark:bg-blue-900/20 rounded-t-lg px-3' : ''
+                                        } ${tab.id === 'live' ? 'bg-red-50 dark:bg-red-900/20' : ''
                                         }`}
                                 >
                                     <CustomIcon name={tab.icon} size={40} />
                                     <span className={tab.isEditing ? 'max-w-[150px] truncate' : ''}>{tab.label}</span>
                                     {tab.isEditing && appState.editingStoryTabs.find(t => t.tabId === tab.id)?.takenOver && (
                                         <CustomIcon name="notification" size={32} className="text-red-500" />
+                                    )}
+                                    {tab.id === 'live' && liveMode.isLive && (
+                                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                                     )}
                                 </button>
                             )
