@@ -138,19 +138,29 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                 types: selectedTypes
             };
 
-            // Generate video ID for all stories (not just video types)
+            let mediaId;
             if (!story?.mediaId) {
                 const primaryType = selectedTypes[0] || 'STD';
-                storyToSave.mediaId = generateMediaId(primaryType);
+                mediaId = generateMediaId(primaryType);
+                storyToSave.mediaId = mediaId;
             } else {
-                storyToSave.mediaId = story.mediaId;
+                mediaId = story.mediaId;
+                storyToSave.mediaId = mediaId;
             }
 
-            // Set default video properties
-            storyToSave.hasVideo = story?.hasVideo || false;
-            storyToSave.videoUrl = story?.videoUrl || null;
-            storyToSave.videoStatus = story?.videoStatus || 'No Media';
-            storyToSave.proxyPath = story?.proxyPath || null;
+            const isVideoType = selectedTypes.some(type => ['PKG', 'VO', 'SOT', 'VID'].includes(type));
+            
+            if (isVideoType) {
+                storyToSave.hasVideo = story?.hasVideo || true;
+                storyToSave.videoStatus = story?.videoStatus || 'Waiting for Video';
+                storyToSave.highResPath = story?.highResPath || `C:\\Video\\HighRes\\${mediaId}.mp4`;
+                storyToSave.proxyPath = story?.proxyPath || null;
+            } else {
+                storyToSave.hasVideo = story?.hasVideo || false;
+                storyToSave.videoStatus = story?.videoStatus || 'No Media';
+                storyToSave.highResPath = story?.highResPath || null;
+                storyToSave.proxyPath = story?.proxyPath || null;
+            }
 
             if (story?.id) {
                 await updateDoc(doc(db, "stories", story.id), storyToSave);
@@ -163,6 +173,8 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
             console.error('Error saving story:', error);
         }
     };
+
+    const currentMediaId = story?.mediaId || `${selectedTypes[0] || 'PKG'}_${Date.now().toString(36).toUpperCase()}`;
 
     return (
         <ModalBase onCancel={onCancel} title={story ? "Edit Story" : "Create New Story"} maxWidth="max-w-4xl">
@@ -256,6 +268,67 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                         ))}
                     </div>
                 </div>
+
+                {selectedTypes.some(type => ['PKG', 'VO', 'SOT', 'VID'].includes(type)) && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                        <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-2">
+                            <CustomIcon name="stories" size={20} />
+                            Video Configuration
+                        </h4>
+                        
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    NLE Export ID (Media ID)
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <code className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm font-mono">
+                                        {currentMediaId}
+                                    </code>
+                                    <div className="text-xs text-gray-500">
+                                        Auto-generated
+                                    </div>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Export your video from the NLE with this filename: <strong>{currentMediaId}.mp4</strong>
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Expected Video Path
+                                </label>
+                                <code className="block px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm font-mono">
+                                    C:\Video\HighRes\{currentMediaId}.mp4
+                                </code>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Place your exported video file in the watch folder and it will be automatically moved here.
+                                </p>
+                            </div>
+
+                            {story?.videoStatus && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Video Status
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                            story.videoStatus === 'Ready' ? 'bg-green-100 text-green-800' :
+                                            story.videoStatus === 'Processing' ? 'bg-yellow-100 text-yellow-800' :
+                                            story.videoStatus === 'Error' ? 'bg-red-100 text-red-800' :
+                                            'bg-gray-100 text-gray-800'
+                                        }`}>
+                                            {story.videoStatus}
+                                        </span>
+                                        {story.videoStatus === 'Ready' && (
+                                            <CustomIcon name="stories" size={16} className="text-green-600" />
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 <SelectField
                     label="Author"
