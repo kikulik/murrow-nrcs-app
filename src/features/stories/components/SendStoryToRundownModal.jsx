@@ -5,7 +5,6 @@ import { useAppContext } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import ModalBase from '../../../components/common/ModalBase';
 import SelectField from '../../../components/ui/SelectField';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 const SendStoryToRundownModal = ({ story, onCancel }) => {
     const { appState } = useAppContext();
@@ -26,6 +25,8 @@ const SendStoryToRundownModal = ({ story, onCancel }) => {
 
         setSending(true);
         try {
+            const { doc, getDoc, updateDoc } = await import('firebase/firestore');
+            
             const rundownRef = doc(db, "rundowns", selectedRundownId);
             const rundownDoc = await getDoc(rundownRef);
 
@@ -44,10 +45,11 @@ const SendStoryToRundownModal = ({ story, onCancel }) => {
                 time: "00:00:00",
                 title: story.title,
                 duration: story.duration || "01:00",
-                type: defaultVideoType ? [defaultVideoType] : ['STD'],
+                type: story.types && story.types.length > 0 ? story.types : (defaultVideoType ? [defaultVideoType] : ['STD']),
                 content: story.content,
                 storyId: story.id,
-                storyStatus: 'Not Ready',
+                storyStatus: 'Ready for Air',
+                authorId: story.authorId
             };
 
             const updatedItems = [...(rundownData.items || []), newRundownItem];
