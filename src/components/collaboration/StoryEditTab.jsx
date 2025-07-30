@@ -1,4 +1,4 @@
-// src/components/collaboration/StoryEditTab.jsx (Updated with original logic restored)
+// src/components/collaboration/StoryEditTab.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
@@ -9,7 +9,6 @@ import UserPresenceIndicator from './UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import VideoPlayer from '../common/VideoPlayer'; // Import the new component
 
 const StoryEditTab = ({ itemId }) => {
     const { currentUser, db } = useAuth();
@@ -28,8 +27,7 @@ const StoryEditTab = ({ itemId }) => {
     const takenOverBy = isTakenOverByOther ? editingUser.userName : null;
 
     const [formData, setFormData] = useState({
-        title: '', content: '', duration: '01:00', type: ['STD'], authorId: currentUser.uid,
-        proxyPath: null, videoStatus: null // Add video fields to state
+        title: '', content: '', duration: '01:00', type: ['STD'], authorId: currentUser.uid
     });
     const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -50,9 +48,7 @@ const StoryEditTab = ({ itemId }) => {
                     content: data.content || '',
                     duration: data.duration || '01:00',
                     type: Array.isArray(data.tags) ? data.tags : [data.tags || 'STD'],
-                    authorId: data.authorId || currentUser.uid,
-                    proxyPath: data.proxyPath || null,
-                    videoStatus: data.videoStatus || null,
+                    authorId: data.authorId || currentUser.uid
                 });
             }
         } catch (error) {
@@ -63,18 +59,16 @@ const StoryEditTab = ({ itemId }) => {
     useEffect(() => {
         if (isOwner && tab?.storyData?.storyId) {
             fetchFreshStory();
-        } else if (tab?.storyData) {
+        } else {
             setFormData({
-                title: tab.storyData.title || '',
-                content: tab.storyData.content || '',
-                duration: tab.storyData.duration || '01:00',
-                type: Array.isArray(tab.storyData.type) ? tab.storyData.type : [tab.storyData.type || 'STD'],
-                authorId: tab.storyData.authorId || currentUser.uid,
-                proxyPath: tab.storyData.proxyPath || null,
-                videoStatus: tab.storyData.videoStatus || null,
+                title: tab?.storyData?.title || '',
+                content: tab?.storyData?.content || '',
+                duration: tab?.storyData?.duration || '01:00',
+                type: Array.isArray(tab?.storyData?.type) ? tab.storyData.type : [tab?.storyData?.type || 'STD'],
+                authorId: tab?.storyData?.authorId || currentUser.uid
             });
         }
-    }, [tab?.storyData, isOwner, fetchFreshStory, currentUser.uid]);
+    }, [tab?.storyData, isOwner, fetchFreshStory]);
 
     const showNotification = (message, type = 'info') => {
         setNotification({ message, type });
@@ -249,104 +243,87 @@ const StoryEditTab = ({ itemId }) => {
                 </div>
             </div>
 
-            <div className="flex gap-6">
-                {/* Main Editor Column */}
-                <div className={`flex-1 bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6 ${!isOwner ? 'opacity-75' : ''}`}>
-                    <div className="space-y-6">
-                        <InputField
-                            label="Title"
-                            value={formData.title}
-                            onChange={(e) => handleFormChange('title', e.target.value)}
-                            disabled={!isOwner}
-                        />
+            <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6 ${!isOwner ? 'opacity-75' : ''}`}>
+                <div className="space-y-6">
+                    <InputField
+                        label="Title"
+                        value={formData.title}
+                        onChange={(e) => handleFormChange('title', e.target.value)}
+                        disabled={!isOwner}
+                    />
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <InputField
-                                label="Duration"
-                                value={formData.duration}
-                                onChange={(e) => handleFormChange('duration', e.target.value)}
-                                placeholder="MM:SS"
-                                disabled={useCalculatedDuration || !isOwner}
-                            />
-                            <div className="flex flex-col justify-end">
-                                <label className="flex items-center space-x-2 text-sm">
+                    <div className="grid grid-cols-2 gap-4">
+                        <InputField
+                            label="Duration"
+                            value={formData.duration}
+                            onChange={(e) => handleFormChange('duration', e.target.value)}
+                            placeholder="MM:SS"
+                            disabled={useCalculatedDuration || !isOwner}
+                        />
+                        <div className="flex flex-col justify-end">
+                            <label className="flex items-center space-x-2 text-sm">
+                                <input
+                                    type="checkbox"
+                                    checked={useCalculatedDuration}
+                                    onChange={(e) => setUseCalculatedDuration(e.target.checked)}
+                                    disabled={!isOwner}
+                                    className="rounded"
+                                />
+                                <span>Auto-calculate from text</span>
+                            </label>
+                            {wordCount > 0 && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {wordCount} words • Est. {calculatedDuration} reading time
+                                </p>
+                            )}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Item Type(s)</label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
+                                <label
+                                    key={abbr}
+                                    className={`flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 ${!isOwner ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                >
                                     <input
                                         type="checkbox"
-                                        checked={useCalculatedDuration}
-                                        onChange={(e) => setUseCalculatedDuration(e.target.checked)}
+                                        checked={Array.isArray(formData.type) && formData.type.includes(abbr)}
+                                        onChange={() => handleTypeChange(abbr)}
                                         disabled={!isOwner}
-                                        className="rounded"
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                     />
-                                    <span>Auto-calculate from text</span>
+                                    <span className="text-sm font-medium">{abbr}</span>
                                 </label>
-                                {wordCount > 0 && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        {wordCount} words â€¢ Est. {calculatedDuration} reading time
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Item Type(s)</label>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
-                                    <label
-                                        key={abbr}
-                                        className={`flex items-center space-x-2 p-2 rounded-md border border-gray-300 dark:border-gray-600 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 ${!isOwner ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={Array.isArray(formData.type) && formData.type.includes(abbr)}
-                                            onChange={() => handleTypeChange(abbr)}
-                                            disabled={!isOwner}
-                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                        />
-                                        <span className="text-sm font-medium">{abbr}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
-                            <textarea
-                                value={formData.content}
-                                onChange={(e) => handleFormChange('content', e.target.value)}
-                                disabled={!isOwner}
-                                placeholder="Enter story content..."
-                                rows={12}
-                                className="w-full form-input min-h-[300px]"
-                            />
-                        </div>
-
-                        {isOwner && !tab?.isBeingTakenOver && (
-                            <div className="flex items-center justify-between pt-4 border-t">
-                                <div className="text-xs text-gray-500">
-                                    Auto-save every 5 seconds
-                                </div>
-                                <div className="flex gap-3">
-                                    <button onClick={handleSaveAndClose} disabled={isSaving} className="btn-primary" type="button">
-                                        <CustomIcon name="save" size={40} /> <span>{isSaving ? 'Saving & Closing...' : 'Save & Close'}</span>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-                
-                {/* Video Player Column */}
-                <div className="w-1/3">
-                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4 sticky top-20">
-                        <h3 className="text-lg font-semibold mb-4">Video Preview</h3>
-                        <div className="aspect-video">
-                           <VideoPlayer src={formData.proxyPath} status={formData.videoStatus} />
-                        </div>
-                        <div className="text-xs text-gray-500 mt-2">
-                            <p><strong>Status:</strong> {formData.videoStatus || 'Not Attached'}</p>
-                            <p className="truncate"><strong>Proxy:</strong> {formData.proxyPath || 'N/A'}</p>
+                            ))}
                         </div>
                     </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
+                        <textarea
+                            value={formData.content}
+                            onChange={(e) => handleFormChange('content', e.target.value)}
+                            disabled={!isOwner}
+                            placeholder="Enter story content..."
+                            rows={12}
+                            className="w-full form-input min-h-[300px]"
+                        />
+                    </div>
+
+                    {isOwner && !tab?.isBeingTakenOver && (
+                        <div className="flex items-center justify-between pt-4 border-t">
+                            <div className="text-xs text-gray-500">
+                                Auto-save every 5 seconds
+                            </div>
+                            <div className="flex gap-3">
+                                <button onClick={handleSaveAndClose} disabled={isSaving} className="btn-primary" type="button">
+                                    <CustomIcon name="save" size={40} /> <span>{isSaving ? 'Saving & Closing...' : 'Save & Close'}</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
