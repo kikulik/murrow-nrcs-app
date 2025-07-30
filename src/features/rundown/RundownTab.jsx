@@ -171,6 +171,32 @@ const RundownTab = ({ liveMode }) => {
         }
     };
 
+    const handleGoLive = async () => {
+        if (!currentRundown || currentRundown.archived || !currentRundown.items?.length) {
+            alert('Cannot go live: No valid rundown selected or rundown is empty');
+            return;
+        }
+
+        if (!userPermissions.canGoLive) {
+            alert('You do not have permission to go live');
+            return;
+        }
+
+        const confirmGoLive = window.confirm(
+            `Go live with "${currentRundown.name}"?\n\nThis will:\n• Set this rundown as active in CasparCG\n• Lock the rundown from editing\n• Start live mode\n\nContinue?`
+        );
+
+        if (confirmGoLive) {
+            try {
+                await liveMode.handleGoLive();
+                console.log('Successfully went live with rundown:', currentRundown.name);
+            } catch (error) {
+                console.error('Error going live:', error);
+                alert('Failed to go live. Please check your connection to CasparCG and try again.');
+            }
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center flex-wrap gap-4">
@@ -249,9 +275,10 @@ const RundownTab = ({ liveMode }) => {
                         <span className="font-bold">{formatDuration(totalDuration)}</span>
                     </div>
                     <button
-                        onClick={liveMode.handleGoLive}
-                        disabled={!currentRundown || currentRundown.archived || !currentRundown.items?.length}
+                        onClick={handleGoLive}
+                        disabled={!currentRundown || currentRundown.archived || !currentRundown.items?.length || !userPermissions.canGoLive}
                         className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium text-sm rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-red-500 disabled:hover:to-red-600"
+                        title={!userPermissions.canGoLive ? 'You do not have permission to go live' : 'Go live with this rundown'}
                     >
                         <CustomIcon name="golive" size={40} />
                         <span>Go Live</span>
@@ -274,6 +301,12 @@ const RundownTab = ({ liveMode }) => {
                             <div className="flex items-center gap-2">
                                 <span>Air Time: {getAirTime(currentRundown.airDate)}</span>
                             </div>
+                            {liveMode.isLive && liveMode.liveRundownId === currentRundown.id && (
+                                <div className="flex items-center gap-2 px-3 py-1 bg-red-100 dark:bg-red-900/20 rounded-full">
+                                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                                    <span className="text-red-600 dark:text-red-400 font-medium">LIVE</span>
+                                </div>
+                            )}
                         </div>
                         <div className="flex items-center gap-2">
                             {selectedItems.length > 0 && (
