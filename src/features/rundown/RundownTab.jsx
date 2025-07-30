@@ -7,7 +7,7 @@ import { getUserPermissions } from '../../lib/permissions';
 import { calculateTotalDuration, formatDuration } from '../../utils/helpers';
 import RundownList from './components/RundownList';
 import PrintDropdown from './components/PrintDropdown';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 
 const RundownTab = ({ liveMode }) => {
     const { currentUser, db } = useAuth();
@@ -197,6 +197,25 @@ const RundownTab = ({ liveMode }) => {
         }
     };
 
+    const handleSendToStudio = async () => {
+        if (!currentRundown) {
+            alert("Please select a rundown to send to the studio.");
+            return;
+        }
+
+        const confirmSend = window.confirm(`This will load "${currentRundown.name}" into the playout server, making it ready for air. Are you sure?`);
+        if (!confirmSend) return;
+
+        try {
+            const settingsRef = doc(db, "settings", "active");
+            await setDoc(settingsRef, { activeRundownId: currentRundown.id }, { merge: true });
+            alert(`"${currentRundown.name}" has been sent to the studio and is now the active rundown for playout.`);
+        } catch (error) {
+            console.error("Failed to send rundown to studio:", error);
+            alert("Error: Could not send rundown to studio.");
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center flex-wrap gap-4">
@@ -274,6 +293,15 @@ const RundownTab = ({ liveMode }) => {
                         <CustomIcon name="time" size={40} />
                         <span className="font-bold">{formatDuration(totalDuration)}</span>
                     </div>
+                    <button
+                        onClick={handleSendToStudio}
+                        disabled={!currentRundown || isRundownLocked}
+                        className="btn-secondary text-sm"
+                        title="Send this rundown to the playout server"
+                    >
+                        <CustomIcon name="send" size={40} />
+                        <span>Send to Studio</span>
+                    </button>
                     <button
                         onClick={handleGoLive}
                         disabled={!currentRundown || currentRundown.archived || !currentRundown.items?.length || !userPermissions.canGoLive}
