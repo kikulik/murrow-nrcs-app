@@ -21,7 +21,10 @@ const QuickEditModal = () => {
         content: '',
         duration: '01:00',
         type: ['STD'],
-        authorId: ''
+        authorId: '',
+        videoStatus: null,
+        highResPath: null,
+        proxyPath: null
     });
     const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -35,7 +38,10 @@ const QuickEditModal = () => {
                 content: item.content || '',
                 duration: item.duration || '01:00',
                 type: Array.isArray(item.type) ? item.type : [item.type || 'STD'],
-                authorId: item.authorId || currentUser.uid
+                authorId: item.authorId || currentUser.uid,
+                videoStatus: item.videoStatus || null,
+                highResPath: item.highResPath || null,
+                proxyPath: item.proxyPath || null
             });
         }
     }, [item, currentUser.uid]);
@@ -66,7 +72,6 @@ const QuickEditModal = () => {
 
         setSaving(true);
         try {
-            // FIX: Update both the rundown item and the story document
             const rundownUpdatePromise = safeUpdateRundown(appState.activeRundownId, (rundownData) => ({
                 ...rundownData,
                 items: rundownData.items.map(rundownItem =>
@@ -78,6 +83,7 @@ const QuickEditModal = () => {
                             duration: formData.duration,
                             type: formData.type,
                             authorId: formData.authorId,
+                            highResPath: formData.highResPath,
                         }
                         : rundownItem
                 )
@@ -114,6 +120,8 @@ const QuickEditModal = () => {
     if (!item) {
         return null;
     }
+
+    const isVideoType = formData.type.some(type => ['PKG', 'VO', 'SOT', 'VID'].includes(type));
 
     return (
         <ModalBase onCancel={handleCancel} title="Quick Edit" maxWidth="max-w-2xl">
@@ -178,6 +186,24 @@ const QuickEditModal = () => {
                         ))}
                     </div>
                 </div>
+
+                {isVideoType && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                        <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2 flex items-center gap-2">
+                            <CustomIcon name="stories" size={20} />
+                            Video Information
+                        </h4>
+                        <div className="space-y-2 text-sm">
+                            <p><strong>Status:</strong> {formData.videoStatus || 'No Status'}</p>
+                            {formData.highResPath && (
+                                <p className="break-all"><strong>Video Path:</strong> {formData.highResPath}</p>
+                            )}
+                            {formData.proxyPath && (
+                                <p className="break-all"><strong>Proxy Path:</strong> {formData.proxyPath}</p>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
