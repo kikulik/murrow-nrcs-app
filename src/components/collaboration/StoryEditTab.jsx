@@ -1,4 +1,4 @@
-// src/components/collaboration/StoryEditTab.jsx (Remove Premature Clear)
+// src/components/collaboration/StoryEditTab.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import CustomIcon from '../ui/CustomIcon';
 import { useAuth } from '../../context/AuthContext';
@@ -9,7 +9,7 @@ import UserPresenceIndicator from './UserPresenceIndicator';
 import { RUNDOWN_ITEM_TYPES } from '../../lib/constants';
 import { calculateReadingTime, getWordCount } from '../../utils/textDurationCalculator';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import VideoPlayer from '../common/VideoPlayer'; // ADDED: Import VideoPlayer
+import VideoPlayer from '../common/VideoPlayer';
 
 const StoryEditTab = ({ itemId }) => {
     const { currentUser, db } = useAuth();
@@ -27,10 +27,9 @@ const StoryEditTab = ({ itemId }) => {
     const isTakenOverByOther = !isOwner && editingUser && editingUser.userId !== currentUser.uid;
     const takenOverBy = isTakenOverByOther ? editingUser.userName : null;
 
-    // ADDED: video fields to initial state
     const [formData, setFormData] = useState({
         title: '', content: '', duration: '01:00', type: ['STD'], authorId: currentUser.uid,
-        proxyPath: null, videoStatus: null
+        proxyPath: null, videoStatus: null, highResPath: null
     });
     const [useCalculatedDuration, setUseCalculatedDuration] = useState(true);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -46,7 +45,6 @@ const StoryEditTab = ({ itemId }) => {
             const snap = await getDoc(storyRef);
             if (snap.exists()) {
                 const data = snap.data();
-                // ADDED: video fields to setFormData
                 setFormData({
                     title: data.title || '',
                     content: data.content || '',
@@ -55,6 +53,7 @@ const StoryEditTab = ({ itemId }) => {
                     authorId: data.authorId || currentUser.uid,
                     proxyPath: data.proxyPath || null,
                     videoStatus: data.videoStatus || null,
+                    highResPath: data.highResPath || null,
                 });
             }
         } catch (error) {
@@ -66,7 +65,6 @@ const StoryEditTab = ({ itemId }) => {
         if (isOwner && tab?.storyData?.storyId) {
             fetchFreshStory();
         } else if (tab?.storyData) {
-            // ADDED: video fields to setFormData
             setFormData({
                 title: tab.storyData.title || '',
                 content: tab.storyData.content || '',
@@ -75,6 +73,7 @@ const StoryEditTab = ({ itemId }) => {
                 authorId: tab.storyData.authorId || currentUser.uid,
                 proxyPath: tab.storyData.proxyPath || null,
                 videoStatus: tab.storyData.videoStatus || null,
+                highResPath: tab.storyData.highResPath || null,
             });
         }
     }, [tab?.storyData, isOwner, fetchFreshStory, currentUser.uid]);
@@ -252,9 +251,7 @@ const StoryEditTab = ({ itemId }) => {
                 </div>
             </div>
 
-            {/* MODIFIED: Wrapped the editor and video player in a flex container */}
             <div className="flex gap-6">
-                {/* Main Editor Column (your original code) */}
                 <div className={`flex-1 bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6 ${!isOwner ? 'opacity-75' : ''}`}>
                     <div className="space-y-6">
                         <InputField
@@ -285,7 +282,7 @@ const StoryEditTab = ({ itemId }) => {
                                 </label>
                                 {wordCount > 0 && (
                                     <p className="text-xs text-gray-500 mt-1">
-                                        {wordCount} words â€¢ Est. {calculatedDuration} reading time
+                                        {wordCount} words • Est. {calculatedDuration} reading time
                                     </p>
                                 )}
                             </div>
@@ -339,7 +336,6 @@ const StoryEditTab = ({ itemId }) => {
                     </div>
                 </div>
 
-                {/* ADDED: Video Player Column */}
                 <div className="w-1/3">
                      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4 sticky top-20">
                         <h3 className="text-lg font-semibold mb-4">Video Preview</h3>
@@ -349,6 +345,9 @@ const StoryEditTab = ({ itemId }) => {
                         <div className="text-xs text-gray-500 mt-2">
                             <p><strong>Status:</strong> {formData.videoStatus || 'Not Attached'}</p>
                             <p className="truncate"><strong>Proxy:</strong> {formData.proxyPath || 'N/A'}</p>
+                            {formData.highResPath && (
+                                <p className="truncate"><strong>High-res:</strong> {formData.highResPath}</p>
+                            )}
                         </div>
                     </div>
                 </div>
