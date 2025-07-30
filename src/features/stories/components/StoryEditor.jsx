@@ -6,7 +6,7 @@ import { useAppContext } from '../../../context/AppContext';
 import ModalBase from '../../../components/common/ModalBase';
 import InputField from '../../../components/ui/InputField';
 import SelectField from '../../../components/ui/SelectField';
-import { RUNDOWN_ITEM_TYPES, VIDEO_ITEM_TYPES } from '../../../lib/constants';
+import { RUNDOWN_ITEM_TYPES } from '../../../lib/constants';
 import { generateMediaId } from '../../../media/MediaManager';
 import { calculateReadingTime, getWordCount } from '../../../utils/textDurationCalculator';
 import {
@@ -127,6 +127,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
         e.preventDefault();
         try {
             const { collection, addDoc, doc, updateDoc } = await import("firebase/firestore");
+            
             const storyToSave = {
                 ...formData,
                 tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
@@ -137,14 +138,19 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                 types: selectedTypes
             };
 
-            const isVideoStory = selectedTypes.some(type => VIDEO_ITEM_TYPES.includes(type));
-            if (isVideoStory) {
-                const videoType = selectedTypes.find(type => VIDEO_ITEM_TYPES.includes(type)) || 'PKG';
-                storyToSave.mediaId = story?.mediaId || generateMediaId(videoType);
-                storyToSave.hasVideo = story?.hasVideo || false;
-                storyToSave.videoUrl = story?.videoUrl || null;
-                storyToSave.videoStatus = story?.videoStatus || 'No Media';
+            // Generate video ID for all stories (not just video types)
+            if (!story?.mediaId) {
+                const primaryType = selectedTypes[0] || 'STD';
+                storyToSave.mediaId = generateMediaId(primaryType);
+            } else {
+                storyToSave.mediaId = story.mediaId;
             }
+
+            // Set default video properties
+            storyToSave.hasVideo = story?.hasVideo || false;
+            storyToSave.videoUrl = story?.videoUrl || null;
+            storyToSave.videoStatus = story?.videoStatus || 'No Media';
+            storyToSave.proxyPath = story?.proxyPath || null;
 
             if (story?.id) {
                 await updateDoc(doc(db, "stories", story.id), storyToSave);
