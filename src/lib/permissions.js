@@ -10,7 +10,8 @@ export const PERMISSIONS = {
         canEditAnyStory: true,
         canDeleteStories: true,
         canTakeOverStories: true,
-        canCreateRundowns: true
+        canCreateRundowns: true,
+        canGoLive: true
     },
     Producer: {
         canManageUsers: false,
@@ -23,7 +24,8 @@ export const PERMISSIONS = {
         canEditAnyStory: true,
         canDeleteStories: false,
         canTakeOverStories: true,
-        canCreateRundowns: true
+        canCreateRundowns: true,
+        canGoLive: true
     },
     Editor: {
         canManageUsers: false,
@@ -36,7 +38,8 @@ export const PERMISSIONS = {
         canEditAnyStory: true,
         canDeleteStories: false,
         canTakeOverStories: false,
-        canCreateRundowns: false
+        canCreateRundowns: false,
+        canGoLive: false
     },
     Journalist: {
         canManageUsers: false,
@@ -49,7 +52,8 @@ export const PERMISSIONS = {
         canEditAnyStory: true,
         canDeleteStories: false,
         canTakeOverStories: false,
-        canCreateRundowns: false
+        canCreateRundowns: false,
+        canGoLive: false
     },
     Presenter: {
         canManageUsers: false,
@@ -62,7 +66,8 @@ export const PERMISSIONS = {
         canEditAnyStory: true,
         canDeleteStories: false,
         canTakeOverStories: false,
-        canCreateRundowns: false
+        canCreateRundowns: false,
+        canGoLive: true
     },
 };
 
