@@ -114,6 +114,10 @@ const StoriesTab = () => {
         openStoryEditor(story);
     };
 
+    const handleSendToRundown = (story) => {
+        setSendToRundownModalStory(story);
+    };
+
     const toggleFolder = (folderPath) => {
         setExpandedFolders(prev => {
             const newSet = new Set(prev);
@@ -295,7 +299,7 @@ const StoriesTab = () => {
                                         <StoryCard
                                             key={story.id}
                                             story={story}
-                                            onSendToRundown={setSendToRundownModalStory}
+                                            onSendToRundown={handleSendToRundown}
                                             onDelete={handleDeleteStory}
                                             onEdit={handleEditStory}
                                             userPermissions={userPermissions}
@@ -321,7 +325,7 @@ const StoriesTab = () => {
                                         <StoryCard
                                             key={story.id}
                                             story={story}
-                                            onSendToRundown={setSendToRundownModalStory}
+                                            onSendToRundown={handleSendToRundown}
                                             onDelete={handleDeleteStory}
                                             onEdit={handleEditStory}
                                             userPermissions={userPermissions}
