@@ -7,20 +7,29 @@ import { getUserPermissions } from '../../lib/permissions';
 import { calculateTotalDuration, formatDuration } from '../../utils/helpers';
 import RundownList from './components/RundownList';
 import PrintDropdown from './components/PrintDropdown';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
 
 const RundownTab = ({ liveMode }) => {
     const { currentUser, db } = useAuth();
     const { appState, setAppState } = useAppContext();
     const [selectedItems, setSelectedItems] = useState([]);
     const [copiedItems, setCopiedItems] = useState([]);
+    const [studioQueue, setStudioQueue] = useState(null);
+    const [showStudioModal, setShowStudioModal] = useState(false);
+    const [studioModalType, setStudioModalType] = useState(''); // 'busy' or 'confirm'
 
     const userPermissions = getUserPermissions(currentUser.role);
+    const canGoLive = userPermissions.canGoLive;
+    const canManageStudio = userPermissions.canCreateRundowns || userPermissions.canManageUsers;
 
     const currentRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
     const totalDuration = calculateTotalDuration(currentRundown?.items || []);
     const availableRundowns = appState.rundowns.filter(r => appState.showArchived || !r.archived);
     const isRundownLocked = liveMode.isLive && liveMode.liveRundownId === appState.activeRundownId;
+
+    useEffect(() => {
+        checkStudioQueue();
+    }, [db]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -38,6 +47,25 @@ const RundownTab = ({ liveMode }) => {
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [selectedItems, copiedItems, currentRundown]);
+
+    const checkStudioQueue = async () => {
+        if (!db) return;
+        try {
+            const studioRef = doc(db, "settings", "studio");
+            const studioDoc = await getDoc(studioRef);
+            if (studioDoc.exists()) {
+                const data = studioDoc.data();
+                setStudioQueue(data.queuedRundownId ? {
+                    rundownId: data.queuedRundownId,
+                    rundownName: data.rundownName,
+                    queuedBy: data.queuedBy,
+                    queuedAt: data.queuedAt
+                } : null);
+            }
+        } catch (error) {
+            console.error("Error checking studio queue:", error);
+        }
+    };
 
     const formatAirDate = (airDate) => {
         if (!airDate) return 'No air date set';
@@ -171,48 +199,94 @@ const RundownTab = ({ liveMode }) => {
         }
     };
 
-    const handleGoLive = async () => {
-        if (!currentRundown || currentRundown.archived || !currentRundown.items?.length) {
-            alert('Cannot go live: No valid rundown selected or rundown is empty');
+    const handleSendToStudio = async () => {
+        if (!currentRundown || !canManageStudio) {
+            alert("You don't have permission to send rundowns to studio.");
             return;
         }
 
-        if (!userPermissions.canGoLive) {
-            alert('You do not have permission to go live');
+        if (studioQueue) {
+            setStudioModalType('busy');
+            setShowStudioModal(true);
+            return;
+        }
+
+        setStudioModalType('confirm');
+        setShowStudioModal(true);
+    };
+
+    const confirmSendToStudio = async () => {
+        if (!currentRundown || !db) return;
+
+        try {
+            const studioRef = doc(db, "settings", "studio");
+            await setDoc(studioRef, {
+                queuedRundownId: currentRundown.id,
+                rundownName: currentRundown.name,
+                queuedBy: currentUser.name,
+                queuedAt: new Date().toISOString(),
+                isLive: false
+            }, { merge: true });
+
+            await checkStudioQueue();
+            setShowStudioModal(false);
+            alert(`"${currentRundown.name}" has been queued for studio playout.`);
+        } catch (error) {
+            console.error("Failed to send rundown to studio:", error);
+            alert("Error: Could not send rundown to studio.");
+        }
+    };
+
+    const handleRemoveFromStudio = async () => {
+        if (!canManageStudio || !studioQueue) return;
+
+        const confirmRemove = window.confirm(`Remove "${studioQueue.rundownName}" from studio queue?`);
+        if (!confirmRemove) return;
+
+        try {
+            const studioRef = doc(db, "settings", "studio");
+            await setDoc(studioRef, {
+                queuedRundownId: null,
+                rundownName: null,
+                queuedBy: null,
+                queuedAt: null,
+                isLive: false
+            });
+
+            setStudioQueue(null);
+            alert("Rundown removed from studio queue.");
+        } catch (error) {
+            console.error("Failed to remove rundown from studio:", error);
+            alert("Error: Could not remove rundown from studio.");
+        }
+    };
+
+    const handleGoLive = async () => {
+        if (!studioQueue || !canGoLive) {
+            alert('No rundown queued for studio or insufficient permissions');
+            return;
+        }
+
+        if (studioQueue.rundownId !== currentRundown?.id) {
+            alert('You can only go live with the queued rundown');
             return;
         }
 
         const confirmGoLive = window.confirm(
-            `Go live with "${currentRundown.name}"?\n\nThis will:\n• Set this rundown as active in CasparCG\n• Lock the rundown from editing\n• Start live mode\n\nContinue?`
+            `Go live with "${studioQueue.rundownName}"?\n\nThis will start live playout mode.`
         );
 
         if (confirmGoLive) {
             try {
+                const studioRef = doc(db, "settings", "studio");
+                await updateDoc(studioRef, { isLive: true });
+                
                 await liveMode.handleGoLive();
-                console.log('Successfully went live with rundown:', currentRundown.name);
+                console.log('Successfully went live with rundown:', studioQueue.rundownName);
             } catch (error) {
                 console.error('Error going live:', error);
-                alert('Failed to go live. Please check your connection to CasparCG and try again.');
+                alert('Failed to go live. Please try again.');
             }
-        }
-    };
-
-    const handleSendToStudio = async () => {
-        if (!currentRundown) {
-            alert("Please select a rundown to send to the studio.");
-            return;
-        }
-
-        const confirmSend = window.confirm(`This will load "${currentRundown.name}" into the playout server, making it ready for air. Are you sure?`);
-        if (!confirmSend) return;
-
-        try {
-            const settingsRef = doc(db, "settings", "active");
-            await setDoc(settingsRef, { activeRundownId: currentRundown.id }, { merge: true });
-            alert(`"${currentRundown.name}" has been sent to the studio and is now the active rundown for playout.`);
-        } catch (error) {
-            console.error("Failed to send rundown to studio:", error);
-            alert("Error: Could not send rundown to studio.");
         }
     };
 
@@ -226,8 +300,9 @@ const RundownTab = ({ liveMode }) => {
                             value={appState.activeRundownId || ''}
                             onChange={handleRundownChange}
                             disabled={isRundownLocked}
-                            className={`bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
-                                }`}
+                            className={`bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm ${
+                                isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
                         >
                             <option value="">-- Select Rundown --</option>
                             {availableRundowns.map(r => (
@@ -241,8 +316,9 @@ const RundownTab = ({ liveMode }) => {
                             <button
                                 onClick={handleArchiveRundown}
                                 disabled={isRundownLocked}
-                                className={`p-2 text-gray-500 hover:text-orange-600 rounded ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
+                                className={`p-2 text-gray-500 hover:text-orange-600 rounded ${
+                                    isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
                                 title="Archive Rundown"
                             >
                                 <CustomIcon name="time" size={40} />
@@ -253,8 +329,9 @@ const RundownTab = ({ liveMode }) => {
                             <button
                                 onClick={handleDeleteRundown}
                                 disabled={isRundownLocked}
-                                className={`p-2 text-gray-500 hover:text-red-600 rounded ${isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
+                                className={`p-2 text-gray-500 hover:text-red-600 rounded ${
+                                    isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
                                 title="Delete Rundown"
                             >
                                 <CustomIcon name="delete" size={40} />
@@ -265,8 +342,9 @@ const RundownTab = ({ liveMode }) => {
                     <button
                         onClick={openNewRundown}
                         disabled={isRundownLocked || !userPermissions.canCreateRundowns}
-                        className={`btn-secondary text-sm ${(isRundownLocked || !userPermissions.canCreateRundowns) ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
+                        className={`btn-secondary text-sm ${
+                            (isRundownLocked || !userPermissions.canCreateRundowns) ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
                     >
                         <CustomIcon name="add story" size={40} />
                         <span>New</span>
@@ -293,26 +371,68 @@ const RundownTab = ({ liveMode }) => {
                         <CustomIcon name="time" size={40} />
                         <span className="font-bold">{formatDuration(totalDuration)}</span>
                     </div>
+                    
+                    {studioQueue && canManageStudio && (
+                        <button
+                            onClick={handleRemoveFromStudio}
+                            className="btn-secondary text-sm bg-orange-600 text-white hover:bg-orange-700"
+                            title="Remove from studio queue"
+                        >
+                            <CustomIcon name="cancel" size={40} />
+                            <span>Remove from Studio</span>
+                        </button>
+                    )}
+
                     <button
                         onClick={handleSendToStudio}
-                        disabled={!currentRundown || isRundownLocked}
-                        className="btn-secondary text-sm"
-                        title="Send this rundown to the playout server"
+                        disabled={!currentRundown || isRundownLocked || !canManageStudio}
+                        className={`btn-secondary text-sm ${
+                            (!currentRundown || isRundownLocked || !canManageStudio) ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                        title="Send this rundown to the studio queue"
                     >
                         <CustomIcon name="send" size={40} />
                         <span>Send to Studio</span>
                     </button>
-                    <button
-                        onClick={handleGoLive}
-                        disabled={!currentRundown || currentRundown.archived || !currentRundown.items?.length || !userPermissions.canGoLive}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium text-sm rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-red-500 disabled:hover:to-red-600"
-                        title={!userPermissions.canGoLive ? 'You do not have permission to go live' : 'Go live with this rundown'}
-                    >
-                        <CustomIcon name="golive" size={40} />
-                        <span>Go Live</span>
-                    </button>
+
+                    {studioQueue && studioQueue.rundownId === currentRundown?.id && canGoLive && (
+                        <button
+                            onClick={handleGoLive}
+                            disabled={liveMode.isLive}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium text-sm rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Go live with queued rundown"
+                        >
+                            <CustomIcon name="golive" size={40} />
+                            <span>Go Live</span>
+                        </button>
+                    )}
                 </div>
             </div>
+
+            {studioQueue && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <CustomIcon name="golive" size={32} className="text-blue-600" />
+                            <div>
+                                <p className="font-medium text-blue-800 dark:text-blue-200">
+                                    Studio Queue: {studioQueue.rundownName}
+                                </p>
+                                <p className="text-sm text-blue-600 dark:text-blue-400">
+                                    Queued by {studioQueue.queuedBy} at {new Date(studioQueue.queuedAt).toLocaleString()}
+                                </p>
+                            </div>
+                        </div>
+                        {studioQueue.rundownId === currentRundown?.id && (
+                            <div className="px-3 py-1 bg-green-100 dark:bg-green-900/20 rounded-full">
+                                <span className="text-sm font-medium text-green-800 dark:text-green-200">
+                                    Ready for Live
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {currentRundown && (
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4">
@@ -363,8 +483,9 @@ const RundownTab = ({ liveMode }) => {
                             <button
                                 onClick={openAddStoryModal}
                                 disabled={isRundownLocked || currentRundown.archived || !userPermissions.canCreateRundownItems}
-                                className={`btn-primary flex items-center ${(isRundownLocked || currentRundown.archived || !userPermissions.canCreateRundownItems) ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
+                                className={`btn-primary flex items-center ${
+                                    (isRundownLocked || currentRundown.archived || !userPermissions.canCreateRundownItems) ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
                             >
                                 <CustomIcon name="add story" size={40} className="mr-2" />
                                 <span>Add Story</span>
@@ -389,6 +510,59 @@ const RundownTab = ({ liveMode }) => {
                         'Select a rundown to view items, or create a new one.' :
                         'This rundown is archived. Restore it to make changes.'
                     }
+                </div>
+            )}
+
+            {showStudioModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+                        {studioModalType === 'busy' ? (
+                            <>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <CustomIcon name="notification" size={32} className="text-orange-600" />
+                                    <h3 className="text-lg font-semibold">Studio Queue Busy</h3>
+                                </div>
+                                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                                    Studio queue is currently occupied by: <strong>{studioQueue?.rundownName}</strong>
+                                </p>
+                                <p className="text-sm text-gray-500 mb-6">
+                                    Please remove the current rundown from studio before queuing a new one.
+                                </p>
+                                <div className="flex justify-end">
+                                    <button
+                                        onClick={() => setShowStudioModal(false)}
+                                        className="btn-primary"
+                                    >
+                                        OK
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <CustomIcon name="send" size={32} className="text-blue-600" />
+                                    <h3 className="text-lg font-semibold">Send to Studio</h3>
+                                </div>
+                                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                                    Queue "<strong>{currentRundown?.name}</strong>" for studio playout?
+                                </p>
+                                <div className="flex justify-end gap-3">
+                                    <button
+                                        onClick={() => setShowStudioModal(false)}
+                                        className="btn-secondary"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={confirmSendToStudio}
+                                        className="btn-primary"
+                                    >
+                                        Send to Studio
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
