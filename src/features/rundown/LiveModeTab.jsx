@@ -17,12 +17,21 @@ const LiveModeTab = ({ liveMode }) => {
     const [previewItem, setPreviewItem] = useState(null);
     const [casparStatus, setCasparStatus] = useState('Disconnected');
     const [selectedItemId, setSelectedItemId] = useState(null);
-    const [queuedItems, setQueuedItems] = useState(new Map()); // channelId -> item
-    const [playingItems, setPlayingItems] = useState(new Map()); // channelId -> item
-    const [channelAssignments, setChannelAssignments] = useState(new Map()); // itemId -> channelId
+    const [queuedItems, setQueuedItems] = useState(new Map()); // virtualChannelId -> item
+    const [playingItems, setPlayingItems] = useState(new Map()); // virtualChannelId -> item
+    const [channelAssignments, setChannelAssignments] = useState(new Map()); // itemId -> virtualChannelId
     
     const timecodeInterval = useRef(null);
     const itemStartTime = useRef(0);
+
+    // Single Channel Configuration - Use Channel 1 with different layers
+    const CASPAR_CHANNEL = 1; // Always use channel 1
+    const LAYER_MAP = {
+        1: 10,  // "Virtual Channel 1" -> Layer 10
+        2: 11,  // "Virtual Channel 2" -> Layer 11  
+        3: 12,  // "Virtual Channel 3" -> Layer 12
+        4: 13   // "Virtual Channel 4" -> Layer 13
+    };
 
     // Initialize default A-B roll channel assignments
     useEffect(() => {
@@ -90,56 +99,62 @@ const LiveModeTab = ({ liveMode }) => {
             return;
         }
 
-        const channelId = channelAssignments.get(item.id) || 1;
+        const virtualChannelId = channelAssignments.get(item.id) || 1;
+        const actualLayer = LAYER_MAP[virtualChannelId];
         const clipName = item.highResPath.split('\\').pop().replace('.mp4', '');
         
         try {
-            await sendCasparCommand(`LOADBG ${channelId}-10 "${clipName}"`);
-            setQueuedItems(prev => new Map(prev.set(channelId, item)));
-            console.log(`Queued ${item.title} to channel ${channelId}`);
+            // Always use channel 1, but different layers
+            await sendCasparCommand(`LOADBG ${CASPAR_CHANNEL}-${actualLayer} "${clipName}"`);
+            setQueuedItems(prev => new Map(prev.set(virtualChannelId, item)));
+            console.log(`Queued ${item.title} to Channel ${CASPAR_CHANNEL} Layer ${actualLayer} (Virtual Channel ${virtualChannelId})`);
         } catch (error) {
             console.error('Error queuing item:', error);
         }
     };
 
-    const handlePlayItem = async (channelId) => {
-        const queuedItem = queuedItems.get(channelId);
+    const handlePlayItem = async (virtualChannelId) => {
+        const queuedItem = queuedItems.get(virtualChannelId);
         if (!queuedItem) {
-            console.warn('No item queued for channel:', channelId);
+            console.warn('No item queued for virtual channel:', virtualChannelId);
             return;
         }
 
+        const actualLayer = LAYER_MAP[virtualChannelId];
+
         try {
-            await sendCasparCommand(`PLAY ${channelId}-10`);
-            setPlayingItems(prev => new Map(prev.set(channelId, queuedItem)));
+            await sendCasparCommand(`PLAY ${CASPAR_CHANNEL}-${actualLayer}`);
+            setPlayingItems(prev => new Map(prev.set(virtualChannelId, queuedItem)));
             setQueuedItems(prev => {
                 const newQueued = new Map(prev);
-                newQueued.delete(channelId);
+                newQueued.delete(virtualChannelId);
                 return newQueued;
             });
             setIsPlaying(true);
             itemStartTime.current = Date.now();
-            console.log(`Playing ${queuedItem.title} on channel ${channelId}`);
+            console.log(`Playing ${queuedItem.title} on Channel ${CASPAR_CHANNEL} Layer ${actualLayer}`);
         } catch (error) {
             console.error('Error playing item:', error);
         }
     };
 
-    const handlePauseChannel = async (channelId) => {
+    const handlePauseChannel = async (virtualChannelId) => {
+        const actualLayer = LAYER_MAP[virtualChannelId];
         try {
-            await sendCasparCommand(`PAUSE ${channelId}-10`);
+            await sendCasparCommand(`PAUSE ${CASPAR_CHANNEL}-${actualLayer}`);
             setIsPlaying(false);
         } catch (error) {
             console.error('Error pausing channel:', error);
         }
     };
 
-    const handleStopChannel = async (channelId) => {
+    const handleStopChannel = async (virtualChannelId) => {
+        const actualLayer = LAYER_MAP[virtualChannelId];
         try {
-            await sendCasparCommand(`STOP ${channelId}-10`);
+            await sendCasparCommand(`STOP ${CASPAR_CHANNEL}-${actualLayer}`);
             setPlayingItems(prev => {
                 const newPlaying = new Map(prev);
-                newPlaying.delete(channelId);
+                newPlaying.delete(virtualChannelId);
                 return newPlaying;
             });
             setIsPlaying(false);
@@ -160,8 +175,8 @@ const LiveModeTab = ({ liveMode }) => {
         }
     };
 
-    const handleChannelChange = (itemId, newChannelId) => {
-        setChannelAssignments(prev => new Map(prev.set(itemId, newChannelId)));
+    const handleChannelChange = (itemId, newVirtualChannelId) => {
+        setChannelAssignments(prev => new Map(prev.set(itemId, newVirtualChannelId)));
     };
 
     const handlePreview = (item) => {
@@ -203,6 +218,9 @@ const LiveModeTab = ({ liveMode }) => {
                             <div className={`w-3 h-3 rounded-full ${casparStatus === 'Connected' ? 'bg-green-500' : casparStatus === 'Error' ? 'bg-red-500' : 'bg-yellow-500'}`}></div>
                             <span className="text-sm">CasparCG: {casparStatus}</span>
                         </div>
+                        <div className="text-xs text-gray-400">
+                            Single Channel Mode (CH1 - Layers 10-13)
+                        </div>
                     </div>
 
                     <div className="space-y-4">
@@ -229,21 +247,22 @@ const LiveModeTab = ({ liveMode }) => {
                     </div>
                 </div>
 
-                {/* Channel Control Panel */}
+                {/* Virtual Channel Control Panel */}
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
-                    <h3 className="text-lg font-semibold mb-4">Channel Control</h3>
+                    <h3 className="text-lg font-semibold mb-4">Layer Control (Virtual Channels)</h3>
                     
-                    {[1, 2, 3, 4].map(channelId => {
-                        const queuedItem = queuedItems.get(channelId);
-                        const playingItem = playingItems.get(channelId);
+                    {[1, 2, 3, 4].map(virtualChannelId => {
+                        const queuedItem = queuedItems.get(virtualChannelId);
+                        const playingItem = playingItems.get(virtualChannelId);
+                        const actualLayer = LAYER_MAP[virtualChannelId];
                         
                         return (
-                            <div key={channelId} className="mb-4 p-3 border rounded">
+                            <div key={virtualChannelId} className="mb-4 p-3 border rounded">
                                 <div className="flex items-center justify-between mb-2">
-                                    <h4 className="font-medium">Channel {channelId}</h4>
+                                    <h4 className="font-medium">Layer {actualLayer} (Ch{virtualChannelId})</h4>
                                     <div className="flex gap-1">
                                         <button
-                                            onClick={() => handlePlayItem(channelId)}
+                                            onClick={() => handlePlayItem(virtualChannelId)}
                                             disabled={!queuedItem}
                                             className="p-2 btn-secondary disabled:opacity-50"
                                             title="Play"
@@ -251,7 +270,7 @@ const LiveModeTab = ({ liveMode }) => {
                                             <Play size={16} />
                                         </button>
                                         <button
-                                            onClick={() => handlePauseChannel(channelId)}
+                                            onClick={() => handlePauseChannel(virtualChannelId)}
                                             disabled={!playingItem}
                                             className="p-2 btn-secondary disabled:opacity-50"
                                             title="Pause"
@@ -259,7 +278,7 @@ const LiveModeTab = ({ liveMode }) => {
                                             <Pause size={16} />
                                         </button>
                                         <button
-                                            onClick={() => handleStopChannel(channelId)}
+                                            onClick={() => handleStopChannel(virtualChannelId)}
                                             disabled={!playingItem}
                                             className="p-2 btn-secondary disabled:opacity-50"
                                             title="Stop"
@@ -289,6 +308,12 @@ const LiveModeTab = ({ liveMode }) => {
                             </div>
                         );
                     })}
+                    
+                    <div className="text-xs text-gray-500 mt-4 p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                        <strong>Layer Mapping:</strong><br />
+                        Ch1→L10, Ch2→L11, Ch3→L12, Ch4→L13<br />
+                        All on CasparCG Channel 1
+                    </div>
                 </div>
 
                 {/* Selected Item Panel */}
@@ -309,14 +334,16 @@ const LiveModeTab = ({ liveMode }) => {
                             </div>
                             
                             <div>
-                                <label className="block text-sm font-medium mb-1">Assign to Channel:</label>
+                                <label className="block text-sm font-medium mb-1">Assign to Virtual Channel:</label>
                                 <select
                                     value={channelAssignments.get(selectedItem.id) || 1}
                                     onChange={(e) => handleChannelChange(selectedItem.id, parseInt(e.target.value))}
                                     className="w-full p-2 border rounded"
                                 >
                                     {[1, 2, 3, 4].map(ch => (
-                                        <option key={ch} value={ch}>Channel {ch}</option>
+                                        <option key={ch} value={ch}>
+                                            Channel {ch} (Layer {LAYER_MAP[ch]})
+                                        </option>
                                     ))}
                                 </select>
                             </div>
@@ -380,9 +407,10 @@ const LiveModeTab = ({ liveMode }) => {
                 <div className="max-h-96 overflow-y-auto">
                     {activeRundown.items.map((item, index) => {
                         const isSelected = selectedItemId === item.id;
-                        const assignedChannel = channelAssignments.get(item.id) || 1;
-                        const isQueued = queuedItems.has(assignedChannel) && queuedItems.get(assignedChannel).id === item.id;
-                        const isPlaying = playingItems.has(assignedChannel) && playingItems.get(assignedChannel).id === item.id;
+                        const assignedVirtualChannel = channelAssignments.get(item.id) || 1;
+                        const assignedLayer = LAYER_MAP[assignedVirtualChannel];
+                        const isQueued = queuedItems.has(assignedVirtualChannel) && queuedItems.get(assignedVirtualChannel).id === item.id;
+                        const isPlaying = playingItems.has(assignedVirtualChannel) && playingItems.get(assignedVirtualChannel).id === item.id;
                         
                         return (
                             <div
@@ -405,7 +433,7 @@ const LiveModeTab = ({ liveMode }) => {
                                         <div>
                                             <div className="font-medium text-sm">{item.title}</div>
                                             <div className="text-xs text-gray-500">
-                                                Duration: {item.duration} | Channel: {assignedChannel}
+                                                Duration: {item.duration} | Virtual Ch: {assignedVirtualChannel} | Layer: {assignedLayer}
                                             </div>
                                         </div>
                                     </div>
