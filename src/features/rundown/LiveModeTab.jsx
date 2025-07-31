@@ -1,6 +1,6 @@
 // src/features/rundown/LiveModeTab.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, SkipForward, Monitor, Loader, Radio } from 'lucide-react';
+import { Play, Pause, Square, SkipForward, Monitor, Loader, Radio, StopCircle } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { formatDuration } from '../../utils/helpers';
 import { getRundownTypeColor, getStatusColor } from '../../utils/styleHelpers';
@@ -17,28 +17,21 @@ const LiveModeTab = ({ liveMode }) => {
     const [previewItem, setPreviewItem] = useState(null);
     const [casparStatus, setCasparStatus] = useState('Disconnected');
     const [selectedItemId, setSelectedItemId] = useState(null);
-    const [queuedItems, setQueuedItems] = useState(new Map()); // virtualChannelId -> item
-    const [playingItems, setPlayingItems] = useState(new Map()); // virtualChannelId -> item
-    const [channelAssignments, setChannelAssignments] = useState(new Map()); // itemId -> virtualChannelId
+    const [queuedItems, setQueuedItems] = useState(new Map());
+    const [playingItems, setPlayingItems] = useState(new Map());
+    const [channelAssignments, setChannelAssignments] = useState(new Map());
     
     const timecodeInterval = useRef(null);
     const itemStartTime = useRef(0);
 
-    // Single Channel Configuration - Use Channel 1 with different layers
-    const CASPAR_CHANNEL = 1; // Always use channel 1
-    const LAYER_MAP = {
-        1: 10,  // "Virtual Channel 1" -> Layer 10
-        2: 11,  // "Virtual Channel 2" -> Layer 11  
-        3: 12,  // "Virtual Channel 3" -> Layer 12
-        4: 13   // "Virtual Channel 4" -> Layer 13
-    };
+    const CASPAR_CHANNEL = 1;
+    const LAYER_MAP = { 1: 10, 2: 11, 3: 12, 4: 13 };
 
-    // Initialize default A-B roll channel assignments
     useEffect(() => {
         if (activeRundown?.items) {
             const newAssignments = new Map();
             activeRundown.items.forEach((item, index) => {
-                const defaultChannel = (index % 2) + 1; // A-B roll: 1,2,1,2...
+                const defaultChannel = (index % 2) + 1;
                 newAssignments.set(item.id, defaultChannel);
             });
             setChannelAssignments(newAssignments);
@@ -104,7 +97,6 @@ const LiveModeTab = ({ liveMode }) => {
         const clipName = item.highResPath.split('\\').pop().replace('.mp4', '');
         
         try {
-            // Always use channel 1, but different layers
             await sendCasparCommand(`LOADBG ${CASPAR_CHANNEL}-${actualLayer} "${clipName}"`);
             setQueuedItems(prev => new Map(prev.set(virtualChannelId, item)));
             console.log(`Queued ${item.title} to Channel ${CASPAR_CHANNEL} Layer ${actualLayer} (Virtual Channel ${virtualChannelId})`);
@@ -208,203 +200,170 @@ const LiveModeTab = ({ liveMode }) => {
     if (!activeRundown) return null;
 
     return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Status Panel */}
-                <div className="bg-gray-800 text-white rounded-lg shadow-2xl p-6">
-                    <div className="text-center mb-6">
-                        <h2 className="text-2xl font-bold mb-2">LIVE MODE</h2>
-                        <div className="flex items-center justify-center gap-2 mb-4">
-                            <div className={`w-3 h-3 rounded-full ${casparStatus === 'Connected' ? 'bg-green-500' : casparStatus === 'Error' ? 'bg-red-500' : 'bg-yellow-500'}`}></div>
-                            <span className="text-sm">CasparCG: {casparStatus}</span>
-                        </div>
-                        <div className="text-xs text-gray-400">
-                            Single Channel Mode (CH1 - Layers 10-13)
-                        </div>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="text-center">
-                            <div className="text-4xl font-mono tracking-widest mb-2">
-                                {currentItemTimecode}
-                            </div>
-                            <p className="text-sm opacity-75">Current Item Timecode</p>
-                        </div>
-
-                        <div className="text-center">
-                            <div className="text-2xl font-mono tracking-widest mb-2">
-                                {formatDuration(totalElapsedTime)}
-                            </div>
-                            <p className="text-sm opacity-75">Total Elapsed Time</p>
-                        </div>
-
-                        <div className="text-center">
-                            <div className="text-xl font-mono tracking-widest mb-2">
-                                {calculateTotalRundownTime()}
-                            </div>
-                            <p className="text-sm opacity-75">Total Rundown Time</p>
-                        </div>
-                    </div>
+        <div className="space-y-4">
+            {/* Compact Status Row */}
+            <div className="grid grid-cols-3 gap-4 bg-gray-800 text-white rounded-lg p-4">
+                <div className="text-center">
+                    <div className="text-2xl font-mono">{currentItemTimecode}</div>
+                    <div className="text-xs opacity-75">Current Item</div>
                 </div>
+                <div className="text-center">
+                    <div className="text-xl font-mono">{formatDuration(totalElapsedTime)}</div>
+                    <div className="text-xs opacity-75">Total Elapsed</div>
+                </div>
+                <div className="text-center">
+                    <div className="text-lg font-mono">{calculateTotalRundownTime()}</div>
+                    <div className="text-xs opacity-75">Total Runtime</div>
+                </div>
+            </div>
 
-                {/* Virtual Channel Control Panel */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
-                    <h3 className="text-lg font-semibold mb-4">Layer Control (Virtual Channels)</h3>
+            {/* Layer Control and Selected Item Row */}
+            <div className="grid grid-cols-3 gap-4">
+                {/* Layer Controls */}
+                <div className="col-span-2 bg-white dark:bg-gray-800 rounded-lg border p-4">
+                    <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-semibold">Layer Control</h3>
+                        <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${casparStatus === 'Connected' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                            <span className="text-xs">{casparStatus}</span>
+                        </div>
+                    </div>
                     
-                    {[1, 2, 3, 4].map(virtualChannelId => {
-                        const queuedItem = queuedItems.get(virtualChannelId);
-                        const playingItem = playingItems.get(virtualChannelId);
-                        const actualLayer = LAYER_MAP[virtualChannelId];
-                        
-                        return (
-                            <div key={virtualChannelId} className="mb-4 p-3 border rounded">
-                                <div className="flex items-center justify-between mb-2">
-                                    <h4 className="font-medium">Layer {actualLayer} (Ch{virtualChannelId})</h4>
-                                    <div className="flex gap-1">
-                                        <button
-                                            onClick={() => handlePlayItem(virtualChannelId)}
-                                            disabled={!queuedItem}
-                                            className="p-2 btn-secondary disabled:opacity-50"
-                                            title="Play"
-                                        >
-                                            <Play size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => handlePauseChannel(virtualChannelId)}
-                                            disabled={!playingItem}
-                                            className="p-2 btn-secondary disabled:opacity-50"
-                                            title="Pause"
-                                        >
-                                            <Pause size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleStopChannel(virtualChannelId)}
-                                            disabled={!playingItem}
-                                            className="p-2 btn-secondary disabled:opacity-50"
-                                            title="Stop"
-                                        >
-                                            <Square size={16} />
-                                        </button>
+                    <div className="grid grid-cols-2 gap-2">
+                        {[1, 2, 3, 4].map(virtualChannelId => {
+                            const queuedItem = queuedItems.get(virtualChannelId);
+                            const playingItem = playingItems.get(virtualChannelId);
+                            const actualLayer = LAYER_MAP[virtualChannelId];
+                            
+                            return (
+                                <div key={virtualChannelId} className="border rounded p-2">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-xs font-medium">L{actualLayer}</span>
+                                        <div className="flex gap-1">
+                                            <button
+                                                onClick={() => handlePlayItem(virtualChannelId)}
+                                                disabled={!queuedItem}
+                                                className="p-1 disabled:opacity-50"
+                                                title="Play"
+                                            >
+                                                <Play size={12} />
+                                            </button>
+                                            <button
+                                                onClick={() => handlePauseChannel(virtualChannelId)}
+                                                disabled={!playingItem}
+                                                className="p-1 disabled:opacity-50"
+                                                title="Pause"
+                                            >
+                                                <Pause size={12} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleStopChannel(virtualChannelId)}
+                                                disabled={!playingItem}
+                                                className="p-1 disabled:opacity-50"
+                                                title="Stop"
+                                            >
+                                                <Square size={12} />
+                                            </button>
+                                            <button
+                                                onClick={handleNextItem}
+                                                className="p-1"
+                                                title="Next Item"
+                                            >
+                                                <SkipForward size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="text-xs truncate">
+                                        {playingItem && (
+                                            <div className="text-green-600 flex items-center gap-1">
+                                                <Radio size={8} />
+                                                {playingItem.title}
+                                            </div>
+                                        )}
+                                        {queuedItem && !playingItem && (
+                                            <div className="text-blue-600 flex items-center gap-1">
+                                                <Loader size={8} />
+                                                {queuedItem.title}
+                                            </div>
+                                        )}
+                                        {!playingItem && !queuedItem && (
+                                            <div className="text-gray-500">Empty</div>
+                                        )}
                                     </div>
                                 </div>
-                                
-                                <div className="text-sm">
-                                    {playingItem && (
-                                        <div className="text-green-600 flex items-center gap-1">
-                                            <Radio size={12} />
-                                            Playing: {playingItem.title}
-                                        </div>
-                                    )}
-                                    {queuedItem && (
-                                        <div className="text-blue-600 flex items-center gap-1">
-                                            <Loader size={12} />
-                                            Queued: {queuedItem.title}
-                                        </div>
-                                    )}
-                                    {!playingItem && !queuedItem && (
-                                        <div className="text-gray-500">Empty</div>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                    
-                    <div className="text-xs text-gray-500 mt-4 p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                        <strong>Layer Mapping:</strong><br />
-                        Ch1→L10, Ch2→L11, Ch3→L12, Ch4→L13<br />
-                        All on CasparCG Channel 1
+                            );
+                        })}
                     </div>
                 </div>
 
-                {/* Selected Item Panel */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
-                    <h3 className="text-lg font-semibold mb-4">Selected Item</h3>
+                {/* Selected Item and End Live */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg border p-4">
+                    <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-semibold">Selected Item</h3>
+                        <button
+                            onClick={liveMode.handleEndLive}
+                            className="p-1 bg-red-600 text-white rounded hover:bg-red-700"
+                            title="End Live"
+                        >
+                            <StopCircle size={16} />
+                        </button>
+                    </div>
                     
                     {selectedItem ? (
-                        <div className="space-y-4">
-                            <div>
-                                <h4 className="font-medium text-blue-600">{selectedItem.title}</h4>
-                                <div className="flex items-center gap-2 mt-1">
-                                    {(Array.isArray(selectedItem.type) ? selectedItem.type : []).map(t => (
-                                        <span key={t} className={`px-2 py-1 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
-                                            {t}
-                                        </span>
-                                    ))}
-                                </div>
+                        <div className="space-y-2">
+                            <div className="text-sm font-medium text-blue-600 truncate">{selectedItem.title}</div>
+                            <div className="flex flex-wrap gap-1">
+                                {(Array.isArray(selectedItem.type) ? selectedItem.type : []).map(t => (
+                                    <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
+                                        {t}
+                                    </span>
+                                ))}
                             </div>
                             
                             <div>
-                                <label className="block text-sm font-medium mb-1">Assign to Virtual Channel:</label>
+                                <label className="block text-xs font-medium mb-1">Channel:</label>
                                 <select
                                     value={channelAssignments.get(selectedItem.id) || 1}
                                     onChange={(e) => handleChannelChange(selectedItem.id, parseInt(e.target.value))}
-                                    className="w-full p-2 border rounded"
+                                    className="w-full p-1 border rounded text-xs"
                                 >
                                     {[1, 2, 3, 4].map(ch => (
-                                        <option key={ch} value={ch}>
-                                            Channel {ch} (Layer {LAYER_MAP[ch]})
-                                        </option>
+                                        <option key={ch} value={ch}>Ch{ch} (L{LAYER_MAP[ch]})</option>
                                     ))}
                                 </select>
                             </div>
                             
-                            <div className="flex gap-2">
+                            <div className="flex gap-1">
                                 <button
                                     onClick={() => handleQueueItem(selectedItem)}
                                     disabled={!selectedItem.highResPath}
-                                    className="flex-1 btn-primary disabled:opacity-50"
+                                    className="flex-1 text-xs btn-primary disabled:opacity-50 p-1"
                                 >
-                                    <Loader size={20} />
                                     Queue
                                 </button>
                                 <button
                                     onClick={() => handlePlayItem(channelAssignments.get(selectedItem.id) || 1)}
-                                    className="flex-1 btn-primary"
+                                    className="flex-1 text-xs btn-primary p-1"
                                 >
-                                    <Play size={20} />
                                     Play
                                 </button>
                             </div>
                         </div>
                     ) : (
-                        <p className="text-gray-500">No item selected</p>
+                        <p className="text-xs text-gray-500">No item selected</p>
                     )}
                 </div>
             </div>
 
-            {/* Transport Controls */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
-                <h3 className="text-lg font-semibold mb-4">Transport Controls</h3>
-                <div className="flex gap-3">
-                    <button
-                        onClick={handleNextItem}
-                        disabled={liveMode.currentLiveItemIndex >= activeRundown.items.length - 1}
-                        className="btn-primary disabled:opacity-50"
-                    >
-                        <SkipForward size={64} />
-                        <span>Next Item</span>
-                    </button>
-
-                    <button
-                        onClick={liveMode.handleEndLive}
-                        className="btn-secondary bg-red-600 text-white hover:bg-red-700"
-                    >
-                        <Square size={64} />
-                        <span>End Live</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Rundown Items List */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border">
-                <div className="p-4 border-b flex justify-between items-center">
-                    <h3 className="text-lg font-semibold">Rundown Items</h3>
-                    <div className="text-sm text-gray-500">
-                        {activeRundown.items.length} items
-                    </div>
+            {/* Rundown Items */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg border">
+                <div className="p-3 border-b flex justify-between items-center">
+                    <h3 className="text-sm font-semibold">Rundown Items</h3>
+                    <div className="text-xs text-gray-500">{activeRundown.items.length} items</div>
                 </div>
                 
-                <div className="max-h-96 overflow-y-auto">
+                <div className="max-h-80 overflow-y-auto">
                     {activeRundown.items.map((item, index) => {
                         const isSelected = selectedItemId === item.id;
                         const assignedVirtualChannel = channelAssignments.get(item.id) || 1;
@@ -415,14 +374,14 @@ const LiveModeTab = ({ liveMode }) => {
                         return (
                             <div
                                 key={item.id}
-                                className={`p-4 border-b last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                                    isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : ''
+                                className={`p-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 text-xs ${
+                                    isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                                 }`}
                                 onClick={() => handleSelectItem(item)}
                             >
                                 <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-3">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                                    <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium ${
                                             isPlaying ? 'bg-green-500 text-white' :
                                             isQueued ? 'bg-blue-500 text-white' :
                                             isSelected ? 'bg-blue-500 text-white' :
@@ -430,15 +389,15 @@ const LiveModeTab = ({ liveMode }) => {
                                         }`}>
                                             {index + 1}
                                         </div>
-                                        <div>
-                                            <div className="font-medium text-sm">{item.title}</div>
-                                            <div className="text-xs text-gray-500">
-                                                Duration: {item.duration} | Virtual Ch: {assignedVirtualChannel} | Layer: {assignedLayer}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-medium truncate">{item.title}</div>
+                                            <div className="text-gray-500">
+                                                {item.duration} | Ch{assignedVirtualChannel} | L{assignedLayer}
                                             </div>
                                         </div>
                                     </div>
                                     
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1">
                                         {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
                                             <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
                                                 {t}
@@ -460,20 +419,20 @@ const LiveModeTab = ({ liveMode }) => {
                                                 className="p-1 text-blue-600 hover:text-blue-800"
                                                 title="Preview"
                                             >
-                                                <Monitor size={16} />
+                                                <Monitor size={12} />
                                             </button>
                                         )}
                                         
                                         {isPlaying && (
                                             <div className="flex items-center gap-1 text-green-600">
-                                                <Radio size={12} />
+                                                <Radio size={10} />
                                                 <span className="text-xs">LIVE</span>
                                             </div>
                                         )}
                                         
                                         {isQueued && !isPlaying && (
                                             <div className="flex items-center gap-1 text-blue-600">
-                                                <Loader size={12} />
+                                                <Loader size={10} />
                                                 <span className="text-xs">QUEUED</span>
                                             </div>
                                         )}
@@ -488,14 +447,14 @@ const LiveModeTab = ({ liveMode }) => {
             {/* Preview Modal */}
             {showPreview && previewItem && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-semibold">Preview: {previewItem.title}</h3>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-4 max-w-2xl w-full mx-4">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-sm font-semibold">Preview: {previewItem.title}</h3>
                             <button
                                 onClick={() => setShowPreview(false)}
                                 className="text-gray-500 hover:text-gray-700"
                             >
-                                <Square size={24} />
+                                <Square size={16} />
                             </button>
                         </div>
                         <div className="aspect-video">
