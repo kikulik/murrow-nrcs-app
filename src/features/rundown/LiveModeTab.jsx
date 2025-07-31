@@ -43,7 +43,7 @@ const LiveModeTab = ({ liveMode }) => {
 
     const sendCasparCommand = async (command) => {
         try {
-            const response = await fetch('http://192.168.15.61:3001/api/caspar-command', {
+            const response = await fetch('https://f037893a1558.ngrok-free.app -> http://localhost:3001', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ command })
