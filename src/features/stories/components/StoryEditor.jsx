@@ -123,10 +123,29 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
         }));
     };
 
+    const generateNumberedTypes = (types) => {
+        const typeCounts = {};
+        return types.map(type => {
+            if (typeCounts[type]) {
+                typeCounts[type]++;
+                return `${type}${typeCounts[type]}`;
+            } else {
+                typeCounts[type] = 1;
+                if (types.filter(t => t === type).length > 1) {
+                    return type;
+                } else {
+                    return type;
+                }
+            }
+        });
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
             const { collection, addDoc, doc, updateDoc } = await import("firebase/firestore");
+            
+            const numberedTypes = generateNumberedTypes(selectedTypes);
             
             const storyToSave = {
                 ...formData,
@@ -135,7 +154,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                 status: story?.status || 'draft',
                 created: story?.created || new Date().toISOString(),
                 comments: story?.comments || [],
-                types: selectedTypes
+                types: numberedTypes
             };
 
             let mediaId;
@@ -249,7 +268,7 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Item Type(s)
+                        Item Type(s) - Select multiple for complex stories
                     </label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                         {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
@@ -267,6 +286,13 @@ const StoryEditor = ({ story = null, onCancel, defaultFolder = null }) => {
                             </label>
                         ))}
                     </div>
+                    {selectedTypes.length > 0 && (
+                        <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                Preview: <strong>{generateNumberedTypes(selectedTypes).map(type => `[${type}]`).join(' ')}</strong>
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 {selectedTypes.some(type => ['PKG', 'VO', 'SOT', 'VID'].includes(type)) && (
