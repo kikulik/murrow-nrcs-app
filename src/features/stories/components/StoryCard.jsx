@@ -1,9 +1,9 @@
+// src/features/stories/components/StoryCard.jsx
 import React from 'react';
 import CustomIcon from '../../../components/ui/CustomIcon';
 import { useAppContext } from '../../../context/AppContext';
 import { getStatusColor } from '../../../utils/styleHelpers';
 import { getPlatformIcon } from '../../../utils/iconHelpers.jsx';
-import CollapsibleVideoSection from './CollapsibleVideoSection';
 
 const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, currentUser }) => {
     const { appState } = useAppContext();
@@ -23,13 +23,25 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
         onSendToRundown(story);
     };
 
+    const formatItemTypes = (types) => {
+        if (!types || !Array.isArray(types)) return '';
+        return types.map(type => `[${type}]`).join(' ');
+    };
+
     return (
         <div className="relative group/storycard">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
                 <div className="flex items-start justify-between mb-3 pr-40">
                     <div className="flex items-center space-x-4 flex-1 min-w-0">
                         {getPlatformIcon(story.platform)}
-                        <h3 className="text-lg font-medium break-words line-clamp-2">{story.title}</h3>
+                        <div className="flex-1 min-w-0">
+                            <h3 className="text-lg font-medium break-words line-clamp-2 mb-1">{story.title}</h3>
+                            {story.types && story.types.length > 0 && (
+                                <div className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                                    {formatItemTypes(story.types)}
+                                </div>
+                            )}
+                        </div>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(story.status)} shrink-0`}>
                             {story.status}
                         </span>
@@ -54,11 +66,6 @@ const StoryCard = ({ story, onSendToRundown, onDelete, onEdit, userPermissions, 
                         <strong>Media ID:</strong> {story.mediaId}
                     </div>
                 )}
-
-                <CollapsibleVideoSection
-                    story={story}
-                    showControls={canEdit}
-                />
             </div>
 
             <div className="absolute top-4 right-4 opacity-0 group-hover/storycard:opacity-100 transition-opacity flex gap-3">
