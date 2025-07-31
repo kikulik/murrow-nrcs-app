@@ -1,6 +1,6 @@
 // src/features/rundown/LiveModeTab.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import CustomIcon from '../../components/ui/CustomIcon';
+import { Play, Pause, Square, SkipForward, Monitor, Loader, Radio } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { formatDuration } from '../../utils/helpers';
 import { getRundownTypeColor, getStatusColor } from '../../utils/styleHelpers';
@@ -11,15 +11,30 @@ const LiveModeTab = ({ liveMode }) => {
     const activeRundown = appState.rundowns.find(r => r.id === appState.activeRundownId);
     
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isLooping, setIsLooping] = useState(false);
     const [currentItemTimecode, setCurrentItemTimecode] = useState('00:00:00');
     const [totalElapsedTime, setTotalElapsedTime] = useState(0);
     const [showPreview, setShowPreview] = useState(false);
     const [previewItem, setPreviewItem] = useState(null);
     const [casparStatus, setCasparStatus] = useState('Disconnected');
+    const [selectedItemId, setSelectedItemId] = useState(null);
+    const [queuedItems, setQueuedItems] = useState(new Map()); // channelId -> item
+    const [playingItems, setPlayingItems] = useState(new Map()); // channelId -> item
+    const [channelAssignments, setChannelAssignments] = useState(new Map()); // itemId -> channelId
     
     const timecodeInterval = useRef(null);
     const itemStartTime = useRef(0);
+
+    // Initialize default A-B roll channel assignments
+    useEffect(() => {
+        if (activeRundown?.items) {
+            const newAssignments = new Map();
+            activeRundown.items.forEach((item, index) => {
+                const defaultChannel = (index % 2) + 1; // A-B roll: 1,2,1,2...
+                newAssignments.set(item.id, defaultChannel);
+            });
+            setChannelAssignments(newAssignments);
+        }
+    }, [activeRundown?.items]);
 
     useEffect(() => {
         if (isPlaying) {
@@ -43,9 +58,7 @@ const LiveModeTab = ({ liveMode }) => {
 
     const sendCasparCommand = async (command) => {
         try {
-            // Construct the full URL using the environment variable
             const apiUrl = `${import.meta.env.VITE_API_URL}/api/caspar-command`;
-    
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -66,51 +79,89 @@ const LiveModeTab = ({ liveMode }) => {
         }
     };
 
-    const handlePlay = async () => {
-        const currentItem = activeRundown?.items[liveMode.currentLiveItemIndex];
-        if (!currentItem) return;
+    const handleSelectItem = (item) => {
+        setSelectedItemId(item.id);
+        console.log(`Selected item: ${item.title}`);
+    };
 
-        if (currentItem.highResPath) {
-            const clipName = currentItem.highResPath.split('\\').pop().replace('.mp4', '');
-            await sendCasparCommand(`PLAY 1-10 "${clipName}"`);
+    const handleQueueItem = async (item) => {
+        if (!item.highResPath) {
+            console.warn('No video path available for item:', item.title);
+            return;
         }
-        
-        setIsPlaying(true);
-        itemStartTime.current = Date.now();
-    };
 
-    const handlePause = async () => {
-        await sendCasparCommand('PAUSE 1-10');
-        setIsPlaying(false);
-    };
-
-    const handleStop = async () => {
-        await sendCasparCommand('STOP 1-10');
-        setIsPlaying(false);
-        setCurrentItemTimecode('00:00:00');
-        itemStartTime.current = 0;
-    };
-
-    const handleLoop = async () => {
-        const newLoopState = !isLooping;
-        setIsLooping(newLoopState);
-        
-        if (newLoopState) {
-            await sendCasparCommand('CALL 1-10 LOOP 1');
-        } else {
-            await sendCasparCommand('CALL 1-10 LOOP 0');
-        }
-    };
-
-    const handleItemSelect = async (itemIndex) => {
-        const item = activeRundown?.items[itemIndex];
-        if (!item || !item.highResPath) return;
-
-        await handleStop();
-        liveMode.setCurrentLiveItemIndex(itemIndex);
-        
+        const channelId = channelAssignments.get(item.id) || 1;
         const clipName = item.highResPath.split('\\').pop().replace('.mp4', '');
-        await sendCasparCommand(`LOADBG 1-10 "${clipName}" AUTO`);
+        
+        try {
+            await sendCasparCommand(`LOADBG ${channelId}-10 "${clipName}"`);
+            setQueuedItems(prev => new Map(prev.set(channelId, item)));
+            console.log(`Queued ${item.title} to channel ${channelId}`);
+        } catch (error) {
+            console.error('Error queuing item:', error);
+        }
+    };
+
+    const handlePlayItem = async (channelId) => {
+        const queuedItem = queuedItems.get(channelId);
+        if (!queuedItem) {
+            console.warn('No item queued for channel:', channelId);
+            return;
+        }
+
+        try {
+            await sendCasparCommand(`PLAY ${channelId}-10`);
+            setPlayingItems(prev => new Map(prev.set(channelId, queuedItem)));
+            setQueuedItems(prev => {
+                const newQueued = new Map(prev);
+                newQueued.delete(channelId);
+                return newQueued;
+            });
+            setIsPlaying(true);
+            itemStartTime.current = Date.now();
+            console.log(`Playing ${queuedItem.title} on channel ${channelId}`);
+        } catch (error) {
+            console.error('Error playing item:', error);
+        }
+    };
+
+    const handlePauseChannel = async (channelId) => {
+        try {
+            await sendCasparCommand(`PAUSE ${channelId}-10`);
+            setIsPlaying(false);
+        } catch (error) {
+            console.error('Error pausing channel:', error);
+        }
+    };
+
+    const handleStopChannel = async (channelId) => {
+        try {
+            await sendCasparCommand(`STOP ${channelId}-10`);
+            setPlayingItems(prev => {
+                const newPlaying = new Map(prev);
+                newPlaying.delete(channelId);
+                return newPlaying;
+            });
+            setIsPlaying(false);
+            setCurrentItemTimecode('00:00:00');
+            itemStartTime.current = 0;
+        } catch (error) {
+            console.error('Error stopping channel:', error);
+        }
+    };
+
+    const handleNextItem = () => {
+        const currentIndex = liveMode.currentLiveItemIndex;
+        if (currentIndex < activeRundown.items.length - 1) {
+            const nextItem = activeRundown.items[currentIndex + 1];
+            handleSelectItem(nextItem);
+            handleQueueItem(nextItem);
+            liveMode.setCurrentLiveItemIndex(currentIndex + 1);
+        }
+    };
+
+    const handleChannelChange = (itemId, newChannelId) => {
+        setChannelAssignments(prev => new Map(prev.set(itemId, newChannelId)));
     };
 
     const handlePreview = (item) => {
@@ -137,13 +188,14 @@ const LiveModeTab = ({ liveMode }) => {
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     };
 
-    const currentItem = activeRundown?.items[liveMode.currentLiveItemIndex];
+    const selectedItem = selectedItemId ? activeRundown?.items.find(item => item.id === selectedItemId) : null;
 
     if (!activeRundown) return null;
 
     return (
-        <div className="space-y-8">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Status Panel */}
                 <div className="bg-gray-800 text-white rounded-lg shadow-2xl p-6">
                     <div className="text-center mb-6">
                         <h2 className="text-2xl font-bold mb-2">LIVE MODE</h2>
@@ -177,147 +229,235 @@ const LiveModeTab = ({ liveMode }) => {
                     </div>
                 </div>
 
+                {/* Channel Control Panel */}
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
-                    <h3 className="text-lg font-semibold mb-4">Now On Air:</h3>
-                    <div className="text-2xl font-bold text-blue-500 mb-2">
-                        {currentItem?.title || "End of Show"}
-                    </div>
-                    <div className="flex items-center gap-2 mb-4">
-                        {(Array.isArray(currentItem?.type) ? currentItem.type : []).map(t => (
-                            <span key={t} className={`px-2 py-1 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
-                                {t}
-                            </span>
-                        ))}
-                    </div>
+                    <h3 className="text-lg font-semibold mb-4">Channel Control</h3>
                     
-                    {currentItem?.content && (
-                        <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded text-sm max-h-32 overflow-y-auto">
-                            {currentItem.content}
+                    {[1, 2, 3, 4].map(channelId => {
+                        const queuedItem = queuedItems.get(channelId);
+                        const playingItem = playingItems.get(channelId);
+                        
+                        return (
+                            <div key={channelId} className="mb-4 p-3 border rounded">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="font-medium">Channel {channelId}</h4>
+                                    <div className="flex gap-1">
+                                        <button
+                                            onClick={() => handlePlayItem(channelId)}
+                                            disabled={!queuedItem}
+                                            className="p-2 btn-secondary disabled:opacity-50"
+                                            title="Play"
+                                        >
+                                            <Play size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handlePauseChannel(channelId)}
+                                            disabled={!playingItem}
+                                            className="p-2 btn-secondary disabled:opacity-50"
+                                            title="Pause"
+                                        >
+                                            <Pause size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleStopChannel(channelId)}
+                                            disabled={!playingItem}
+                                            className="p-2 btn-secondary disabled:opacity-50"
+                                            title="Stop"
+                                        >
+                                            <Square size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div className="text-sm">
+                                    {playingItem && (
+                                        <div className="text-green-600 flex items-center gap-1">
+                                            <Radio size={12} />
+                                            Playing: {playingItem.title}
+                                        </div>
+                                    )}
+                                    {queuedItem && (
+                                        <div className="text-blue-600 flex items-center gap-1">
+                                            <Loader size={12} />
+                                            Queued: {queuedItem.title}
+                                        </div>
+                                    )}
+                                    {!playingItem && !queuedItem && (
+                                        <div className="text-gray-500">Empty</div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Selected Item Panel */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
+                    <h3 className="text-lg font-semibold mb-4">Selected Item</h3>
+                    
+                    {selectedItem ? (
+                        <div className="space-y-4">
+                            <div>
+                                <h4 className="font-medium text-blue-600">{selectedItem.title}</h4>
+                                <div className="flex items-center gap-2 mt-1">
+                                    {(Array.isArray(selectedItem.type) ? selectedItem.type : []).map(t => (
+                                        <span key={t} className={`px-2 py-1 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
+                                            {t}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Assign to Channel:</label>
+                                <select
+                                    value={channelAssignments.get(selectedItem.id) || 1}
+                                    onChange={(e) => handleChannelChange(selectedItem.id, parseInt(e.target.value))}
+                                    className="w-full p-2 border rounded"
+                                >
+                                    {[1, 2, 3, 4].map(ch => (
+                                        <option key={ch} value={ch}>Channel {ch}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => handleQueueItem(selectedItem)}
+                                    disabled={!selectedItem.highResPath}
+                                    className="flex-1 btn-primary disabled:opacity-50"
+                                >
+                                    <Loader size={20} />
+                                    Queue
+                                </button>
+                                <button
+                                    onClick={() => handlePlayItem(channelAssignments.get(selectedItem.id) || 1)}
+                                    className="flex-1 btn-primary"
+                                >
+                                    <Play size={20} />
+                                    Play
+                                </button>
+                            </div>
                         </div>
+                    ) : (
+                        <p className="text-gray-500">No item selected</p>
                     )}
                 </div>
             </div>
 
+            {/* Transport Controls */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-6">
-                <h3 className="text-lg font-semibold mb-4">Playout Controls</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <h3 className="text-lg font-semibold mb-4">Transport Controls</h3>
+                <div className="flex gap-3">
                     <button
-                        onClick={handlePlay}
-                        disabled={!currentItem?.highResPath}
-                        className="btn-primary bg-green-600 hover:bg-green-700 disabled:opacity-50"
-                    >
-                        <CustomIcon name="golive" size={32} />
-                        <span>Play</span>
-                    </button>
-
-                    <button
-                        onClick={handlePause}
-                        disabled={!isPlaying}
-                        className="btn-primary bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50"
-                    >
-                        <CustomIcon name="time" size={32} />
-                        <span>Pause</span>
-                    </button>
-
-                    <button
-                        onClick={handleStop}
-                        className="btn-primary bg-red-600 hover:bg-red-700"
-                    >
-                        <CustomIcon name="cancel" size={32} />
-                        <span>Stop</span>
-                    </button>
-
-                    <button
-                        onClick={handleLoop}
-                        className={`btn-primary ${isLooping ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-600 hover:bg-gray-700'}`}
-                    >
-                        <CustomIcon name="stories" size={32} />
-                        <span>Loop</span>
-                    </button>
-
-                    <button
-                        onClick={liveMode.handleNextLiveItem}
+                        onClick={handleNextItem}
                         disabled={liveMode.currentLiveItemIndex >= activeRundown.items.length - 1}
                         className="btn-primary disabled:opacity-50"
                     >
-                        <CustomIcon name="nextitem" size={32} />
-                        <span>Next</span>
+                        <SkipForward size={64} />
+                        <span>Next Item</span>
                     </button>
 
                     <button
                         onClick={liveMode.handleEndLive}
                         className="btn-secondary bg-red-600 text-white hover:bg-red-700"
                     >
-                        <CustomIcon name="logout" size={32} />
+                        <Square size={64} />
                         <span>End Live</span>
                     </button>
                 </div>
             </div>
 
+            {/* Rundown Items List */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border">
                 <div className="p-4 border-b flex justify-between items-center">
-                    <h3 className="text-lg font-semibold">Full Rundown</h3>
+                    <h3 className="text-lg font-semibold">Rundown Items</h3>
                     <div className="text-sm text-gray-500">
-                        Item {liveMode.currentLiveItemIndex + 1} of {activeRundown.items.length}
+                        {activeRundown.items.length} items
                     </div>
                 </div>
+                
                 <div className="max-h-96 overflow-y-auto">
-                    {activeRundown.items.map((item, index) => (
-                        <div
-                            key={item.id}
-                            className={`p-4 border-b last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                                index === liveMode.currentLiveItemIndex ?
-                                'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
-                                index < liveMode.currentLiveItemIndex ? 'opacity-50' : ''
-                            }`}
-                            onClick={() => handleItemSelect(index)}
-                        >
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                                        index === liveMode.currentLiveItemIndex ?
-                                        'bg-red-500 text-white' :
-                                        index < liveMode.currentLiveItemIndex ?
-                                            'bg-gray-300 text-gray-600' :
+                    {activeRundown.items.map((item, index) => {
+                        const isSelected = selectedItemId === item.id;
+                        const assignedChannel = channelAssignments.get(item.id) || 1;
+                        const isQueued = queuedItems.has(assignedChannel) && queuedItems.get(assignedChannel).id === item.id;
+                        const isPlaying = playingItems.has(assignedChannel) && playingItems.get(assignedChannel).id === item.id;
+                        
+                        return (
+                            <div
+                                key={item.id}
+                                className={`p-4 border-b last:border-b-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                                    isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : ''
+                                }`}
+                                onClick={() => handleSelectItem(item)}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                                            isPlaying ? 'bg-green-500 text-white' :
+                                            isQueued ? 'bg-blue-500 text-white' :
+                                            isSelected ? 'bg-blue-500 text-white' :
                                             'bg-gray-100 text-gray-800'
-                                    }`}>
-                                        {index + 1}
+                                        }`}>
+                                            {index + 1}
+                                        </div>
+                                        <div>
+                                            <div className="font-medium text-sm">{item.title}</div>
+                                            <div className="text-xs text-gray-500">
+                                                Duration: {item.duration} | Channel: {assignedChannel}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div className="font-medium text-sm">{item.title}</div>
-                                        <div className="text-xs text-gray-500">Duration: {item.duration}</div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                        {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
+                                            <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
+                                                {t}
+                                            </span>
+                                        ))}
+                                        
+                                        {item.storyStatus && (
+                                            <span className={`px-1 py-0.5 rounded text-xs font-medium ${getStatusColor(item.storyStatus)}`}>
+                                                {item.storyStatus}
+                                            </span>
+                                        )}
+                                        
+                                        {item.proxyPath && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handlePreview(item);
+                                                }}
+                                                className="p-1 text-blue-600 hover:text-blue-800"
+                                                title="Preview"
+                                            >
+                                                <Monitor size={16} />
+                                            </button>
+                                        )}
+                                        
+                                        {isPlaying && (
+                                            <div className="flex items-center gap-1 text-green-600">
+                                                <Radio size={12} />
+                                                <span className="text-xs">LIVE</span>
+                                            </div>
+                                        )}
+                                        
+                                        {isQueued && !isPlaying && (
+                                            <div className="flex items-center gap-1 text-blue-600">
+                                                <Loader size={12} />
+                                                <span className="text-xs">QUEUED</span>
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {(Array.isArray(item.type) ? item.type : [item.type]).map(t => (
-                                        <span key={t} className={`px-1 py-0.5 rounded text-xs font-bold ${getRundownTypeColor(t)}`}>
-                                            {t}
-                                        </span>
-                                    ))}
-                                    {item.storyStatus && (
-                                        <span className={`px-1 py-0.5 rounded text-xs font-medium ${getStatusColor(item.storyStatus)}`}>
-                                            {item.storyStatus}
-                                        </span>
-                                    )}
-                                    {item.proxyPath && (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handlePreview(item);
-                                            }}
-                                            className="p-1 text-blue-600 hover:text-blue-800"
-                                            title="Preview"
-                                        >
-                                            <CustomIcon name="stories" size={32} />
-                                        </button>
-                                    )}
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 
+            {/* Preview Modal */}
             {showPreview && previewItem && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4">
@@ -327,7 +467,7 @@ const LiveModeTab = ({ liveMode }) => {
                                 onClick={() => setShowPreview(false)}
                                 className="text-gray-500 hover:text-gray-700"
                             >
-                                <CustomIcon name="cancel" size={32} />
+                                <Square size={24} />
                             </button>
                         </div>
                         <div className="aspect-video">
