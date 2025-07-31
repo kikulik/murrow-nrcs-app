@@ -71,6 +71,23 @@ const AddStoryToRundownModal = ({ onCancel }) => {
         setNewStoryData({ ...newStoryData, content });
     };
 
+    const generateNumberedTypes = (types) => {
+        const typeCounts = {};
+        return types.map(type => {
+            if (typeCounts[type]) {
+                typeCounts[type]++;
+                return `${type}${typeCounts[type]}`;
+            } else {
+                typeCounts[type] = 1;
+                if (types.filter(t => t === type).length > 1) {
+                    return type;
+                } else {
+                    return type;
+                }
+            }
+        });
+    };
+
     const handleSave = async () => {
         if (selectedTypes.length === 0) {
             alert("Please select at least one item type.");
@@ -100,12 +117,14 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     throw new Error("Selected story not found");
                 }
 
+                const displayTypes = story.types && story.types.length > 0 ? story.types : selectedTypes;
+
                 newRundownItem = {
                     id: Date.now(),
                     time: "00:00:00",
                     title: story.title,
                     duration: story.duration || "01:00",
-                    type: selectedTypes,
+                    type: displayTypes,
                     content: story.content,
                     storyId: story.id,
                     storyStatus: 'Not Ready',
@@ -113,6 +132,8 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     highResPath: story.highResPath || null
                 };
             } else {
+                const numberedTypes = generateNumberedTypes(selectedTypes);
+                
                 const newStory = {
                     title: newStoryData.title || `New ${selectedTypes[0]} Item`,
                     content: newStoryData.content,
@@ -124,7 +145,7 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     folder: generateDateFolder(),
                     tags: selectedTypes,
                     comments: [],
-                    types: selectedTypes
+                    types: numberedTypes
                 };
 
                 const isVideoType = selectedTypes.some(type => ['PKG', 'VO', 'SOT', 'VID'].includes(type));
@@ -152,7 +173,7 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                     time: "00:00:00",
                     title: newStory.title,
                     duration: newStory.duration,
-                    type: selectedTypes,
+                    type: numberedTypes,
                     content: newStory.content,
                     storyId: storyDocRef.id,
                     storyStatus: 'Ready for Air',
@@ -173,12 +194,18 @@ const AddStoryToRundownModal = ({ onCancel }) => {
         }
     };
 
+    const formatItemTypesPreview = (types) => {
+        if (!types || types.length === 0) return '';
+        const numbered = generateNumberedTypes(types);
+        return numbered.map(type => `[${type}]`).join(' ');
+    };
+
     return (
         <ModalBase onCancel={onCancel} title="Add Item to Rundown" maxWidth="max-w-3xl">
             <div className="p-6 space-y-6">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Item Type(s)
+                        Item Type(s) - Select multiple for complex stories
                     </label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                         {Object.entries(RUNDOWN_ITEM_TYPES).map(([abbr, name]) => (
@@ -196,6 +223,13 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                             </label>
                         ))}
                     </div>
+                    {selectedTypes.length > 0 && (
+                        <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                Preview: <strong>{formatItemTypesPreview(selectedTypes)}</strong>
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="border-b border-gray-200 dark:border-gray-700">
@@ -234,7 +268,10 @@ const AddStoryToRundownModal = ({ onCancel }) => {
                                 label="Select a Story"
                                 value={selectedStoryId}
                                 onChange={e => setSelectedStoryId(e.target.value)}
-                                options={filteredStories.map(s => ({ value: s.id, label: s.title }))}
+                                options={filteredStories.map(s => ({ 
+                                    value: s.id, 
+                                    label: `${s.title}${s.types ? ` - ${s.types.map(t => `[${t}]`).join(' ')}` : ''}` 
+                                }))}
                             />
                         ) : (
                             <p className="text-sm text-gray-500">No stories found matching your search.</p>
