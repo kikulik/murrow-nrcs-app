@@ -43,7 +43,10 @@ const LiveModeTab = ({ liveMode }) => {
 
     const sendCasparCommand = async (command) => {
         try {
-            const response = await fetch('https://f037893a1558.ngrok-free.app/api/caspar-command', {
+            // Construct the full URL using the environment variable
+            const apiUrl = `${import.meta.env.VITE_API_URL}/api/caspar-command`;
+    
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ command })
