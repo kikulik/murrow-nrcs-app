@@ -16,7 +16,8 @@ const RundownTab = ({ liveMode }) => {
     const [copiedItems, setCopiedItems] = useState([]);
     const [studioQueue, setStudioQueue] = useState(null);
     const [showStudioModal, setShowStudioModal] = useState(false);
-    const [studioModalType, setStudioModalType] = useState(''); // 'busy' or 'confirm'
+    const [studioModalType, setStudioModalType] = useState('');
+    const [channelAssignments, setChannelAssignments] = useState(new Map());
 
     const userPermissions = getUserPermissions(currentUser.role);
     const canGoLive = userPermissions.canGoLive;
@@ -26,6 +27,18 @@ const RundownTab = ({ liveMode }) => {
     const totalDuration = calculateTotalDuration(currentRundown?.items || []);
     const availableRundowns = appState.rundowns.filter(r => appState.showArchived || !r.archived);
     const isRundownLocked = liveMode.isLive && liveMode.liveRundownId === appState.activeRundownId;
+
+    // Initialize A-B roll channel assignments
+    useEffect(() => {
+        if (currentRundown?.items) {
+            const newAssignments = new Map();
+            currentRundown.items.forEach((item, index) => {
+                const defaultChannel = (index % 2) + 1; // A-B roll: 1,2,1,2...
+                newAssignments.set(item.id, defaultChannel);
+            });
+            setChannelAssignments(newAssignments);
+        }
+    }, [currentRundown?.items]);
 
     useEffect(() => {
         checkStudioQueue();
@@ -109,8 +122,36 @@ const RundownTab = ({ liveMode }) => {
         const rundownRef = doc(db, "rundowns", currentRundown.id);
         try {
             await updateDoc(rundownRef, { items: updatedItems });
+            
+            // Update channel assignments for new items
+            const newAssignments = new Map(channelAssignments);
+            updatedItems.forEach((item, index) => {
+                if (!newAssignments.has(item.id)) {
+                    newAssignments.set(item.id, (index % 2) + 1);
+                }
+            });
+            setChannelAssignments(newAssignments);
         } catch (error) {
             console.error("Failed to update rundown items:", error);
+        }
+    };
+
+    const handleChannelAssignmentChange = async (itemId, newChannel) => {
+        setChannelAssignments(prev => new Map(prev.set(itemId, newChannel)));
+        
+        // Optionally save channel assignments to Firestore
+        if (currentRundown) {
+            try {
+                const updatedItems = currentRundown.items.map(item => {
+                    if (item.id === itemId) {
+                        return { ...item, assignedChannel: newChannel };
+                    }
+                    return item;
+                });
+                await handleRundownItemUpdate(updatedItems);
+            } catch (error) {
+                console.error("Failed to save channel assignment:", error);
+            }
         }
     };
 
@@ -225,12 +266,13 @@ const RundownTab = ({ liveMode }) => {
                 rundownName: currentRundown.name,
                 queuedBy: currentUser.name,
                 queuedAt: new Date().toISOString(),
-                isLive: false
+                isLive: false,
+                channelAssignments: Object.fromEntries(channelAssignments)
             }, { merge: true });
 
             await checkStudioQueue();
             setShowStudioModal(false);
-            alert(`"${currentRundown.name}" has been queued for studio playout.`);
+            alert(`"${currentRundown.name}" has been queued for studio playout with channel assignments.`);
         } catch (error) {
             console.error("Failed to send rundown to studio:", error);
             alert("Error: Could not send rundown to studio.");
@@ -250,7 +292,8 @@ const RundownTab = ({ liveMode }) => {
                 rundownName: null,
                 queuedBy: null,
                 queuedAt: null,
-                isLive: false
+                isLive: false,
+                channelAssignments: null
             });
 
             setStudioQueue(null);
@@ -273,13 +316,16 @@ const RundownTab = ({ liveMode }) => {
         }
 
         const confirmGoLive = window.confirm(
-            `Go live with "${studioQueue.rundownName}"?\n\nThis will start live playout mode.`
+            `Go live with "${studioQueue.rundownName}"?\n\nThis will start live playout mode with 4-channel CasparCG control.`
         );
 
         if (confirmGoLive) {
             try {
                 const studioRef = doc(db, "settings", "studio");
-                await updateDoc(studioRef, { isLive: true });
+                await updateDoc(studioRef, { 
+                    isLive: true,
+                    liveStartedAt: new Date().toISOString()
+                });
                 
                 await liveMode.handleGoLive();
                 console.log('Successfully went live with rundown:', studioQueue.rundownName);
@@ -421,6 +467,9 @@ const RundownTab = ({ liveMode }) => {
                                 <p className="text-sm text-blue-600 dark:text-blue-400">
                                     Queued by {studioQueue.queuedBy} at {new Date(studioQueue.queuedAt).toLocaleString()}
                                 </p>
+                                <p className="text-xs text-blue-500 dark:text-blue-300">
+                                    4-Channel CasparCG Playout Ready | A-B Roll Assignment
+                                </p>
                             </div>
                         </div>
                         {studioQueue.rundownId === currentRundown?.id && (
@@ -448,6 +497,10 @@ const RundownTab = ({ liveMode }) => {
                             </div>
                             <div className="flex items-center gap-2">
                                 <span>Air Time: {getAirTime(currentRundown.airDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-blue-600">
+                                <CustomIcon name="golive" size={40} />
+                                <span>Channels: 1-4 Available</span>
                             </div>
                             {liveMode.isLive && liveMode.liveRundownId === currentRundown.id && (
                                 <div className="flex items-center gap-2 px-3 py-1 bg-red-100 dark:bg-red-900/20 rounded-full">
@@ -503,6 +556,8 @@ const RundownTab = ({ liveMode }) => {
                     onItemsUpdate={handleRundownItemUpdate}
                     selectedItems={selectedItems}
                     onSelectionChange={setSelectedItems}
+                    channelAssignments={channelAssignments}
+                    onChannelAssignmentChange={handleChannelAssignmentChange}
                 />
             ) : (
                 <div className="text-center py-12 text-gray-500">
@@ -543,9 +598,14 @@ const RundownTab = ({ liveMode }) => {
                                     <CustomIcon name="send" size={32} className="text-blue-600" />
                                     <h3 className="text-lg font-semibold">Send to Studio</h3>
                                 </div>
-                                <p className="text-gray-600 dark:text-gray-400 mb-6">
-                                    Queue "<strong>{currentRundown?.name}</strong>" for studio playout?
+                                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                                    Queue "<strong>{currentRundown?.name}</strong>" for 4-channel CasparCG playout?
                                 </p>
+                                <div className="text-sm text-gray-500 mb-6">
+                                    <p>• Items will be assigned to channels 1-4</p>
+                                    <p>• A-B roll pattern (1,2,1,2...)</p>
+                                    <p>• Manual channel control available in Live Mode</p>
+                                </div>
                                 <div className="flex justify-end gap-3">
                                     <button
                                         onClick={() => setShowStudioModal(false)}
