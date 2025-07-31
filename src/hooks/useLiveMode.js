@@ -28,7 +28,7 @@ export const useLiveMode = (activeRundown, activeRundownId, db) => {
         return () => clearInterval(liveIntervalRef.current);
     }, [isLive, currentLiveItemIndex, activeRundown]);
 
-    const setActiveRundownInFirestore = async (rundownId) => {
+    const setActiveRundownInStudio = async (rundownId) => {
         if (!db || !rundownId) {
             console.error('Cannot set active rundown: missing db or rundownId');
             return false;
@@ -37,23 +37,23 @@ export const useLiveMode = (activeRundown, activeRundownId, db) => {
         try {
             const { doc, setDoc } = await import('firebase/firestore');
             
-            // Set the active rundown in the settings collection for your backend service
-            const activeSettingsRef = doc(db, 'settings', 'active');
-            await setDoc(activeSettingsRef, {
-                activeRundownId: rundownId,
-                lastUpdated: new Date().toISOString(),
-                isLive: true
+            const studioSettingsRef = doc(db, 'settings', 'studio');
+            await setDoc(studioSettingsRef, {
+                queuedRundownId: rundownId,
+                isLive: true,
+                liveStartedAt: new Date().toISOString(),
+                lastUpdated: new Date().toISOString()
             }, { merge: true });
             
             console.log(`Successfully set active rundown to: ${rundownId}`);
             return true;
         } catch (error) {
-            console.error('Error setting active rundown in Firestore:', error);
+            console.error('Error setting active rundown in studio:', error);
             return false;
         }
     };
 
-    const clearActiveRundownInFirestore = async () => {
+    const clearActiveRundownInStudio = async () => {
         if (!db) {
             console.error('Cannot clear active rundown: missing db');
             return false;
@@ -62,18 +62,18 @@ export const useLiveMode = (activeRundown, activeRundownId, db) => {
         try {
             const { doc, setDoc } = await import('firebase/firestore');
             
-            // Clear the active rundown in the settings collection
-            const activeSettingsRef = doc(db, 'settings', 'active');
-            await setDoc(activeSettingsRef, {
-                activeRundownId: null,
-                lastUpdated: new Date().toISOString(),
-                isLive: false
+            const studioSettingsRef = doc(db, 'settings', 'studio');
+            await setDoc(studioSettingsRef, {
+                isLive: false,
+                liveStartedAt: null,
+                liveEndedAt: new Date().toISOString(),
+                lastUpdated: new Date().toISOString()
             }, { merge: true });
             
-            console.log('Successfully cleared active rundown');
+            console.log('Successfully cleared live status');
             return true;
         } catch (error) {
-            console.error('Error clearing active rundown in Firestore:', error);
+            console.error('Error clearing live status:', error);
             return false;
         }
     };
@@ -86,16 +86,15 @@ export const useLiveMode = (activeRundown, activeRundownId, db) => {
 
         console.log(`Going live with rundown: ${activeRundownId}`);
         
-        // Set the rundown as active in Firestore for CasparCG sync
-        const success = await setActiveRundownInFirestore(activeRundownId);
+        const success = await setActiveRundownInStudio(activeRundownId);
         
         if (success) {
             setIsLive(true);
             setCurrentLiveItemIndex(0);
             setLiveRundownId(activeRundownId);
-            console.log('Live mode activated and rundown synced to CasparCG');
+            console.log('Live mode activated');
         } else {
-            console.error('Failed to activate live mode - could not sync to CasparCG');
+            console.error('Failed to activate live mode');
             alert('Failed to activate live mode. Please check your connection and try again.');
         }
     };
@@ -103,12 +102,12 @@ export const useLiveMode = (activeRundown, activeRundownId, db) => {
     const handleEndLive = async () => {
         console.log('Ending live mode');
         
-        // Clear the active rundown in Firestore
-        await clearActiveRundownInFirestore();
+        await clearActiveRundownInStudio();
         
         setIsLive(false);
         setLiveRundownId(null);
-        console.log('Live mode ended and rundown cleared from CasparCG');
+        setCurrentLiveItemIndex(0);
+        console.log('Live mode ended');
     };
 
     const handleNextLiveItem = () => {
@@ -121,6 +120,13 @@ export const useLiveMode = (activeRundown, activeRundownId, db) => {
         }
     };
 
+    const handlePreviousLiveItem = () => {
+        if (currentLiveItemIndex > 0) {
+            setCurrentLiveItemIndex(prev => prev - 1);
+            console.log(`Moved back to item ${currentLiveItemIndex} of ${activeRundown.items.length}`);
+        }
+    };
+
     return {
         isLive,
         liveTime,
@@ -128,6 +134,8 @@ export const useLiveMode = (activeRundown, activeRundownId, db) => {
         liveRundownId,
         handleGoLive,
         handleEndLive,
-        handleNextLiveItem
+        handleNextLiveItem,
+        handlePreviousLiveItem,
+        setCurrentLiveItemIndex
     };
 };
