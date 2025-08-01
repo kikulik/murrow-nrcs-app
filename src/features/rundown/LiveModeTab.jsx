@@ -1,10 +1,9 @@
-// src/features/rundown/LiveModeTab.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Square, SkipForward, Monitor, Loader, Radio, StopCircle } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { formatDuration } from '../../utils/helpers';
 import { getRundownTypeColor, getStatusColor } from '../../utils/styleHelpers';
-import VideoPlayer from '../../components/common/VideoPlayer';
+import VideoPlayer from '../common/VideoPlayer';
 
 const LiveModeTab = ({ liveMode }) => {
     const { appState } = useAppContext();
@@ -31,7 +30,7 @@ const LiveModeTab = ({ liveMode }) => {
         if (activeRundown?.items) {
             const newAssignments = new Map();
             activeRundown.items.forEach((item, index) => {
-                const defaultChannel = (index % 2) + 1;
+                const defaultChannel = (index % 4) + 1;
                 newAssignments.set(item.id, defaultChannel);
             });
             setChannelAssignments(newAssignments);
@@ -98,7 +97,13 @@ const LiveModeTab = ({ liveMode }) => {
         
         try {
             await sendCasparCommand(`LOADBG ${CASPAR_CHANNEL}-${actualLayer} "${clipName}"`);
-            setQueuedItems(prev => new Map(prev.set(virtualChannelId, item)));
+            
+            setQueuedItems(prev => {
+                const newQueued = new Map(prev);
+                newQueued.set(virtualChannelId, item);
+                return newQueued;
+            });
+            
             console.log(`Queued ${item.title} to Channel ${CASPAR_CHANNEL} Layer ${actualLayer} (Virtual Channel ${virtualChannelId})`);
         } catch (error) {
             console.error('Error queuing item:', error);
@@ -109,6 +114,7 @@ const LiveModeTab = ({ liveMode }) => {
         const queuedItem = queuedItems.get(virtualChannelId);
         if (!queuedItem) {
             console.warn('No item queued for virtual channel:', virtualChannelId);
+            alert(`No item queued for virtual channel ${virtualChannelId}. Please queue an item first.`);
             return;
         }
 
@@ -116,12 +122,19 @@ const LiveModeTab = ({ liveMode }) => {
 
         try {
             await sendCasparCommand(`PLAY ${CASPAR_CHANNEL}-${actualLayer}`);
-            setPlayingItems(prev => new Map(prev.set(virtualChannelId, queuedItem)));
+            
+            setPlayingItems(prev => {
+                const newPlaying = new Map(prev);
+                newPlaying.set(virtualChannelId, queuedItem);
+                return newPlaying;
+            });
+            
             setQueuedItems(prev => {
                 const newQueued = new Map(prev);
                 newQueued.delete(virtualChannelId);
                 return newQueued;
             });
+            
             setIsPlaying(true);
             itemStartTime.current = Date.now();
             console.log(`Playing ${queuedItem.title} on Channel ${CASPAR_CHANNEL} Layer ${actualLayer}`);
@@ -144,11 +157,13 @@ const LiveModeTab = ({ liveMode }) => {
         const actualLayer = LAYER_MAP[virtualChannelId];
         try {
             await sendCasparCommand(`STOP ${CASPAR_CHANNEL}-${actualLayer}`);
+            
             setPlayingItems(prev => {
                 const newPlaying = new Map(prev);
                 newPlaying.delete(virtualChannelId);
                 return newPlaying;
             });
+            
             setIsPlaying(false);
             setCurrentItemTimecode('00:00:00');
             itemStartTime.current = 0;
@@ -162,13 +177,16 @@ const LiveModeTab = ({ liveMode }) => {
         if (currentIndex < activeRundown.items.length - 1) {
             const nextItem = activeRundown.items[currentIndex + 1];
             handleSelectItem(nextItem);
-            handleQueueItem(nextItem);
             liveMode.setCurrentLiveItemIndex(currentIndex + 1);
         }
     };
 
     const handleChannelChange = (itemId, newVirtualChannelId) => {
-        setChannelAssignments(prev => new Map(prev.set(itemId, newVirtualChannelId)));
+        setChannelAssignments(prev => {
+            const newAssignments = new Map(prev);
+            newAssignments.set(itemId, newVirtualChannelId);
+            return newAssignments;
+        });
     };
 
     const handlePreview = (item) => {
@@ -201,7 +219,6 @@ const LiveModeTab = ({ liveMode }) => {
 
     return (
         <div className="space-y-4">
-            {/* Compact Status Row */}
             <div className="grid grid-cols-3 gap-4 bg-gray-800 text-white rounded-lg p-4">
                 <div className="text-center">
                     <div className="text-2xl font-mono">{currentItemTimecode}</div>
@@ -217,9 +234,7 @@ const LiveModeTab = ({ liveMode }) => {
                 </div>
             </div>
 
-            {/* Layer Control and Selected Item Row */}
             <div className="grid grid-cols-3 gap-4">
-                {/* Layer Controls */}
                 <div className="col-span-2 bg-white dark:bg-gray-800 rounded-lg border p-4">
                     <div className="flex justify-between items-center mb-3">
                         <h3 className="text-sm font-semibold">Layer Control</h3>
@@ -243,7 +258,7 @@ const LiveModeTab = ({ liveMode }) => {
                                             <button
                                                 onClick={() => handlePlayItem(virtualChannelId)}
                                                 disabled={!queuedItem}
-                                                className="p-1 disabled:opacity-50"
+                                                className={`p-1 ${!queuedItem ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
                                                 title="Play"
                                             >
                                                 <Play size={12} />
@@ -251,7 +266,7 @@ const LiveModeTab = ({ liveMode }) => {
                                             <button
                                                 onClick={() => handlePauseChannel(virtualChannelId)}
                                                 disabled={!playingItem}
-                                                className="p-1 disabled:opacity-50"
+                                                className={`p-1 ${!playingItem ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
                                                 title="Pause"
                                             >
                                                 <Pause size={12} />
@@ -259,14 +274,14 @@ const LiveModeTab = ({ liveMode }) => {
                                             <button
                                                 onClick={() => handleStopChannel(virtualChannelId)}
                                                 disabled={!playingItem}
-                                                className="p-1 disabled:opacity-50"
+                                                className={`p-1 ${!playingItem ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
                                                 title="Stop"
                                             >
                                                 <Square size={12} />
                                             </button>
                                             <button
                                                 onClick={handleNextItem}
-                                                className="p-1"
+                                                className="p-1 hover:bg-gray-100"
                                                 title="Next Item"
                                             >
                                                 <SkipForward size={12} />
@@ -297,7 +312,6 @@ const LiveModeTab = ({ liveMode }) => {
                     </div>
                 </div>
 
-                {/* Selected Item and End Live */}
                 <div className="bg-white dark:bg-gray-800 rounded-lg border p-4">
                     <div className="flex justify-between items-center mb-3">
                         <h3 className="text-sm font-semibold">Selected Item</h3>
@@ -338,7 +352,7 @@ const LiveModeTab = ({ liveMode }) => {
                                 <button
                                     onClick={() => handleQueueItem(selectedItem)}
                                     disabled={!selectedItem.highResPath}
-                                    className="flex-1 text-xs btn-primary disabled:opacity-50 p-1"
+                                    className={`flex-1 text-xs btn-primary p-1 ${!selectedItem.highResPath ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                     Queue
                                 </button>
@@ -349,6 +363,12 @@ const LiveModeTab = ({ liveMode }) => {
                                     Play
                                 </button>
                             </div>
+                            
+                            {!selectedItem.highResPath && (
+                                <div className="text-xs text-yellow-600 bg-yellow-50 p-1 rounded">
+                                    No video file attached
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <p className="text-xs text-gray-500">No item selected</p>
@@ -356,7 +376,6 @@ const LiveModeTab = ({ liveMode }) => {
                 </div>
             </div>
 
-            {/* Rundown Items */}
             <div className="bg-white dark:bg-gray-800 rounded-lg border">
                 <div className="p-3 border-b flex justify-between items-center">
                     <h3 className="text-sm font-semibold">Rundown Items</h3>
@@ -444,7 +463,6 @@ const LiveModeTab = ({ liveMode }) => {
                 </div>
             </div>
 
-            {/* Preview Modal */}
             {showPreview && previewItem && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white dark:bg-gray-800 rounded-lg p-4 max-w-2xl w-full mx-4">
