@@ -1,6 +1,6 @@
 // src/features/rundown/RundownTab.jsx
 import React, { useState, useEffect } from 'react';
-import { Send, Trash2, Archive, CheckCircle } from 'lucide-react';
+import { Send, Trash2, Archive, Circle } from 'lucide-react';
 import CustomIcon from '../../components/ui/CustomIcon';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -33,7 +33,7 @@ const RundownTab = ({ liveMode }) => {
         if (currentRundown?.items) {
             const newAssignments = new Map();
             currentRundown.items.forEach((item, index) => {
-                const defaultChannel = (index % 2) + 1;
+                const defaultChannel = (index % 4) + 1;
                 newAssignments.set(item.id, defaultChannel);
             });
             setChannelAssignments(newAssignments);
@@ -126,7 +126,7 @@ const RundownTab = ({ liveMode }) => {
             const newAssignments = new Map(channelAssignments);
             updatedItems.forEach((item, index) => {
                 if (!newAssignments.has(item.id)) {
-                    newAssignments.set(item.id, (index % 2) + 1);
+                    newAssignments.set(item.id, (index % 4) + 1);
                 }
             });
             setChannelAssignments(newAssignments);
@@ -270,7 +270,6 @@ const RundownTab = ({ liveMode }) => {
 
             await checkStudioQueue();
             setShowStudioModal(false);
-            alert(`"${currentRundown.name}" has been queued for studio playout with channel assignments.`);
         } catch (error) {
             console.error("Failed to send rundown to studio:", error);
             alert("Error: Could not send rundown to studio.");
@@ -295,7 +294,6 @@ const RundownTab = ({ liveMode }) => {
             });
 
             setStudioQueue(null);
-            alert("Rundown removed from studio queue.");
         } catch (error) {
             console.error("Failed to remove rundown from studio:", error);
             alert("Error: Could not remove rundown from studio.");
@@ -313,9 +311,7 @@ const RundownTab = ({ liveMode }) => {
             return;
         }
 
-        const confirmGoLive = window.confirm(
-            `Go live with "${studioQueue.rundownName}"?\n\nThis will start live playout mode with 4-channel CasparCG control.`
-        );
+        const confirmGoLive = window.confirm(`Go live with "${studioQueue.rundownName}"?`);
 
         if (confirmGoLive) {
             try {
@@ -419,7 +415,7 @@ const RundownTab = ({ liveMode }) => {
                     {studioQueue && canManageStudio && (
                         <button
                             onClick={handleRemoveFromStudio}
-                            className="p-2 text-gray-500 hover:text-orange-600 rounded"
+                            className="p-2 text-gray-500 hover:text-red-600 rounded"
                             title="Remove from studio queue"
                         >
                             <Trash2 size={20} />
@@ -432,11 +428,14 @@ const RundownTab = ({ liveMode }) => {
                         className={`p-2 text-gray-500 hover:text-blue-600 rounded relative ${
                             (!currentRundown || isRundownLocked || !canManageStudio) ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
-                        title="Send this rundown to the studio queue"
+                        title="Send to studio queue"
                     >
                         <Send size={20} />
                         {studioQueue && (
-                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                            <Circle 
+                                size={8} 
+                                className="absolute -top-1 -right-1 text-green-500 fill-green-500 animate-pulse" 
+                            />
                         )}
                     </button>
 
@@ -566,11 +565,11 @@ const RundownTab = ({ liveMode }) => {
                                     <h3 className="text-lg font-semibold">Send to Studio</h3>
                                 </div>
                                 <p className="text-gray-600 dark:text-gray-400 mb-4">
-                                    Queue "<strong>{currentRundown?.name}</strong>" for 4-channel CasparCG playout?
+                                    Queue "<strong>{currentRundown?.name}</strong>" for virtual channel playout?
                                 </p>
                                 <div className="text-sm text-gray-500 mb-6">
-                                    <p>• Items will be assigned to channels 1-4</p>
-                                    <p>• A-B roll pattern (1,2,1,2...)</p>
+                                    <p>• Items will be assigned to virtual channels 1-4</p>
+                                    <p>• All channels use CasparCG Channel 1 with different layers</p>
                                     <p>• Manual channel control available in Live Mode</p>
                                 </div>
                                 <div className="flex justify-end gap-3">
