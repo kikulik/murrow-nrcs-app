@@ -48,20 +48,23 @@ const VideoPlayer = ({ src, status }) => {
         }
     };
 
-    const videoUrl = getVideoUrl(src);
+    // src/components/common/VideoPlayer.jsx
 
-    return (
-        <video 
-            controls 
-            src={videoUrl} 
-            className="w-full h-full rounded-lg"
-            onError={(e) => {
-                console.error('Video load error:', e.target.error);
-                console.log('Attempted video URL:', videoUrl);
-                console.log('Original src path:', src);
-            }}
-        />
-    );
-};
+    const getVideoUrl = (srcPath) => {
+        if (!srcPath) return null;
+        const filename = srcPath.split('\\').pop();
+        
+        const protocol = window.location.protocol;
+        const isSecure = protocol === 'https:';
+        
+        if (isSecure) {
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://champion-fun-barnacle.ngrok-free.app';
+            // --- CHANGE THIS LINE ---
+            return `${apiUrl.replace('//', '//').replace('http:', 'https:')}/api/video/${filename}`;
+        } else {
+            // This part can remain for local http testing if you wish
+            return `http://localhost:3001/api/video/${filename}`;
+        }
+    };
 
 export default VideoPlayer;
