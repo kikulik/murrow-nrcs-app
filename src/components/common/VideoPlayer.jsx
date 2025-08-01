@@ -26,37 +26,13 @@ const VideoPlayer = ({ src, status }) => {
         );
     }
 
-    // SIMPLE FIX: Just change the protocol to match the current page
-    // Keep all the original logic but use HTTPS when the page is HTTPS
-    const getVideoUrl = (srcPath) => {
-        if (!srcPath) return null;
-        
-        const filename = srcPath.split('\\').pop();
-        
-        // Use the current page's protocol instead of hardcoded http://
-        const protocol = window.location.protocol;
-        const isSecure = protocol === 'https:';
-        
-        // If we're on HTTPS, use your ngrok URL, otherwise use localhost
-        if (isSecure) {
-            // Use your ngrok URL or environment variable
-            const apiUrl = import.meta.env.VITE_API_URL || 'https://champion-fun-barnacle.ngrok-free.app';
-            return `${apiUrl.replace('//', '//').replace('http:', 'https:')}/proxy/${filename}`;
-        } else {
-            // Original localhost logic for local development
-            return `http://localhost:8080/${filename}`;
-        }
-    };
-
-    // src/components/common/VideoPlayer.jsx
-
     const getVideoUrl = (srcPath) => {
         if (!srcPath) return null;
         const filename = srcPath.split('\\').pop();
-        
+
         const protocol = window.location.protocol;
         const isSecure = protocol === 'https:';
-        
+
         if (isSecure) {
             const apiUrl = import.meta.env.VITE_API_URL || 'https://champion-fun-barnacle.ngrok-free.app';
             // --- CHANGE THIS LINE ---
@@ -66,5 +42,21 @@ const VideoPlayer = ({ src, status }) => {
             return `http://localhost:3001/api/video/${filename}`;
         }
     };
+
+    const videoUrl = getVideoUrl(src);
+
+    return (
+        <video
+            controls
+            src={videoUrl}
+            className="w-full h-full rounded-lg"
+            onError={(e) => {
+                console.error('Video load error:', e.target.error);
+                console.log('Attempted video URL:', videoUrl);
+                console.log('Original src path:', src);
+            }}
+        />
+    );
+};
 
 export default VideoPlayer;
