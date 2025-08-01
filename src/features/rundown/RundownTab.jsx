@@ -305,3 +305,295 @@ const RundownTab = ({ liveMode }) => {
     const handleGoLive = async () => {
         if (!studioQueue || !canGoLive) {
             alert('No rundown queued for studio or insufficient permissions');
+            return;
+        }
+
+        if (studioQueue.rundownId !== currentRundown?.id) {
+            alert('You can only go live with the queued rundown');
+            return;
+        }
+
+        const confirmGoLive = window.confirm(
+            `Go live with "${studioQueue.rundownName}"?\n\nThis will start live playout mode with 4-channel CasparCG control.`
+        );
+
+        if (confirmGoLive) {
+            try {
+                const studioRef = doc(db, "settings", "studio");
+                await updateDoc(studioRef, { 
+                    isLive: true,
+                    liveStartedAt: new Date().toISOString()
+                });
+                
+                await liveMode.handleGoLive();
+                console.log('Successfully went live with rundown:', studioQueue.rundownName);
+            } catch (error) {
+                console.error('Error going live:', error);
+                alert('Failed to go live. Please try again.');
+            }
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center flex-wrap gap-4">
+                <div className="flex items-center gap-4">
+                    <h2 className="text-xl font-semibold">Show Rundown</h2>
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={appState.activeRundownId || ''}
+                            onChange={handleRundownChange}
+                            disabled={isRundownLocked}
+                            className={`bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm ${
+                                isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                        >
+                            <option value="">-- Select Rundown --</option>
+                            {availableRundowns.map(r => (
+                                <option key={r.id} value={r.id}>
+                                    {r.name} {r.archived ? '(Archived)' : ''}
+                                </option>
+                            ))}
+                        </select>
+
+                        {currentRundown && !currentRundown.archived && userPermissions.canDeleteAnything && (
+                            <button
+                                onClick={handleArchiveRundown}
+                                disabled={isRundownLocked}
+                                className={`p-2 text-gray-500 hover:text-orange-600 rounded ${
+                                    isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                                title="Archive Rundown"
+                            >
+                                <Archive size={20} />
+                            </button>
+                        )}
+
+                        {currentRundown && userPermissions.canDeleteAnything && (
+                            <button
+                                onClick={handleDeleteRundown}
+                                disabled={isRundownLocked}
+                                className={`p-2 text-gray-500 hover:text-red-600 rounded ${
+                                    isRundownLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                                title="Delete Rundown"
+                            >
+                                <Trash2 size={20} />
+                            </button>
+                        )}
+                    </div>
+
+                    <button
+                        onClick={openNewRundown}
+                        disabled={isRundownLocked || !userPermissions.canCreateRundowns}
+                        className={`btn-secondary text-sm ${
+                            (isRundownLocked || !userPermissions.canCreateRundowns) ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                    >
+                        <CustomIcon name="add story" size={40} />
+                        <span>New</span>
+                    </button>
+
+                    <label className="flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={appState.showArchived}
+                            onChange={(e) => setAppState(prev => ({ ...prev, showArchived: e.target.checked }))}
+                            className="rounded"
+                        />
+                        Show Archived
+                    </label>
+                </div>
+
+                <div className="flex items-center gap-4">
+                    <PrintDropdown
+                        rundown={currentRundown}
+                        disabled={!currentRundown || !currentRundown.items?.length}
+                        airTime={getAirTime(currentRundown?.airDate)}
+                    />
+                    <div className="flex items-center gap-2 text-lg">
+                        <CustomIcon name="time" size={40} />
+                        <span className="font-bold">{formatDuration(totalDuration)}</span>
+                    </div>
+                    
+                    {studioQueue && canManageStudio && (
+                        <button
+                            onClick={handleRemoveFromStudio}
+                            className="p-2 text-gray-500 hover:text-orange-600 rounded"
+                            title="Remove from studio queue"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+                    )}
+
+                    <button
+                        onClick={handleSendToStudio}
+                        disabled={!currentRundown || isRundownLocked || !canManageStudio}
+                        className={`p-2 text-gray-500 hover:text-blue-600 rounded relative ${
+                            (!currentRundown || isRundownLocked || !canManageStudio) ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                        title="Send this rundown to the studio queue"
+                    >
+                        <Send size={20} />
+                        {studioQueue && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                        )}
+                    </button>
+
+                    {studioQueue && studioQueue.rundownId === currentRundown?.id && canGoLive && (
+                        <button
+                            onClick={handleGoLive}
+                            disabled={liveMode.isLive}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium text-sm rounded-full shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Go live with queued rundown"
+                        >
+                            <CustomIcon name="golive" size={40} />
+                            <span>Go Live</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {currentRundown && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                            <div className="flex items-center gap-2">
+                                <CustomIcon name="assignments" size={40} />
+                                <span>Air Date: {formatAirDate(currentRundown.airDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <CustomIcon name="time" size={40} />
+                                <span>Created: {new Date(currentRundown.created).toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span>Air Time: {getAirTime(currentRundown.airDate)}</span>
+                            </div>
+                            {liveMode.isLive && liveMode.liveRundownId === currentRundown.id && (
+                                <div className="flex items-center gap-2 px-3 py-1 bg-red-100 dark:bg-red-900/20 rounded-full">
+                                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                                    <span className="text-red-600 dark:text-red-400 font-medium">LIVE</span>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {selectedItems.length > 0 && (
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mr-4">
+                                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">Ctrl+C</kbd>
+                                    <span>Copy</span>
+                                    {copiedItems.length > 0 && (
+                                        <>
+                                            <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded ml-2">Ctrl+V</kbd>
+                                            <span>Paste</span>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {selectedItems.length > 0 && (
+                                <button
+                                    onClick={handleSendSelectedToStories}
+                                    className="btn-primary text-sm"
+                                >
+                                    <CustomIcon name="send" size={32} />
+                                    <span>Send to Stories ({selectedItems.length})</span>
+                                </button>
+                            )}
+
+                            <button
+                                onClick={openAddStoryModal}
+                                disabled={isRundownLocked || currentRundown.archived || !userPermissions.canCreateRundownItems}
+                                className={`btn-primary flex items-center ${
+                                    (isRundownLocked || currentRundown.archived || !userPermissions.canCreateRundownItems) ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                            >
+                                <CustomIcon name="add story" size={40} className="mr-2" />
+                                <span>Add Story</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {currentRundown && !currentRundown.archived ? (
+                <RundownList
+                    rundown={currentRundown}
+                    isLocked={isRundownLocked}
+                    userPermissions={userPermissions}
+                    onItemsUpdate={handleRundownItemUpdate}
+                    selectedItems={selectedItems}
+                    onSelectionChange={setSelectedItems}
+                    channelAssignments={channelAssignments}
+                    onChannelAssignmentChange={handleChannelAssignmentChange}
+                />
+            ) : (
+                <div className="text-center py-12 text-gray-500">
+                    {!currentRundown ?
+                        'Select a rundown to view items, or create a new one.' :
+                        'This rundown is archived. Restore it to make changes.'
+                    }
+                </div>
+            )}
+
+            {showStudioModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+                        {studioModalType === 'busy' ? (
+                            <>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <CustomIcon name="notification" size={32} className="text-orange-600" />
+                                    <h3 className="text-lg font-semibold">Studio Queue Busy</h3>
+                                </div>
+                                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                                    Studio queue is currently occupied by: <strong>{studioQueue?.rundownName}</strong>
+                                </p>
+                                <p className="text-sm text-gray-500 mb-6">
+                                    Please remove the current rundown from studio before queuing a new one.
+                                </p>
+                                <div className="flex justify-end">
+                                    <button
+                                        onClick={() => setShowStudioModal(false)}
+                                        className="btn-primary"
+                                    >
+                                        OK
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <Send size={24} className="text-blue-600" />
+                                    <h3 className="text-lg font-semibold">Send to Studio</h3>
+                                </div>
+                                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                                    Queue "<strong>{currentRundown?.name}</strong>" for 4-channel CasparCG playout?
+                                </p>
+                                <div className="text-sm text-gray-500 mb-6">
+                                    <p>• Items will be assigned to channels 1-4</p>
+                                    <p>• A-B roll pattern (1,2,1,2...)</p>
+                                    <p>• Manual channel control available in Live Mode</p>
+                                </div>
+                                <div className="flex justify-end gap-3">
+                                    <button
+                                        onClick={() => setShowStudioModal(false)}
+                                        className="btn-secondary"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={confirmSendToStudio}
+                                        className="btn-primary"
+                                    >
+                                        Send to Studio
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default RundownTab;
