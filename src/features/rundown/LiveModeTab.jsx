@@ -3,7 +3,7 @@ import { Play, Pause, Square, SkipForward, Monitor, Loader, Radio, StopCircle } 
 import { useAppContext } from '../../context/AppContext';
 import { formatDuration } from '../../utils/helpers';
 import { getRundownTypeColor, getStatusColor } from '../../utils/styleHelpers';
-import VideoPlayer from '../common/VideoPlayer';
+import VideoPlayer from '../../components/common/VideoPlayer';
 
 const LiveModeTab = ({ liveMode }) => {
     const { appState } = useAppContext();
