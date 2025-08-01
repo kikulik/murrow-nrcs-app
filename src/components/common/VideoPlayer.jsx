@@ -26,44 +26,29 @@ const VideoPlayer = ({ src, status }) => {
         );
     }
 
-    // Fix for mixed content error - use environment variable or detect protocol
+    // SIMPLE FIX: Just change the protocol to match the current page
+    // Keep all the original logic but use HTTPS when the page is HTTPS
     const getVideoUrl = (srcPath) => {
         if (!srcPath) return null;
         
         const filename = srcPath.split('\\').pop();
         
-        // Check if we have a custom video server URL from environment
-        const videoServerUrl = import.meta.env.VITE_VIDEO_SERVER_URL;
-        
-        if (videoServerUrl) {
-            return `${videoServerUrl}/${filename}`;
-        }
-        
-        // Detect current protocol and use appropriate local server
+        // Use the current page's protocol instead of hardcoded http://
         const protocol = window.location.protocol;
-        const hostname = window.location.hostname;
+        const isSecure = protocol === 'https:';
         
-        // For development
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            // Use same protocol as the current page
-            const port = protocol === 'https:' ? '8443' : '8080';
-            return `${protocol}//${hostname}:${port}/${filename}`;
+        // If we're on HTTPS, use your ngrok URL, otherwise use localhost
+        if (isSecure) {
+            // Use your ngrok URL or environment variable
+            const apiUrl = import.meta.env.VITE_API_URL || 'https://champion-fun-barnacle.ngrok-free.app';
+            return `${apiUrl.replace('//', '//').replace('http:', 'https:')}/proxy/${filename}`;
+        } else {
+            // Original localhost logic for local development
+            return `http://localhost:8080/${filename}`;
         }
-        
-        // For production, try to serve from the same domain
-        // You might need to adjust this based on your deployment setup
-        return `/api/video/${filename}`;
     };
 
     const videoUrl = getVideoUrl(src);
-
-    if (!videoUrl) {
-        return (
-            <div className="flex items-center justify-center h-full bg-gray-100 dark:bg-gray-700 rounded-lg">
-                <p className="text-sm text-gray-500">Video URL not available</p>
-            </div>
-        );
-    }
 
     return (
         <video 
@@ -72,7 +57,8 @@ const VideoPlayer = ({ src, status }) => {
             className="w-full h-full rounded-lg"
             onError={(e) => {
                 console.error('Video load error:', e.target.error);
-                console.log('Failed video URL:', videoUrl);
+                console.log('Attempted video URL:', videoUrl);
+                console.log('Original src path:', src);
             }}
         />
     );
