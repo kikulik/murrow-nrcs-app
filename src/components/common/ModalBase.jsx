@@ -1,5 +1,4 @@
-// src/components/common/ModalBase.jsx
-import React from 'react';
+// src/components/common/ModalBase.jsximport React from 'react';
 import CustomIcon from '../ui/CustomIcon';
 
 const ModalBase = ({ children, onCancel, title, maxWidth = "max-w-2xl" }) => (
